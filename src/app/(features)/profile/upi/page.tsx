@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { BankAccount, linkBankAccount /*, getLinkedAccounts, removeUpiId, setDefaultAccount */ } from '@/services/upi'; // Assuming these functions exist
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge"; // Import Badge component
 
 // Mock Data (Replace with actual API calls via useEffect)
 const mockLinkedAccounts: BankAccount[] = [
@@ -218,3 +219,4 @@ export default function UPISettingsPage() {
 }
 */
 // Or use `className="text-xs h-6 px-2"` directly as done above.
+
