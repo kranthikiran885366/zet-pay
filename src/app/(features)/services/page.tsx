@@ -39,7 +39,7 @@ import {
   History,
   ParkingMeter, // Corrected icon
   Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Corrected icon import
+  CarTaxiFront as TaxiIcon, // Corrected alias
   PhoneCall,
   Plane,
   ShoppingBag,
@@ -57,6 +57,8 @@ import {
     Hotel,
     Users,
     QrCode,
+    Clock, // Added Clock import
+    MoreHorizontal
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -91,6 +93,7 @@ const otherServices = [
     { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Recharge & Bills" },
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
     { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
+    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills" }, // Added
 
     // Tickets
     { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets" },
@@ -115,16 +118,20 @@ const otherServices = [
     { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Payments" },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Payments" },
 
+    // See All
+    { name: "See All", icon: MoreHorizontal, href: "/services", category: "See All" }, // Dedicated category
+
 ];
 
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
-    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Vouchers & More", "Financial Services", "Payments"]; // Define order
+    // Define order, ensuring 'Temple Services' and 'Travel' are included
+    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Vouchers & More", "Financial Services", "Payments", "See All"];
 
-    // Initialize categories
+    // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
-     grouped["Other"] = []; // Catch-all for unlisted categories
+     grouped["Other"] = []; // Catch-all for unexpected categories
 
     services.forEach((service) => {
         const category = service.category;
@@ -136,17 +143,16 @@ const groupServicesByCategory = (services: any[]) => {
         }
     });
 
-     // Filter out empty categories except "Other" if it's also empty
+     // Filter out empty categories except "Other" if it's also empty and "See All"
      const finalGrouped: { [key: string]: any[] } = {};
      for (const cat of categoryOrder) {
-         if (grouped[cat].length > 0) {
+         if (grouped[cat] && grouped[cat].length > 0) { // Check if category exists in grouped before accessing length
              finalGrouped[cat] = grouped[cat];
          }
      }
-     if (grouped["Other"].length > 0) {
+      if (grouped["Other"].length > 0) {
         finalGrouped["Other"] = grouped["Other"];
-     }
-
+      }
 
     return finalGrouped;
 }
@@ -172,25 +178,31 @@ export default function AllServicesPage() {
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
-                 {categories.map((category) => (
-                    <Card key={category} className="shadow-md">
-                        <CardHeader>
-                            <CardTitle>{category}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
-                            {groupedServices[category].map((service: any) => (
-                                <Link key={service.name} href={service.href} passHref legacyBehavior>
-                                    <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
-                                        <div className="bg-primary/10 text-primary p-3 rounded-full">
-                                            <service.icon className="h-6 w-6" />
-                                        </div>
-                                        <span className="text-xs font-medium text-foreground">{service.name}</span>
-                                    </a>
-                                </Link>
-                            ))}
-                        </CardContent>
-                    </Card>
-                 ))}
+                 {categories.map((category) => {
+                     // Don't render a Card for the 'See All' category if it only contains the 'See All' item itself
+                     if (category === 'See All' && groupedServices[category].length === 1 && groupedServices[category][0].name === 'See All') {
+                         return null;
+                     }
+                    return (
+                         <Card key={category} className="shadow-md">
+                            <CardHeader>
+                                <CardTitle>{category}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
+                                {groupedServices[category].map((service: any) => (
+                                     <Link key={service.name} href={service.href} passHref legacyBehavior>
+                                        <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+                                            <div className="bg-primary/10 text-primary p-3 rounded-full">
+                                                <service.icon className="h-6 w-6" />
+                                            </div>
+                                            <span className="text-xs font-medium text-foreground">{service.name}</span>
+                                        </a>
+                                    </Link>
+                                ))}
+                            </CardContent>
+                        </Card>
+                     )
+                 })}
             </main>
         </div>
     );
