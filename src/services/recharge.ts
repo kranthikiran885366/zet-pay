@@ -1,3 +1,4 @@
+
 /**
  * Represents a biller for recharge and bill payments.
  */
@@ -84,6 +85,29 @@ export async function getBillers(billerType: string): Promise<Biller[]> {
     Electricity: [
          { billerId: 'bescom', billerName: 'BESCOM (Bangalore)', billerType: 'Electricity'},
          { billerId: 'mseb', billerName: 'Mahadiscom (MSEB)', billerType: 'Electricity'},
+    ],
+     Water: [ // Added Water billers
+         { billerId: 'bwssb', billerName: 'BWSSB (Bangalore)', billerType: 'Water' },
+         { billerId: 'djb', billerName: 'Delhi Jal Board', billerType: 'Water' },
+    ],
+     Insurance: [ // Added Insurance billers
+        { billerId: 'lic', billerName: 'Life Insurance Corporation (LIC)', billerType: 'Insurance' },
+        { billerId: 'hdfc-life', billerName: 'HDFC Life Insurance', billerType: 'Insurance' },
+    ],
+    'Credit Card': [ // Added Credit Card billers
+        { billerId: 'hdfc-cc', billerName: 'HDFC Bank Credit Card', billerType: 'Credit Card' },
+        { billerId: 'sbi-cc', billerName: 'SBI Card', billerType: 'Credit Card' },
+    ],
+    Loan: [ // Added Loan billers
+        { billerId: 'bajaj-finance', billerName: 'Bajaj Finance Loan', billerType: 'Loan' },
+    ],
+     Broadband: [ // Added Broadband billers
+        { billerId: 'act-fibernet', billerName: 'ACT Fibernet', billerType: 'Broadband' },
+        { billerId: 'airtel-xstream', billerName: 'Airtel Xstream Fiber', billerType: 'Broadband' },
+    ],
+     Gas: [ // Added Gas billers
+        { billerId: 'igl', billerName: 'Indraprastha Gas Ltd (IGL)', billerType: 'Gas' },
+        { billerId: 'mncl', billerName: 'Mahanagar Gas Ltd (MNGL)', billerType: 'Gas' },
     ],
   };
 
@@ -248,6 +272,3 @@ export async function getTopupVouchers(billerId: string): Promise<RechargePlan[]
      const allPlans = await getRechargePlans(billerId); // Reuse general plan fetching
      return allPlans.filter(p => p.category === 'Talktime'); // Filter for Talktime/Top-up category
 }
-```
-  </change>
-  <change>
