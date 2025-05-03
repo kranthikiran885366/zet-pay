@@ -8,9 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal } from 'lucide-react'; // Added more icons
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2 } from 'lucide-react'; // Added Tv2
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus } from '@/services/recharge'; // Use service functions and Plan interface
+import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus, mockDthPlans } from '@/services/recharge'; // Use service functions and Plan interface
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { recommendRechargePlans, RecommendRechargePlansInput } from '@/ai/flows/recharge-plan-recommendation';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, addDays } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -33,11 +33,11 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
 // Map types to icons and titles
-const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string } } = {
-  mobile: { icon: Smartphone, title: "Mobile Recharge" },
-  dth: { icon: Tv, title: "DTH Recharge" },
-  electricity: { icon: Bolt, title: "Electricity Bill" }, // Keep for potential future use?
-  fastag: { icon: RadioTower, title: "FASTag Recharge"}, // Updated icon
+const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string; identifierLabel: string; searchPlaceholder: string; recentLabel: string } } = {
+  mobile: { icon: Smartphone, title: "Mobile Recharge", identifierLabel: "Mobile Number", searchPlaceholder: "Enter mobile number or name", recentLabel: "Recents & Contacts"},
+  dth: { icon: Tv, title: "DTH Recharge", identifierLabel: "DTH Subscriber ID", searchPlaceholder: "Enter Customer ID or Mobile No.", recentLabel: "Recent DTH Providers"},
+  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers" }, // Keep for potential future use?
+  fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers"}, // Updated icon
   // Add more types as needed
 };
 
@@ -59,6 +59,12 @@ const mockSavedNumbers: Payee[] = [ // Use Payee interface for consistency
   { id: 'friend1', name: 'Alice', identifier: '9123456780', type: 'mobile', avatarSeed: 'alice'},
   { id: 'friend2', name: 'Bob', identifier: '9112233440', type: 'mobile', avatarSeed: 'bob'},
    { id: 'self', name: 'Self', identifier: '9876501234', type: 'mobile', avatarSeed: 'self'},
+];
+const mockRecentDthProviders: Biller[] = [ // Mock recent DTH providers
+    { billerId: 'tata-play', billerName: 'Tata Play', billerType: 'DTH', logoUrl: '/logos/tataplay.png' },
+    { billerId: 'airtel-dth', billerName: 'Airtel Digital TV', billerType: 'DTH', logoUrl: '/logos/airtel.png' },
+    { billerId: 'dish-tv', billerName: 'Dish TV', billerType: 'DTH', logoUrl: '/logos/dishtv.png' },
+    { billerId: 'd2h', billerName: 'd2h', billerType: 'DTH', logoUrl: '/logos/d2h.png' },
 ];
 
 // Debounce function
@@ -113,14 +119,12 @@ export default function RechargePage() {
 
   const details = rechargeTypeDetails[type] || rechargeTypeDetails.mobile; // Fallback to mobile details
   const inputRef = useRef<HTMLInputElement>(null);
-  const identifierLabel = type === 'mobile' ? 'Mobile Number' : type === 'dth' ? 'DTH Subscriber ID' : 'Consumer Number';
-  const searchPlaceholder = type === 'mobile' ? 'Enter mobile number or name' : `Enter ${identifierLabel}`;
-
 
   // Fetch Billers (Operators)
   useEffect(() => {
     async function fetchBillersData() {
-      if (!['mobile', 'dth', 'fastag'].includes(type)) return;
+      // Fetch only relevant billers
+      if (!['mobile', 'dth', 'fastag', 'electricity'].includes(type)) return;
       setIsLoading(true);
       setError(null);
       try {
@@ -137,23 +141,32 @@ export default function RechargePage() {
     fetchBillersData();
   }, [type, toast]);
 
-  // Fetch Recharge History when identifier changes (for mobile)
+  // Fetch Recharge History when identifier changes (if relevant for type)
   useEffect(() => {
     if (type === 'mobile' && identifier.match(/^[6-9]\d{9}$/)) {
       fetchHistory(identifier);
-    } else {
-      setRechargeHistory([]); // Clear history if identifier is invalid or not mobile
+    } else if (type === 'dth' && identifier.length > 5) { // Example condition for DTH ID
+        fetchHistory(identifier);
+    }
+    else {
+      setRechargeHistory([]); // Clear history if identifier is invalid or not relevant
       setShowHistory(false);
     }
   }, [identifier, type]);
 
-   // Auto-detect operator when identifier is a valid mobile number
+   // Auto-detect operator based on type and identifier
    useEffect(() => {
      if (type === 'mobile' && identifier.match(/^[6-9]\d{9}$/) && !selectedBiller && !isManualOperatorSelect) {
-       detectOperator();
+       detectMobileOperator();
+     } else if (type === 'dth' && identifier.length > 5 && !selectedBiller && !isManualOperatorSelect) { // Example DTH ID check
+        detectDthOperator();
      }
-     // Reset selection if identifier is cleared or invalid
-     if (type === 'mobile' && !identifier.match(/^[6-9]\d{9}$/)) {
+
+     // Reset selection if identifier is cleared or invalid based on type
+     const isMobileInvalid = type === 'mobile' && !identifier.match(/^[6-9]\d{9}$/);
+     const isDthInvalid = type === 'dth' && identifier.length <= 5; // Example invalid DTH ID check
+
+     if (isMobileInvalid || isDthInvalid || !identifier) {
         setDetectedOperator(null);
         setDetectedRegion(null);
         setSelectedBiller('');
@@ -165,12 +178,12 @@ export default function RechargePage() {
   // Handle Biller Selection Change -> Fetch Plans
   useEffect(() => {
     if (selectedBiller) {
-      const biller = billers.find(b => b.billerId === selectedBiller);
+      const biller = billers.find(b => b.billerId === selectedBiller) || detectedOperator;
       setSelectedBillerName(biller?.billerName || '');
       if (['mobile', 'dth', 'fastag'].includes(type)) {
         fetchRechargePlans();
       } else {
-        setRechargePlans([]);
+        setRechargePlans([]); // Clear plans for non-plan types like electricity
       }
     } else {
       setRechargePlans([]);
@@ -183,7 +196,7 @@ export default function RechargePage() {
   const handlePlanSelect = (plan: RechargePlan) => {
       setAmount(plan.price.toString());
       setSelectedPlan(plan);
-      toast({ title: `Plan Selected: ₹${plan.price}`, description: plan.description });
+      toast({ title: `Plan Selected: ${plan.category ? `(${plan.category}) ` : ''}₹${plan.price}`, description: plan.description });
       setIsCompareModalOpen(false);
       setShowTariffModal(null); // Close tariff modal if open
       // Scroll to payment section or focus amount field
@@ -199,7 +212,7 @@ export default function RechargePage() {
       return;
     }
     if (!identifier) {
-      setError(`Please enter a valid ${identifierLabel}.`);
+      setError(`Please enter a valid ${details.identifierLabel}.`);
       toast({ variant: "destructive", title: "Identifier Missing" });
       return;
     }
@@ -294,13 +307,15 @@ export default function RechargePage() {
     setRecommendedPlanIds([]);
     setIsRecommending(false);
     try {
-      // TODO: Replace with actual API call: await getRechargePlans(selectedBiller);
-      console.log(`Fetching plans for ${selectedBillerName} (${selectedBiller})`);
+      console.log(`Fetching plans for ${selectedBillerName} (${selectedBiller}) - Type: ${type}`);
       await new Promise(resolve => setTimeout(resolve, 800));
-      const fetchedPlans = mockRechargePlans; // Use mock plans from service
+      // Use different mock data based on type
+      const fetchedPlans = type === 'mobile' ? mockRechargePlans : type === 'dth' ? mockDthPlans : [];
       setRechargePlans(fetchedPlans);
-      if (type === 'mobile') {
+      if (type === 'mobile' && fetchedPlans.length > 0) {
         fetchRecommendations(fetchedPlans);
+      } else {
+         setRecommendedPlanIds([]); // Clear recommendations for non-mobile or if no plans
       }
     } catch (error) {
       console.error("Failed to fetch recharge plans:", error);
@@ -315,7 +330,7 @@ export default function RechargePage() {
     setIsRecommending(true);
     try {
       const input: RecommendRechargePlansInput = {
-        userId: 'user123',
+        userId: 'user123', // Replace with actual user ID
         operatorName: selectedBillerName,
         availablePlans: plans,
         usageHistory: mockUsageHistory,
@@ -328,12 +343,13 @@ export default function RechargePage() {
     } catch (error) {
       console.error("Failed to get recommendations:", error);
       console.log("AI Recommendation service might be unavailable.");
+       setRecommendedPlanIds([]); // Clear on error
     } finally {
       setIsRecommending(false);
     }
   };
 
-  const { filteredPlansByCategory, planCategories } = useMemo(() => {
+   const { filteredPlansByCategory, planCategories } = useMemo(() => {
      let plans = rechargePlans;
      if (planSearchTerm) {
        const lowerSearch = planSearchTerm.toLowerCase();
@@ -343,28 +359,40 @@ export default function RechargePage() {
          plan.category?.toLowerCase().includes(lowerSearch) ||
          plan.validity?.toLowerCase().includes(lowerSearch) ||
          plan.data?.toLowerCase().includes(lowerSearch) ||
-         (plan.talktime && `₹${plan.talktime}`.includes(lowerSearch))
+         (plan.talktime && `₹${plan.talktime}`.includes(lowerSearch)) ||
+         (plan.channels && plan.channels.toString().includes(lowerSearch)) // Add channel search for DTH
        );
      }
-     // Define category order, adding Recommended & Offers dynamically if present
-      const baseCategories = ['Popular', 'Data', 'Unlimited', 'Talktime', 'SMS', 'Roaming', 'Annual', 'Top-up'];
+     // Define category order based on type
+     const baseCategories = type === 'mobile'
+         ? ['Popular', 'Data', 'Unlimited', 'Talktime', 'SMS', 'Roaming', 'Annual', 'Top-up']
+         : type === 'dth'
+         ? ['Recommended', 'Basic Packs', 'HD Packs', 'Premium Packs', 'Add-Ons', 'Top-Up Packs']
+         : []; // Add categories for other types if needed
+
      let dynamicCategories = [...baseCategories];
 
      const grouped = plans.reduce((acc, plan) => {
          let category = plan.category || 'Other';
-         if (recommendedPlanIds.includes(plan.planId)) category = 'Recommended';
-         else if (plan.isOffer) category = 'Offers';
+          // Override category for mobile specific logic
+          if (type === 'mobile') {
+            if (recommendedPlanIds.includes(plan.planId)) category = 'Recommended';
+            else if (plan.isOffer) category = 'Offers';
+          }
 
          if (!acc[category]) acc[category] = [];
          acc[category].push(plan);
          return acc;
      }, {} as Record<string, RechargePlan[]>);
 
-     if (grouped['Offers']) dynamicCategories.unshift('Offers');
-     if (grouped['Recommended']) dynamicCategories.unshift('Recommended');
+      // Dynamically add Offer/Recommended tabs for mobile
+      if (type === 'mobile') {
+         if (grouped['Offers']) dynamicCategories.unshift('Offers');
+         if (grouped['Recommended']) dynamicCategories.unshift('Recommended');
+      }
 
      let finalCategories = dynamicCategories.filter(cat => grouped[cat]?.length > 0);
-     if (grouped['Other']?.length > 0) finalCategories.push('Other');
+     if (grouped['Other']?.length > 0 && !finalCategories.includes('Other')) finalCategories.push('Other');
 
      if(planSearchTerm && plans.length > 0) {
          return { filteredPlansByCategory: { "Search Results": plans } , planCategories: ["Search Results"] };
@@ -374,48 +402,69 @@ export default function RechargePage() {
      }
 
      return { filteredPlansByCategory: grouped, planCategories: finalCategories };
-   }, [rechargePlans, planSearchTerm, recommendedPlanIds, isPlanLoading]);
+   }, [rechargePlans, planSearchTerm, recommendedPlanIds, isPlanLoading, type]);
 
-  const detectOperator = useCallback(async () => {
-     if (type !== 'mobile' || !identifier || !identifier.match(/^[6-9]\d{9}$/)) {
-       // Don't toast here, just return if invalid number for auto-detect
-       return;
-     }
+  // Separate detection logic for better clarity
+  const detectMobileOperator = useCallback(async () => {
      setIsDetecting(true);
      setDetectedOperator(null);
      setDetectedRegion(null);
-     setIsManualOperatorSelect(false); // Reset manual flag on new detection
+     setIsManualOperatorSelect(false); // Reset manual flag
      try {
        // TODO: Replace with actual API call: await detectMobileOperator(identifier);
        await new Promise(resolve => setTimeout(resolve, 1000));
-       // Find mock operator, prefer "Jio" for demo
        let mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio')) || billers[0];
-       if (!mockOperator && billers.length === 0) {
-           mockOperator = { billerId: 'mock-jio', billerName: 'Jio (Mock)', billerType: 'Mobile', logoUrl: '/logos/jio.png' };
-           setBillers([mockOperator]);
-       }
-       // Simulate region detection
+        if (!mockOperator && billers.length > 0) mockOperator = billers[0]; // Fallback to first if Jio not found
        const mockRegion = "Karnataka"; // Example
 
        if (mockOperator) {
          setDetectedOperator(mockOperator);
          setDetectedRegion(mockRegion);
          setSelectedBiller(mockOperator.billerId);
-         setSelectedBillerName(mockOperator.billerName);
          toast({ title: "Operator & Region Detected", description: `${mockOperator.billerName} - ${mockRegion}` });
-         setIsManualOperatorSelect(false);
        } else {
          throw new Error("Could not determine operator from mock data.");
        }
      } catch (error) {
-       console.error("Failed to detect operator/region:", error);
+       console.error("Failed to detect mobile operator/region:", error);
        toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect operator/region. Please select manually." });
        setIsManualOperatorSelect(true);
      } finally {
        setIsDetecting(false);
      }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [identifier, type, billers, toast]); // Dependencies for useCallback
+   }, [identifier, billers, toast]);
+
+  const detectDthOperator = useCallback(async () => {
+     setIsDetecting(true);
+     setDetectedOperator(null);
+     setDetectedRegion(null); // Region might not apply to DTH
+     setIsManualOperatorSelect(false); // Reset manual flag
+     try {
+       // TODO: Replace with actual DTH operator detection API call based on ID structure
+       await new Promise(resolve => setTimeout(resolve, 800));
+       // Example mock detection based on ID prefix (highly simplified)
+       let mockOperator: Biller | undefined;
+       if (identifier.startsWith('1')) mockOperator = billers.find(b => b.billerId === 'tata-play');
+       else if (identifier.startsWith('2')) mockOperator = billers.find(b => b.billerId === 'dish-tv');
+       else if (identifier.startsWith('3')) mockOperator = billers.find(b => b.billerId === 'airtel-dth');
+       else mockOperator = billers.find(b => b.billerId === 'd2h'); // Fallback example
+
+       if (mockOperator) {
+         setDetectedOperator(mockOperator);
+         setSelectedBiller(mockOperator.billerId);
+         toast({ title: "DTH Operator Detected", description: `${mockOperator.billerName}` });
+       } else {
+         throw new Error("Could not determine DTH operator from mock data.");
+       }
+     } catch (error) {
+       console.error("Failed to detect DTH operator:", error);
+       toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect DTH operator. Please select manually." });
+       setIsManualOperatorSelect(true);
+     } finally {
+       setIsDetecting(false);
+     }
+   }, [identifier, billers, toast]);
+
 
   const handleCompareCheckbox = (plan: RechargePlan, checked: boolean | 'indeterminate') => {
     if (checked === true) {
@@ -442,14 +491,17 @@ export default function RechargePage() {
   };
 
   const fetchHistory = async (num: string) => {
+    if (!num) return;
     setIsHistoryLoading(true);
     try {
+      console.log(`Fetching history for ${type}: ${num}`);
       await new Promise(resolve => setTimeout(resolve, 500));
-      const history = await getRechargeHistory(num);
+      const history = await getRechargeHistory(num, type); // Pass type to history function
       setRechargeHistory(history);
       setShowHistory(history.length > 0);
     } catch (error) {
       console.error("Failed to fetch recharge history:", error);
+       setShowHistory(false); // Hide on error
     } finally {
       setIsHistoryLoading(false);
     }
@@ -457,18 +509,19 @@ export default function RechargePage() {
 
   const handleQuickRecharge = (entry: RechargeHistoryEntry) => {
     if (entry.billerId && entry.amount) {
+      setIdentifier(entry.identifier); // Set the identifier from history
       setSelectedBiller(entry.billerId);
       setAmount(entry.amount.toString());
-      const plan = rechargePlans.find(p => p.price === entry.amount) || null; // Attempt to find matching plan
+      // Attempt to find matching plan based on amount and potentially description
+       const plan = rechargePlans.find(p => p.price === entry.amount && (!entry.planDescription || p.description.includes(entry.planDescription))) || null;
       setSelectedPlan(plan);
-      toast({ title: "Details Filled", description: `Recharging ₹${entry.amount} for ${identifier}` });
+      toast({ title: "Details Filled", description: `Recharging ₹${entry.amount} for ${entry.identifier}` });
       setShowHistory(false);
        // Auto-detect operator based on billerId if needed
         const biller = billers.find(b => b.billerId === entry.billerId);
         if (biller) {
             setDetectedOperator(biller);
             setSelectedBillerName(biller.billerName);
-            // Potentially detect region based on history entry if available
             setIsManualOperatorSelect(false);
         } else {
              setIsManualOperatorSelect(true); // Allow manual selection if biller not found
@@ -482,22 +535,27 @@ export default function RechargePage() {
   };
 
   const handleSelectSavedNumber = (payee: Payee) => {
-    setIdentifier(payee.identifier);
-    if (type === 'mobile') {
-       // Auto-detect will trigger via useEffect on identifier change
-       setIsManualOperatorSelect(false); // Ensure auto-detect runs
-       setDetectedOperator(null); // Clear previous detection
-       setSelectedBiller(''); // Clear previous selection
-       setSelectedPlan(null); // Clear selected plan
-       setAmount(''); // Clear amount
+    if (payee.type === 'mobile' && type === 'mobile') {
+        setIdentifier(payee.identifier);
+        setIsManualOperatorSelect(false);
+        setDetectedOperator(null);
+        setSelectedBiller('');
+        setSelectedPlan(null);
+        setAmount('');
+    } else if (payee.type === 'dth' && type === 'dth'){
+        setIdentifier(payee.identifier); // Assuming identifier holds DTH ID
+        setIsManualOperatorSelect(false);
+        setDetectedOperator(null);
+        setSelectedBiller('');
+        setSelectedPlan(null);
+        setAmount('');
+    } else {
+        toast({description: `Selected contact type (${payee.type}) doesn't match recharge type (${type}).`})
     }
 };
 
   const handleManualEditOperator = () => {
      setIsManualOperatorSelect(true);
-     // Optionally clear detected operator state if needed
-     // setDetectedOperator(null);
-     // setDetectedRegion(null);
   }
 
    const handleScheduleRecharge = async () => {
@@ -536,19 +594,14 @@ export default function RechargePage() {
   // Determine operator logo URL
   const operatorLogoUrl = useMemo(() => {
       const operator = detectedOperator || billers.find(b => b.billerId === selectedBiller);
-       // Example: Use a mapping or naming convention
        if (!operator) return '/logos/default.png'; // Default logo
-      const name = operator.billerName.toLowerCase();
-      if (name.includes('airtel')) return '/logos/airtel.png';
-      if (name.includes('jio')) return '/logos/jio.png';
-      if (name.includes('vodafone') || name.includes('vi')) return '/logos/vi.png';
-      if (name.includes('bsnl')) return '/logos/bsnl.png';
-      return operator.logoUrl || '/logos/default.png'; // Use provided logoUrl or default
+       // Use provided logoUrl or fallback based on name matching
+      return operator.logoUrl || `/logos/${operator.billerName.toLowerCase().split(' ')[0]}.png` || '/logos/default.png';
   }, [detectedOperator, selectedBiller, billers]);
 
-   // Calculate remaining validity days
+   // Calculate remaining validity days (for mobile only in this mock)
   const remainingValidityDays = useMemo(() => {
-    if (mockCurrentPlan?.expiryDate) {
+    if (type === 'mobile' && mockCurrentPlan?.expiryDate) {
         const today = new Date();
         const expiry = new Date(mockCurrentPlan.expiryDate);
         const diffTime = expiry.getTime() - today.getTime();
@@ -556,7 +609,16 @@ export default function RechargePage() {
         return diffDays > 0 ? diffDays : 0;
     }
     return null;
-  }, [mockCurrentPlan]);
+  }, [mockCurrentPlan, type]);
+
+  const handleSelectRecentProvider = (provider: Biller) => {
+      setSelectedBiller(provider.billerId);
+      setDetectedOperator(provider); // Treat as detected
+      setIsManualOperatorSelect(false); // Act as if detected
+      // Optionally set a known identifier if available, or focus input
+      setIdentifier(''); // Clear identifier, user needs to enter it
+      if (inputRef.current) inputRef.current.focus();
+  }
 
 
   return (
@@ -577,27 +639,28 @@ export default function RechargePage() {
       {/* Main Content */}
       <main className="flex-grow p-4 space-y-4 pb-20">
 
-        {/* Select or Search Contact Section */}
+        {/* Select or Search Contact/ID Section */}
         <Card className="shadow-md">
              <CardContent className="p-4 space-y-4">
                 <Input
                     id="identifier"
                     type={type === 'mobile' ? 'tel' : 'text'}
-                    placeholder={searchPlaceholder}
+                    placeholder={details.searchPlaceholder}
                     ref={inputRef}
                     pattern={type === 'mobile' ? '[0-9]{10}' : undefined}
                     value={identifier}
-                     onChange={(e) => setIdentifier(e.target.value.replace(/\D/g, '').slice(0, 10))} // Allow only 10 digits for mobile
+                    onChange={(e) => setIdentifier(e.target.value)}
                     required
                     className="text-base h-11" // Slightly larger text
                 />
-                {/* Recent Contacts Carousel */}
-                 {type === 'mobile' && mockSavedNumbers.length > 0 && (
+                {/* Recent Contacts/Providers Carousel */}
+                 {(type === 'mobile' && mockSavedNumbers.length > 0) || (type === 'dth' && mockRecentDthProviders.length > 0) ? (
                     <div>
-                        <Label className="text-xs text-muted-foreground mb-2 block">Recents & Contacts</Label>
+                        <Label className="text-xs text-muted-foreground mb-2 block">{details.recentLabel}</Label>
                         <ScrollArea className="w-full whitespace-nowrap">
                             <div className="flex space-x-4 pb-2">
-                                {mockSavedNumbers.map((saved) => (
+                                {/* Mobile Recents */}
+                                {type === 'mobile' && mockSavedNumbers.map((saved) => (
                                     <button key={saved.id} onClick={() => handleSelectSavedNumber(saved)} className="flex flex-col items-center w-16 text-center hover:opacity-80 transition-opacity">
                                         <Avatar className="h-10 w-10 mb-1 border">
                                             <AvatarImage src={`https://picsum.photos/seed/${saved.avatarSeed}/40/40`} alt={saved.name} data-ai-hint="person avatar" />
@@ -607,10 +670,17 @@ export default function RechargePage() {
                                         <span className="text-xs text-muted-foreground">{saved.identifier.slice(-4)}</span>
                                     </button>
                                 ))}
-                                {/* Add New Contact Button */}
-                                <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert("Add New Contact flow")}>
+                                {/* DTH Recents */}
+                                 {type === 'dth' && mockRecentDthProviders.map((provider) => (
+                                    <button key={provider.billerId} onClick={() => handleSelectRecentProvider(provider)} className="flex flex-col items-center w-16 text-center hover:opacity-80 transition-opacity">
+                                        <Image src={provider.logoUrl || '/logos/default.png'} alt={provider.billerName} width={40} height={40} className="h-10 w-10 mb-1 rounded-full border object-contain p-0.5 bg-white" data-ai-hint="operator logo small"/>
+                                        <span className="text-xs font-medium text-foreground truncate w-full">{provider.billerName}</span>
+                                    </button>
+                                ))}
+                                {/* Add New Button */}
+                                <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert(type === 'mobile' ? "Add New Contact flow" : "Add New Provider flow")}>
                                     <div className="h-10 w-10 mb-1 border-2 border-dashed border-muted-foreground rounded-full flex items-center justify-center bg-secondary">
-                                        <UserPlus className="h-5 w-5"/>
+                                        {type === 'mobile' ? <UserPlus className="h-5 w-5"/> : <Tv2 className="h-5 w-5"/>}
                                     </div>
                                     <span className="text-xs font-medium">Add New</span>
                                 </button>
@@ -618,7 +688,7 @@ export default function RechargePage() {
                             <ScrollBar orientation="horizontal" />
                         </ScrollArea>
                     </div>
-                )}
+                ) : null }
             </CardContent>
         </Card>
 
@@ -650,7 +720,7 @@ export default function RechargePage() {
 
 
          {/* Auto-Fetched Operator / Manual Select Section */}
-         {(type === 'mobile' && identifier.match(/^[6-9]\d{9}$/)) && (
+         {identifier && ( // Show this section only when identifier is entered
              <Card className="shadow-md">
                  <CardContent className="p-4">
                      {isDetecting ? (
@@ -663,7 +733,7 @@ export default function RechargePage() {
                                 <Image src={operatorLogoUrl} alt={detectedOperator.billerName} width={32} height={32} className="h-8 w-8 rounded-full object-contain border bg-white p-0.5" data-ai-hint="operator logo small"/>
                                 <div>
                                     <p className="text-sm font-medium">{detectedOperator.billerName}</p>
-                                    <p className="text-xs text-muted-foreground">{detectedRegion || "Region"} | Prepaid</p>
+                                     {type === 'mobile' && <p className="text-xs text-muted-foreground">{detectedRegion || "Region"} | Prepaid</p>}
                                 </div>
                             </div>
                              <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={handleManualEditOperator}>
@@ -680,13 +750,13 @@ export default function RechargePage() {
                                  <SelectContent>
                                      {billers.map((biller) => (
                                         <SelectItem key={biller.billerId} value={biller.billerId}>
-                                            {/* Optional: Add logo here */}
+                                             {biller.logoUrl && <Image src={biller.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" />}
                                              {biller.billerName}
                                          </SelectItem>
                                      ))}
                                  </SelectContent>
                              </Select>
-                              {/* Optionally add Region Select here if needed for manual selection */}
+                              {/* Optionally add Region Select here if needed for manual mobile selection */}
                          </div>
                      )}
                  </CardContent>
@@ -695,14 +765,14 @@ export default function RechargePage() {
 
 
         {/* Plan Browser Section */}
-         {selectedBiller && (
+         {selectedBiller && rechargePlans.length > 0 && ( // Show only if plans are available for the selected biller
                 <Card className="shadow-md">
                     <CardHeader className="pb-2">
                         <div className="flex items-start justify-between flex-wrap gap-2">
                              <div>
                                 <CardTitle className="text-md flex items-center gap-1">Browse Plans</CardTitle>
-                                 {/* Validity Tracking */}
-                                {mockCurrentPlan && remainingValidityDays !== null && (
+                                 {/* Validity Tracking - Only for Mobile */}
+                                {type === 'mobile' && mockCurrentPlan && remainingValidityDays !== null && (
                                     <Badge variant={remainingValidityDays <= 3 ? "destructive" : "secondary"} className="mt-1 text-xs">
                                          <CalendarDays className="h-3 w-3 mr-1"/>
                                          Current plan expires in {remainingValidityDays} day{remainingValidityDays !== 1 ? 's' : ''} ({format(mockCurrentPlan.expiryDate, 'MMM d')})
@@ -717,7 +787,7 @@ export default function RechargePage() {
                         </div>
                         <Input
                             type="search"
-                            placeholder="Search plans (e.g., unlimited, 599, data)"
+                            placeholder="Search plans (e.g., unlimited, 599, data, HD)"
                             value={planSearchTerm}
                             onChange={(e) => setPlanSearchTerm(e.target.value)}
                             className="mt-2 h-9"
@@ -741,8 +811,8 @@ export default function RechargePage() {
                                 <TabsList className="flex w-max mb-4">
                                     {planCategories.map(category => (
                                         <TabsTrigger key={category} value={category} className="text-xs px-3 h-8 flex-shrink-0"> {/* Adjusted size */}
-                                            {category === 'Recommended' && <Star className="h-3 w-3 mr-1 text-yellow-500 fill-current" />}
-                                            {category === 'Offers' && <Gift className="h-3 w-3 mr-1 text-red-500" />}
+                                            {category === 'Recommended' && type === 'mobile' && <Star className="h-3 w-3 mr-1 text-yellow-500 fill-current" />}
+                                            {category === 'Offers' && type === 'mobile' && <Gift className="h-3 w-3 mr-1 text-red-500" />}
                                             {category}
                                         </TabsTrigger>
                                     ))}
@@ -762,17 +832,16 @@ export default function RechargePage() {
                                               <div>
                                                   <p className="font-bold text-lg">₹{plan.price}</p>
                                                    {plan.isOffer && <Badge variant="destructive" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1">Offer</Badge>}
-                                                   {category === 'Recommended' && <Badge variant="secondary" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1 flex items-center gap-1 bg-yellow-100 text-yellow-800"><Star className="h-3 w-3 text-yellow-500 fill-current"/> Recommended</Badge>}
+                                                   {category === 'Recommended' && type === 'mobile' && <Badge variant="secondary" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1 flex items-center gap-1 bg-yellow-100 text-yellow-800"><Star className="h-3 w-3 text-yellow-500 fill-current"/> Recommended</Badge>}
                                               </div>
-                                               {/* Remove explicit select button, selection happens on card click */}
-                                               {/* <Button variant={selectedPlan?.planId === plan.planId ? "default" : "outline"} size="sm" className="h-8 px-3" onClick={() => handlePlanSelect(plan)}>
-                                                   {selectedPlan?.planId === plan.planId ? "Selected" : "Select"}
-                                                </Button> */}
                                           </div>
                                            <p className="text-sm mt-1 text-muted-foreground">{plan.description}</p>
-                                          <div className="text-xs mt-2 text-muted-foreground flex items-center justify-between flex-wrap gap-x-4 gap-y-1">
-                                                <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
-                                                <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>
+                                          <div className="text-xs mt-2 text-muted-foreground flex items-start justify-between flex-wrap gap-x-4 gap-y-1">
+                                               <div>
+                                                    <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
+                                                     {type === 'mobile' && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
+                                                     {type === 'dth' && plan.channels && <div className="flex items-center gap-1"><Tv2 className="h-3 w-3"/> Channels: {plan.channels}</div>}
+                                               </div>
                                                 <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
                                           </div>
                                           <div className="mt-2">
@@ -811,9 +880,10 @@ export default function RechargePage() {
                           min="1"
                           step="0.01"
                           className="pl-7 text-lg font-semibold h-11"
-                          disabled={!selectedBiller} // Disable if no operator selected
+                          disabled={!selectedBiller && !detectedOperator} // Disable if no operator selected or detected
                         />
                      </div>
+                      {/* Show Top-up Vouchers link only for mobile when amount is entered manually */}
                      {type === 'mobile' && !selectedPlan && amount && (
                         <Button variant="link" size="sm" className="p-0 h-auto text-xs mt-1" onClick={() => alert("Show Top-up Vouchers")}>
                           Check Talktime Vouchers
@@ -916,7 +986,7 @@ export default function RechargePage() {
                   <Button
                     type="submit"
                     className="w-full bg-purple-600 hover:bg-purple-700 text-white h-11 text-base" // PhonePe-style purple button
-                    disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || !selectedBiller}
+                    disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)}
                     onClick={handleRecharge} // Trigger form submission
                   >
                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -950,7 +1020,8 @@ export default function RechargePage() {
                             </CardHeader>
                             <CardContent className="p-2 space-y-1 flex-grow">
                                 <p><strong>Validity:</strong> {plan.validity || 'N/A'}</p>
-                                <p><strong>Data:</strong> {plan.data || 'N/A'}</p>
+                                {plan.data && <p><strong>Data:</strong> {plan.data || 'N/A'}</p>}
+                                {plan.channels && <p><strong>Channels:</strong> {plan.channels || 'N/A'}</p>}
                                 {plan.talktime !== undefined && <p><strong>Talktime:</strong> {plan.talktime === -1 ? 'UL' : `₹${plan.talktime}`}</p>}
                                 {plan.sms !== undefined && <p><strong>SMS:</strong> {plan.sms === -1 ? 'UL' : plan.sms}</p>}
                                 {plan.category && <p><strong>Category:</strong> {plan.category}</p>}
@@ -979,12 +1050,13 @@ export default function RechargePage() {
                 <div className="py-4 text-sm space-y-2">
                     <p><strong>Price:</strong> ₹{showTariffModal?.price}</p>
                     <p><strong>Validity:</strong> {showTariffModal?.validity || 'N/A'}</p>
-                    <p><strong>Data:</strong> {showTariffModal?.data || 'N/A'}</p>
+                    {showTariffModal?.data && <p><strong>Data:</strong> {showTariffModal?.data || 'N/A'}</p>}
+                    {showTariffModal?.channels && <p><strong>Channels:</strong> {showTariffModal.channels || 'N/A'}</p>}
                     {showTariffModal?.talktime !== undefined && <p><strong>Talktime:</strong> {showTariffModal.talktime === -1 ? 'Unlimited' : `₹${showTariffModal.talktime}`}</p>}
                     {showTariffModal?.sms !== undefined && <p><strong>SMS:</strong> {showTariffModal.sms === -1 ? 'Unlimited' : showTariffModal.sms}</p>}
                      {showTariffModal?.category && <p><strong>Category:</strong> {showTariffModal?.category}</p>}
                      {showTariffModal?.category === 'Roaming' && <Alert variant="default" className="mt-2"><AlertTriangle className="h-4 w-4 text-orange-500" /><AlertDescription className="text-xs ml-6">International Roaming pack. Ensure roaming services are active before travel.</AlertDescription></Alert>}
-                     {showTariffModal?.category === 'Top-up' && <Alert variant="default" className="mt-2"><Info className="h-4 w-4 text-blue-500" /><AlertDescription className="text-xs ml-6">Talktime will be added to your main balance. This plan may not extend validity.</AlertDescription></Alert>}
+                     {showTariffModal?.category === 'Top-up' && type === 'mobile' && <Alert variant="default" className="mt-2"><Info className="h-4 w-4 text-blue-500" /><AlertDescription className="text-xs ml-6">Talktime will be added to your main balance. This plan may not extend validity.</AlertDescription></Alert>}
                     <p className="text-xs text-muted-foreground pt-2">Note: Benefits are subject to operator terms and conditions.</p>
                  </div>
                 <DialogFooter>
