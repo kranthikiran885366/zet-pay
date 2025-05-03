@@ -5,11 +5,12 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode } from 'lucide-react';
+import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info } from 'lucide-react'; // Added Info icon
 import Link from 'next/link';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge"; // Import Badge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 // Mock user data (replace with actual user state/context)
@@ -223,7 +224,8 @@ function SettingsSwitchItem({ icon: Icon, title, description, checked, onChecked
 }
 
 // Placeholder pages for navigation targets
-export function UPISettingsPage() { return <div>UPI Settings Page Content</div> }
-export function SecuritySettingsPage() { return <div>Security Settings Page Content</div> }
-export function SupportPage() { return <div>Support Page Content</div> }
-export function AboutPage() { return <div>About Page Content</div> }
+// These should be moved to separate files eventually
+export function UPISettingsPage() { return <div className="p-4">UPI Settings Page Content</div> }
+export function SecuritySettingsPage() { return <div className="p-4">Security Settings Page Content</div> }
+export function SupportPage() { return <div className="p-4">Support Page Content</div> }
+export function AboutPage() { return <div className="p-4">About Page Content</div> }
