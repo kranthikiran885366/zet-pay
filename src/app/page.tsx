@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train, MapPinned
+import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed
 import Image from 'next/image';
 
 // Mock data (replace with actual data fetching)
@@ -24,10 +24,10 @@ const offers = [
 ];
 
 const switchApps = [
-  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking" },
-  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping" },
-  { id: 3, name: "Order Food", icon: LifeBuoy, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant" }, // Changed Icon
-  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation" },
+  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/bus" }, // Use bus booking page as placeholder
+  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Link to home for now
+  { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"}, // Updated icon & href
+  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Link to home for now
 ];
 
 const quickLinks = [
@@ -182,12 +182,14 @@ export default function Home() {
            </CardHeader>
            <CardContent className="grid grid-cols-4 gap-4 text-center">
              {switchApps.map((app) => (
-                <div key={app.id} className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => alert(`Launching ${app.name}...`)}> {/* Mock launch */}
-                  <div className={`${app.bgColor} ${app.color} p-3 rounded-full`}>
-                    <app.icon className="h-6 w-6" />
-                  </div>
-                  <span className="text-xs font-medium text-foreground">{app.name}</span>
-                </div>
+                 <Link key={app.id} href={app.href} passHref>
+                    <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity"> {/* Removed onClick */}
+                      <div className={`${app.bgColor} ${app.color} p-3 rounded-full`}>
+                        <app.icon className="h-6 w-6" />
+                      </div>
+                      <span className="text-xs font-medium text-foreground">{app.name}</span>
+                    </div>
+                </Link>
              ))}
            </CardContent>
         </Card>

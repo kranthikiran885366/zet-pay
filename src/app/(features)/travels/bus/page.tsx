@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X } from 'lucide-react';
+import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X, Plane } from 'lucide-react'; // Added Plane
 import Link from 'next/link';
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
