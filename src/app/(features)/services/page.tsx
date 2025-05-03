@@ -20,7 +20,6 @@ import {
   LifeBuoy,
   Wifi,
   FileText,
-  MoreHorizontal,
   Bus,
   Ticket,
   Clapperboard,
@@ -36,20 +35,19 @@ import {
   Settings,
   Info,
   History,
-    Parking,
-    GasPump,
-    Taxi,
+  Parking,
+  GasPump,
+  Taxi,
   MoreHorizontal,
+   PhoneCall,
+    Plane,
+    ShoppingBag,
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
 
-// Define Parking, GasPump, Taxi for icon usage
-declare module 'lucide-react' {
-  const Parking: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement> & React.RefAttributes<SVGSVGElement>>;
-  const GasPump: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement> & React.RefAttributes<SVGSVGElement>>;
-	const Taxi: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement> & React.RefAttributes<SVGSVGElement>>;
-}
 
 // Expanded list of services - add more as needed
 const allServices = [
@@ -68,40 +66,89 @@ const allServices = [
   { name: "Water", icon: Droplet, href: "/bills/water", category: "Bill Payments" },
   { name: "Insurance", icon: ShieldCheck, href: "/bills/insurance", category: "Bill Payments" },
   { name: "Broadband/Landline", icon: Wifi, href: "/bills/broadband", category: "Bill Payments" },
-  { name: "Piped Gas", icon: Tag, href: "/bills/gas", category: "Bill Payments" },
+  { name: "Piped Gas", icon: GasPump, href: "/bills/gas", category: "Bill Payments" }, // Changed Icon
   { name: "Subscription Services", icon: Tv, href: "/bills/subscription", category: "Bill Payments" },
   // Travel
   { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Travel" },
   { name: "Bus Tickets", icon: Bus, href: "/travels/bus", category: "Travel" },
   { name: "Train Tickets", icon: Train, href: "/travels/train", category: "Travel" },
   { name: "Flight Tickets", icon: Plane, href: "/travels/flight", category: "Travel" },
-   // Tickets & Travel - Corrected and Added New
   { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets & Travel" },
-  // Payments
+  // Live Tracking
+  { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Live Tracking" },
+  { name: "Live Train Status", icon: MapPin, href: "/live/train", category: "Live Tracking" },
+  // Payments & Vouchers
+  { name: "Order Food", icon: UtensilsCrossed, href: "/food", category: "Payments" },
+  { name: "Gaming Cards", icon: Gamepad2, href: "/vouchers/gaming", category: "Vouchers & More" },
   { name: "FASTag Recharge & Issuance", icon: RadioTower, href: "/fastag", category: "Payments" }, // Combined, can reuse icon
     { name: "Fuel Payments", icon: GasPump, href: "/fuel", category: "Payments" }, // Can assume payment flow
     { name: "Parking Payments", icon: Parking, href: "/parking", category: "Payments" }, // Smart Parking
     { name: "Cab/Taxi Bill Payments", icon: Taxi, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
-
-  // Live Tracking
-  { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Live Tracking" },
-  { name: "Live Train Tracking", icon: MapPin, href: "/live/train", category: "Live Tracking" }, // Reuse icon
-
-   // Vouchers & More
-   { name: "Gaming Cards", icon: Gamepad2, href: "/vouchers/gaming", category: "Vouchers & More" },
    { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
    { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" },
-  // Others
-  { name: "See All", icon: MoreHorizontal, href: "/services", category: "Others" },
-  // ... add other less common services here or categorize them
+   // Others
+   { name: "See All", icon: MoreHorizontal, href: "/services", category: "Others" },
 ];
 
-// Group services by category
-const groupedServices = allServices.reduce((acc, service) => {
-  const category = service.category || "Other Services";
-  if (!acc[category]) {
-    acc[category] = [];
-  }
-  acc[category].push(service);
-  return acc;
-}, {} as Record<string, typeof allServices>);
+const groupServicesByCategory = (services: typeof allServices) => {
+    const grouped: { [key: string]: typeof allServices } = {};
+    services.forEach(service => {
+        if (!grouped[service.category]) {
+            grouped[service.category] = [];
+        }
+        // Avoid duplicates if 'See All' is listed multiple times
+        if (service.name !== 'See All' || !grouped[service.category].some(s => s.name === 'See All')) {
+           grouped[service.category].push(service);
+        }
+    });
+    // Ensure 'Others' category is last if it exists
+    if (grouped['Others']) {
+        const others = grouped['Others'];
+        delete grouped['Others'];
+        grouped['Others'] = others;
+    }
+    return grouped;
+};
+
+export default function AllServicesPage() {
+    const groupedServices = groupServicesByCategory(allServices);
+    const categories = Object.keys(groupedServices);
+
+    return (
+        <div className="min-h-screen bg-secondary flex flex-col">
+            {/* Header */}
+            <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
+                <Link href="/" passHref>
+                    <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                </Link>
+                <Settings className="h-6 w-6" /> {/* Using Settings icon as a generic 'services' icon */}
+                <h1 className="text-lg font-semibold">All Services</h1>
+            </header>
+
+            {/* Main Content */}
+            <main className="flex-grow p-4 space-y-6 pb-20">
+                {categories.map((category) => (
+                    <Card key={category} className="shadow-md">
+                        <CardHeader>
+                            <CardTitle>{category}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
+                            {groupedServices[category].map((service) => (
+                                <Link key={service.name} href={service.href} passHref>
+                                    <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+                                        <div className="bg-primary/10 text-primary p-3 rounded-full">
+                                            <service.icon className="h-6 w-6" />
+                                        </div>
+                                        <span className="text-xs font-medium text-foreground">{service.name}</span>
+                                    </div>
+                                </Link>
+                            ))}
+                        </CardContent>
+                    </Card>
+                ))}
+            </main>
+        </div>
+    );
+}

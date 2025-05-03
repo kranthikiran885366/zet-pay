@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Clock, Loader2, RefreshCw, Banknote } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Loader2, RefreshCw, Banknote, ArrowLeft } from 'lucide-react';
 import { getLinkedAccounts, BankAccount, checkBalance } from '@/services/upi';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from '@/components/ui/input';
@@ -157,3 +157,4 @@ export default function CheckBalancePage() {
     </div>
   );
 }
+
