@@ -5,8 +5,9 @@
 
 export interface BusStopStatus {
     name: string;
-    eta: string; // e.g., "10:30 AM", "5 mins", "Departed"
+    eta: string; // e.g., "10:30 AM", "5 mins", "Departed", "Arriving Now"
     status: 'Departed' | 'Arriving' | 'Upcoming' | 'Skipped';
+    scheduledTime?: string; // Optional scheduled time
 }
 
 export interface BusLiveStatus {
@@ -19,6 +20,8 @@ export interface BusLiveStatus {
     stops: BusStopStatus[];
     mapUrlPlaceholder?: string; // Placeholder for map integration
     lastUpdated: Date;
+    operatorName?: string; // Optional operator name
+    vehicleType?: string; // Optional e.g., "AC Sleeper", "Volvo"
 }
 
 export interface TrainStopStatus {
@@ -29,24 +32,29 @@ export interface TrainStopStatus {
     scheduledDeparture?: string; // e.g., "10:32"
     actualDeparture?: string; // e.g., "10:37"
     delayMinutes?: number;
+    platform?: string | number; // Added platform number
     status: 'Departed' | 'Arrived' | 'Skipped' | 'Upcoming';
     distanceFromSource?: number; // Optional distance
+    dayOfJourney?: number; // e.g., 1, 2, 3
 }
 
 export interface TrainLiveStatus {
     trainNumber: string;
     trainName: string;
     currentStatus: string; // e.g., "Running On Time", "Delayed by 15 mins", "Arrived at Destination"
-    currentLocationDescription: string; // e.g., "Approaching SBC", "Departed from KPD"
-    lastStation: string; // Station Code
-    lastStationName?: string; // Station Name
-    nextStation: string; // Station Code
-    nextStationName?: string; // Station Name
+    currentStationCode?: string; // The station the train is currently at (if arrived)
+    currentLocationDescription: string; // e.g., "Departed KPD, next AJJ", "Arrived at SBC"
+    lastStationCode: string; // Last departed station Code
+    lastStationName?: string; // Last departed station Name
+    nextStationCode: string; // Next station Code
+    nextStationName?: string; // Next station Name
     etaNextStation: string; // e.g., "11:05 AM"
     delayMinutes?: number;
     route: TrainStopStatus[];
     mapUrlPlaceholder?: string; // Placeholder
     lastUpdated: Date;
+    averageSpeed?: number; // Optional speed km/h
+    distanceToDestination?: number; // Optional distance km
 }
 
 /**
@@ -63,16 +71,18 @@ export async function getBusLiveStatus(busIdentifier: string): Promise<BusLiveSt
         return {
             busNumber: busIdentifier.toUpperCase(),
             routeName: 'Route 500D - Majestic to Silk Board',
+            operatorName: 'BMTC',
+            vehicleType: 'Volvo AC',
             currentLocationDescription: "Near Forum Mall, Koramangala",
             nextStop: "St. John's Hospital",
             etaNextStop: "3 mins",
             delayMinutes: 2,
             stops: [
-                { name: "Majestic", eta: "Departed", status: 'Departed' },
-                { name: "Richmond Circle", eta: "Departed", status: 'Departed' },
-                { name: "Forum Mall", eta: "Arriving", status: 'Arriving' },
-                { name: "St. John's Hospital", eta: "3 mins", status: 'Upcoming' },
-                { name: "Silk Board", eta: "15 mins", status: 'Upcoming' },
+                { name: "Majestic", eta: "Departed", status: 'Departed', scheduledTime: '09:00 AM' },
+                { name: "Richmond Circle", eta: "Departed", status: 'Departed', scheduledTime: '09:15 AM' },
+                { name: "Forum Mall", eta: "Arriving Now", status: 'Arriving', scheduledTime: '09:30 AM' },
+                { name: "St. John's Hospital", eta: "3 mins", status: 'Upcoming', scheduledTime: '09:35 AM' },
+                { name: "Silk Board", eta: "15 mins", status: 'Upcoming', scheduledTime: '09:50 AM' },
             ],
             mapUrlPlaceholder: `https://picsum.photos/seed/${busIdentifier}/600/300`, // Replace with actual map later
             lastUpdated: new Date(),
@@ -96,23 +106,25 @@ export async function getTrainLiveStatus(trainIdentifier: string): Promise<Train
         return {
             trainNumber: "12658",
             trainName: "Bengaluru Mail",
-            currentStatus: "Delayed by 10 mins",
-            currentLocationDescription: "Departed from Katpadi Jn (KPD)",
-            lastStation: "KPD",
+            currentStatus: "Delayed by 12 mins",
+            currentLocationDescription: "Departed Katpadi Jn (KPD), Next Arakkonam Jn (AJJ)",
+            lastStationCode: "KPD",
             lastStationName: "Katpadi Jn",
-            nextStation: "AJJ",
+            nextStationCode: "AJJ",
             nextStationName: "Arakkonam Jn",
-            etaNextStation: "10:55 AM", // Example ETA
-            delayMinutes: 10,
+            etaNextStation: "10:57 AM", // Updated based on delay
+            delayMinutes: 12,
+            averageSpeed: 75,
+            distanceToDestination: 105,
             route: [
-                { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "22:40", actualDeparture: "22:45", status: 'Departed', delayMinutes: 5 },
-                { stationName: "Bengaluru Cantt.", stationCode: "BNC", scheduledArrival: "22:50", actualArrival: "22:56", scheduledDeparture: "22:52", actualDeparture: "22:58", status: 'Departed', delayMinutes: 6 },
-                { stationName: "Jolarpettai Jn", stationCode: "JTJ", scheduledArrival: "01:08", actualArrival: "01:15", scheduledDeparture: "01:10", actualDeparture: "01:18", status: 'Departed', delayMinutes: 8 },
-                { stationName: "Katpadi Jn", stationCode: "KPD", scheduledArrival: "02:23", actualArrival: "02:35", scheduledDeparture: "02:25", actualDeparture: "02:40", status: 'Departed', delayMinutes: 15 },
-                { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", etaNextStation: "03:30", status: 'Upcoming', delayMinutes: 12 }, // Use etaNextStation here for display
-                { stationName: "Perambur", stationCode: "PER", scheduledArrival: "04:08", status: 'Upcoming' },
-                { stationName: "MGR Chennai Central", stationCode: "MAS", scheduledArrival: "04:30", status: 'Upcoming' },
-            ].map(stop => ({...stop, actualArrival: stop.actualArrival || stop.etaNextStation})), // Use ETA if actual arrival not set for upcoming
+                { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "22:40", actualDeparture: "22:45", status: 'Departed', delayMinutes: 5, platform: 1, dayOfJourney: 1 },
+                { stationName: "Bengaluru Cantt.", stationCode: "BNC", scheduledArrival: "22:50", actualArrival: "22:56", scheduledDeparture: "22:52", actualDeparture: "22:58", status: 'Departed', delayMinutes: 6, platform: 2, dayOfJourney: 1 },
+                { stationName: "Jolarpettai Jn", stationCode: "JTJ", scheduledArrival: "01:08", actualArrival: "01:15", scheduledDeparture: "01:10", actualDeparture: "01:18", status: 'Departed', delayMinutes: 8, platform: 3, dayOfJourney: 2 },
+                { stationName: "Katpadi Jn", stationCode: "KPD", scheduledArrival: "02:23", actualArrival: "02:35", scheduledDeparture: "02:25", actualDeparture: "02:40", status: 'Departed', delayMinutes: 15, platform: 2, dayOfJourney: 2 },
+                { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", status: 'Upcoming', delayMinutes: 12, platform: 1, dayOfJourney: 2 }, // ETA handled by overall calculation
+                { stationName: "Perambur", stationCode: "PER", scheduledArrival: "04:08", status: 'Upcoming', platform: 3, dayOfJourney: 2 },
+                { stationName: "MGR Chennai Central", stationCode: "MAS", scheduledArrival: "04:30", status: 'Upcoming', platform: 5, dayOfJourney: 2 },
+            ],
             mapUrlPlaceholder: `https://picsum.photos/seed/${trainIdentifier}/600/300`, // Replace with actual map later
             lastUpdated: new Date(),
         };
@@ -122,24 +134,27 @@ export async function getTrainLiveStatus(trainIdentifier: string): Promise<Train
         return {
             trainNumber: "22691",
             trainName: "Rajdhani Express",
-            currentStatus: "Running On Time",
-            currentLocationDescription: "Approaching Nagpur Jn (NGP)",
-            lastStation: "BPQ",
+            currentStatus: "Arrived at Nagpur Jn",
+            currentStationCode: "NGP",
+            currentLocationDescription: "Arrived at Nagpur Jn (NGP)",
+            lastStationCode: "BPQ",
             lastStationName: "Balharshah",
-            nextStation: "NGP",
-            nextStationName: "Nagpur Jn",
-            etaNextStation: "14:10",
+            nextStationCode: "BPL",
+            nextStationName: "Bhopal Jn",
+            etaNextStation: "19:50",
             delayMinutes: 0,
+            averageSpeed: 90,
+            distanceToDestination: 700,
             route: [
-                 { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "20:00", actualDeparture: "20:00", status: 'Departed' },
-                 { stationName: "SSS Hubballi Jn", stationCode: "UBL", scheduledArrival: "01:45", actualArrival: "01:45", scheduledDeparture: "01:55", actualDeparture: "01:55", status: 'Departed' },
-                 { stationName: "Balharshah", stationCode: "BPQ", scheduledArrival: "11:00", actualArrival: "11:00", scheduledDeparture: "11:05", actualDeparture: "11:05", status: 'Departed' },
-                 { stationName: "Nagpur Jn", stationCode: "NGP", scheduledArrival: "14:10", etaNextStation: "14:10", status: 'Upcoming' },
-                 { stationName: "Bhopal Jn", stationCode: "BPL", scheduledArrival: "19:50", status: 'Upcoming' },
-                 { stationName: "V Lakshmibai Jhansi Jn", stationCode: "VGLJ", scheduledArrival: "23:25", status: 'Upcoming' },
-                 { stationName: "Agra Cantt.", stationCode: "AGC", scheduledArrival: "02:00", status: 'Upcoming' },
-                 { stationName: "Hazrat Nizamuddin", stationCode: "NZM", scheduledArrival: "05:30", status: 'Upcoming' },
-            ].map(stop => ({...stop, actualArrival: stop.actualArrival || stop.etaNextStation})),
+                 { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "20:00", actualDeparture: "20:00", status: 'Departed', platform: 8, dayOfJourney: 1 },
+                 { stationName: "SSS Hubballi Jn", stationCode: "UBL", scheduledArrival: "01:45", actualArrival: "01:45", scheduledDeparture: "01:55", actualDeparture: "01:55", status: 'Departed', platform: 1, dayOfJourney: 2 },
+                 { stationName: "Balharshah", stationCode: "BPQ", scheduledArrival: "11:00", actualArrival: "11:00", scheduledDeparture: "11:05", actualDeparture: "11:05", status: 'Departed', platform: 2, dayOfJourney: 2 },
+                 { stationName: "Nagpur Jn", stationCode: "NGP", scheduledArrival: "14:10", actualArrival: "14:10", scheduledDeparture: "14:15", status: 'Arrived', platform: 1, dayOfJourney: 2 },
+                 { stationName: "Bhopal Jn", stationCode: "BPL", scheduledArrival: "19:50", status: 'Upcoming', platform: 3, dayOfJourney: 2 },
+                 { stationName: "V Lakshmibai Jhansi Jn", stationCode: "VGLJ", scheduledArrival: "23:25", status: 'Upcoming', platform: 2, dayOfJourney: 2 },
+                 { stationName: "Agra Cantt.", stationCode: "AGC", scheduledArrival: "02:00", status: 'Upcoming', platform: 1, dayOfJourney: 3 },
+                 { stationName: "Hazrat Nizamuddin", stationCode: "NZM", scheduledArrival: "05:30", status: 'Upcoming', platform: 4, dayOfJourney: 3 },
+            ],
             mapUrlPlaceholder: `https://picsum.photos/seed/${trainIdentifier}/600/300`,
             lastUpdated: new Date(),
         };

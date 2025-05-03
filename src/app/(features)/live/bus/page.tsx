@@ -5,14 +5,16 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Bus, Search, Loader2, Clock, MapPin, AlertCircle, CheckCircle, ArrowRight, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Bus, Search, Loader2, Clock, MapPin, AlertCircle, CheckCircle, ArrowRight, MoreVertical, XCircle, UserCircle, Timer } from 'lucide-react'; // Added XCircle, UserCircle, Timer
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { getBusLiveStatus, BusLiveStatus } from '@/services/liveTracking'; // Import service
+import { getBusLiveStatus, BusLiveStatus, BusStopStatus } from '@/services/liveTracking'; // Import service
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { format } from 'date-fns'; // Import format
+import { cn } from '@/lib/utils';
 
 export default function LiveBusTrackingPage() {
     const [busIdentifier, setBusIdentifier] = useState('');
@@ -51,7 +53,7 @@ export default function LiveBusTrackingPage() {
                 console.log("Simulating auto-refresh for bus:", busStatus.busNumber);
                 // Re-fetch status here in a real app
                 // For simulation, just update the last updated time and maybe ETA slightly
-                 setBusStatus(prev => prev ? ({ ...prev, lastUpdated: new Date() }) : null);
+                 setBusStatus(prev => prev ? ({ ...prev, lastUpdated: new Date(), etaNextStop: `${Math.max(1, parseInt(prev.etaNextStop.split(' ')[0], 10) - 1)} mins` }) : null);
              }, 30000); // Refresh every 30 seconds
         }
         return () => {
@@ -60,15 +62,22 @@ export default function LiveBusTrackingPage() {
     }, [busStatus]);
 
 
-    const getStatusIcon = (status: BusStopStatus['status']) => {
+    const getStatusIcon = (status: BusStopStatus['status'], eta: string) => {
         switch (status) {
             case 'Departed': return <CheckCircle className="h-4 w-4 text-gray-400" />;
             case 'Arriving': return <Bus className="h-4 w-4 text-green-600 animate-pulse" />;
             case 'Upcoming': return <Clock className="h-4 w-4 text-blue-600" />;
-            case 'Skipped': return <XCircle className="h-4 w-4 text-orange-500" />; // Assuming XCircle exists or use AlertCircle
+            case 'Skipped': return <XCircle className="h-4 w-4 text-orange-500" />;
             default: return <MoreVertical className="h-4 w-4 text-muted-foreground" />;
         }
     };
+
+    const getEtaText = (eta: string, status: BusStopStatus['status']) => {
+         if (status === 'Arriving') return 'Arriving Now';
+         if (status === 'Departed') return 'Departed';
+         if (status === 'Skipped') return 'Skipped';
+         return eta; // Display the raw ETA string (e.g., "5 mins", "10:30 AM")
+     }
 
 
     return (
@@ -122,49 +131,60 @@ export default function LiveBusTrackingPage() {
                     <Card className="shadow-md overflow-hidden">
                         <CardHeader className="bg-background border-b">
                             <CardTitle className="flex items-center justify-between">
-                                <span>Bus: {busStatus.busNumber}</span>
-                                <Badge variant={busStatus.delayMinutes && busStatus.delayMinutes > 0 ? "destructive" : "default"} className={busStatus.delayMinutes && busStatus.delayMinutes > 0 ? "" : "bg-green-100 text-green-700"}>
+                                <span>{busStatus.operatorName || 'Bus'}: {busStatus.busNumber}</span>
+                                <Badge variant={busStatus.delayMinutes && busStatus.delayMinutes > 0 ? "destructive" : "default"} className={cn("text-xs", busStatus.delayMinutes && busStatus.delayMinutes > 0 ? "" : "bg-green-100 text-green-700")}>
                                     {busStatus.delayMinutes && busStatus.delayMinutes > 0 ? `Delayed ${busStatus.delayMinutes} min` : 'On Time'}
                                 </Badge>
                             </CardTitle>
-                            <CardDescription>{busStatus.routeName}</CardDescription>
+                            <CardDescription className="text-sm">
+                                <div>{busStatus.routeName}</div>
+                                {busStatus.vehicleType && <div className="text-xs text-muted-foreground">{busStatus.vehicleType}</div>}
+                            </CardDescription>
                         </CardHeader>
                         <CardContent className="p-0">
                              {/* Map Placeholder */}
-                             <div className="relative h-48 bg-muted flex items-center justify-center">
+                             <div className="relative h-48 bg-muted flex items-center justify-center border-b">
                                 {busStatus.mapUrlPlaceholder ? (
                                     <Image src={busStatus.mapUrlPlaceholder} alt="Map Placeholder" layout="fill" objectFit="cover" data-ai-hint="map placeholder view"/>
                                 ) : (
                                     <p className="text-muted-foreground text-sm">Map view unavailable</p>
                                 )}
-                                <div className="absolute bottom-2 left-2 right-2 bg-background/80 backdrop-blur-sm p-2 rounded shadow-md text-sm">
-                                    <p className="font-semibold">Current Location:</p>
-                                    <p>{busStatus.currentLocationDescription}</p>
-                                     <p className="text-xs text-muted-foreground mt-1">Last updated: {busStatus.lastUpdated.toLocaleTimeString()}</p>
+                                <div className="absolute bottom-2 left-2 right-2 bg-background/80 backdrop-blur-sm p-2 rounded shadow-md text-sm space-y-1">
+                                    <div className="font-semibold">Current Location:</div>
+                                    <div>{busStatus.currentLocationDescription}</div>
+                                     <div className="text-xs text-muted-foreground flex items-center justify-between">
+                                         <span>Last updated: {format(busStatus.lastUpdated, 'p')}</span>
+                                         <span className="flex items-center gap-1"><Timer className="h-3 w-3"/> Next Stop: {busStatus.nextStop} ({busStatus.etaNextStop})</span>
+                                     </div>
                                 </div>
                             </div>
 
                             {/* Stop List */}
                              <div className="p-4">
-                                <h3 className="text-sm font-semibold mb-2">Route & ETA</h3>
+                                <h3 className="text-sm font-semibold mb-3">Route & ETA</h3>
                                 <ScrollArea className="h-64"> {/* Adjust height as needed */}
                                     <ul className="space-y-3">
-                                        {busStatus.stops.map((stop, index) => (
-                                            <li key={index} className="flex items-center gap-3 text-sm relative pl-5">
-                                                {/* Vertical line connector */}
-                                                 {index < busStatus.stops.length -1 && <div className="absolute left-[8px] top-[18px] bottom-[-10px] w-px bg-border"></div>}
+                                        {busStatus.stops.map((stop, index) => {
+                                            const isLastStop = index === busStatus.stops.length - 1;
+                                            const isArriving = stop.status === 'Arriving';
+                                            return (
+                                                <li key={index} className="flex items-center gap-3 text-sm relative pl-6">
+                                                    {/* Vertical line connector */}
+                                                    {!isLastStop && <div className="absolute left-[8px] top-[18px] bottom-[-12px] w-px bg-border"></div>}
 
-                                                <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5">
-                                                     {getStatusIcon(stop.status)}
-                                                 </div>
-                                                <div className="flex-grow">
-                                                    <p className={`font-medium ${stop.status === 'Arriving' ? 'text-primary font-bold' : ''}`}>{stop.name}</p>
-                                                </div>
-                                                 <p className={`text-xs font-medium ${stop.status === 'Arriving' ? 'text-primary' : 'text-muted-foreground'} ${stop.status === 'Departed' ? 'line-through' : ''}`}>
-                                                    {stop.status === 'Arriving' ? 'Arriving Now' : stop.eta}
-                                                </p>
-                                            </li>
-                                        ))}
+                                                    <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5">
+                                                        {getStatusIcon(stop.status, stop.eta)}
+                                                    </div>
+                                                    <div className="flex-grow">
+                                                        <p className={cn("font-medium", isArriving ? 'text-primary font-bold' : '', stop.status === 'Departed' ? 'text-gray-400' : '')}>{stop.name}</p>
+                                                         {stop.scheduledTime && stop.status !== 'Departed' && <p className="text-xs text-muted-foreground">Sch: {stop.scheduledTime}</p>}
+                                                    </div>
+                                                    <p className={cn("text-xs font-medium text-right", isArriving ? 'text-primary' : 'text-muted-foreground', stop.status === 'Departed' ? 'line-through text-gray-400' : '')}>
+                                                        {getEtaText(stop.eta, stop.status)}
+                                                    </p>
+                                                </li>
+                                            )
+                                        })}
                                     </ul>
                                 </ScrollArea>
                              </div>

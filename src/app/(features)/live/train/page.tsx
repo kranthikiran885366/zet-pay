@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Train, Search, Loader2, Clock, MapPin, AlertCircle, CheckCircle, ArrowRight, MoreVertical, MoveVertical } from 'lucide-react'; // Added MoveVertical
+import { ArrowLeft, Train, Search, Loader2, Clock, MapPin, AlertCircle, CheckCircle, ArrowRight, MoreVertical, MoveVertical, Ticket, Gauge } from 'lucide-react'; // Added Gauge
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { getTrainLiveStatus, TrainLiveStatus, TrainStopStatus } from '@/services/liveTracking'; // Import service
@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns'; // For formatting last updated time
 
 export default function LiveTrainTrackingPage() {
     const [trainIdentifier, setTrainIdentifier] = useState('');
@@ -50,8 +51,8 @@ export default function LiveTrainTrackingPage() {
         if (trainStatus) {
              intervalId = setInterval(() => {
                 console.log("Simulating auto-refresh for train:", trainStatus.trainNumber);
-                // Re-fetch status here in a real app: handleSearch() maybe?
-                 setTrainStatus(prev => prev ? ({ ...prev, lastUpdated: new Date() }) : null);
+                 // Simulate fetching updated data - replace with handleSearch() or dedicated refresh call
+                 setTrainStatus(prev => prev ? ({ ...prev, lastUpdated: new Date(), currentLocationDescription: `Updated location at ${format(new Date(), 'p')}` }) : null);
              }, 60000); // Refresh every 60 seconds
         }
         return () => {
@@ -60,10 +61,13 @@ export default function LiveTrainTrackingPage() {
     }, [trainStatus]);
 
 
-    const getStatusIcon = (status: TrainStopStatus['status']) => {
+    const getStatusIcon = (status: TrainStopStatus['status'], isCurrent: boolean) => {
+        if (isCurrent && (status === 'Arrived' || status === 'Departed')) {
+            return <Train className="h-4 w-4 text-green-600 animate-pulse" />; // Current location icon
+        }
         switch (status) {
             case 'Departed': return <CheckCircle className="h-4 w-4 text-gray-400" />;
-            case 'Arrived': return <Train className="h-4 w-4 text-green-600" />;
+            case 'Arrived': return <CheckCircle className="h-4 w-4 text-green-500" />; // Arrived but not current
             case 'Upcoming': return <Clock className="h-4 w-4 text-blue-600" />;
             case 'Skipped': return <AlertCircle className="h-4 w-4 text-orange-500" />; // Example for skipped
             default: return <MoreVertical className="h-4 w-4 text-muted-foreground" />;
@@ -134,59 +138,64 @@ export default function LiveTrainTrackingPage() {
                                      {trainStatus.currentStatus}
                                 </Badge>
                             </CardTitle>
-                            <CardDescription className="text-xs">
-                                Last Location: {trainStatus.currentLocationDescription} <br/>
-                                Next Stop: {trainStatus.nextStationName || trainStatus.nextStation} (ETA: {trainStatus.etaNextStation})
+                            <CardDescription className="text-sm space-y-1">
+                                <div><span className="font-medium">Current:</span> {trainStatus.currentLocationDescription}</div>
+                                <div><span className="font-medium">Next Stop:</span> {trainStatus.nextStationName || trainStatus.nextStationCode} (ETA: {trainStatus.etaNextStation})</div>
+                                 {trainStatus.averageSpeed !== undefined && (
+                                     <div className="flex items-center gap-1 text-xs"><Gauge className="h-3 w-3"/> Speed: {trainStatus.averageSpeed} km/h</div>
+                                 )}
                             </CardDescription>
+                             <p className="text-xs text-muted-foreground mt-1">Last updated: {format(trainStatus.lastUpdated, 'p')}</p>
                         </CardHeader>
                         <CardContent className="p-0">
-                             {/* Map Placeholder */}
-                             <div className="relative h-40 bg-muted flex items-center justify-center">
-                                {trainStatus.mapUrlPlaceholder ? (
-                                    <Image src={trainStatus.mapUrlPlaceholder} alt="Map Placeholder" layout="fill" objectFit="cover" data-ai-hint="map placeholder train route"/>
-                                ) : (
-                                    <p className="text-muted-foreground text-sm">Map view unavailable</p>
-                                )}
-                                <div className="absolute bottom-1 right-1 bg-background/80 backdrop-blur-sm p-1 rounded shadow-md text-xs">
-                                     Last updated: {trainStatus.lastUpdated.toLocaleTimeString()}
-                                </div>
-                            </div>
-
                              {/* Route / Station List */}
                              <div className="p-4">
-                                 <h3 className="text-sm font-semibold mb-2">Route & Timings</h3>
+                                 <h3 className="text-sm font-semibold mb-3">Route & Timings</h3>
                                  <ScrollArea className="h-80"> {/* Adjust height */}
                                     <ul className="space-y-4">
-                                        {trainStatus.route.map((stop, index) => (
-                                            <li key={index} className="flex items-start gap-3 text-sm relative pl-6">
-                                                {/* Vertical line connector */}
-                                                {index < trainStatus.route.length - 1 && <div className="absolute left-[11px] top-[20px] bottom-[-16px] w-px bg-border"></div>}
+                                        {trainStatus.route.map((stop, index) => {
+                                             const isCurrentStation = stop.stationCode === trainStatus.currentStationCode || (stop.status === 'Departed' && stop.stationCode === trainStatus.lastStationCode && trainStatus.currentStationCode === undefined); // Highlight if current or last departed
+                                             const isLastStop = index === trainStatus.route.length - 1;
 
-                                                <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5">
-                                                    {getStatusIcon(stop.status)}
-                                                </div>
-                                                <div className="flex-grow">
-                                                     <p className={`font-medium ${stop.status === 'Arrived' ? 'text-primary font-bold' : ''}`}>
-                                                         {stop.stationName || stop.stationCode} ({stop.stationCode})
-                                                     </p>
-                                                    <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
-                                                         {stop.scheduledArrival && <span>Sch Arr: {stop.scheduledArrival}</span>}
-                                                         {stop.actualArrival && <span>Act Arr: {stop.actualArrival}</span>}
-                                                         {stop.scheduledDeparture && <span>Sch Dep: {stop.scheduledDeparture}</span>}
-                                                         {stop.actualDeparture && <span>Act Dep: {stop.actualDeparture}</span>}
+                                            return (
+                                                <li key={index} className={cn("flex items-start gap-3 text-sm relative pl-7", isCurrentStation && "font-bold")}>
+                                                    {/* Vertical line connector */}
+                                                    {!isLastStop && <div className="absolute left-[11px] top-[20px] bottom-[-16px] w-px bg-border"></div>}
+
+                                                    <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5">
+                                                         {getStatusIcon(stop.status, isCurrentStation)}
                                                     </div>
-                                                     {stop.delayMinutes !== undefined && stop.delayMinutes > 0 && (
-                                                        <p className={cn("text-xs font-medium mt-0.5", getDelayColor(stop.delayMinutes))}>
-                                                             Delayed by {stop.delayMinutes} min
-                                                        </p>
-                                                     )}
-                                                </div>
-                                            </li>
-                                        ))}
+                                                    <div className="flex-grow">
+                                                         <p className={cn("font-medium", isCurrentStation ? 'text-primary' : '')}>
+                                                             {stop.stationName || stop.stationCode} ({stop.stationCode}) {stop.dayOfJourney && stop.dayOfJourney > 1 && <span className="text-xs text-muted-foreground">(Day {stop.dayOfJourney})</span>}
+                                                         </p>
+                                                         {stop.platform && <p className="text-xs text-muted-foreground">Platform: {stop.platform}</p>}
+                                                        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
+                                                             {stop.scheduledArrival && <span>Sch Arr: {stop.scheduledArrival}</span>}
+                                                             {stop.actualArrival && <span className={isCurrentStation && stop.status === 'Arrived' ? 'font-semibold text-foreground' : ''}>Act Arr: {stop.actualArrival}</span>}
+                                                             {stop.scheduledDeparture && <span>Sch Dep: {stop.scheduledDeparture}</span>}
+                                                             {stop.actualDeparture && <span className={isCurrentStation && stop.status === 'Departed' ? 'font-semibold text-foreground' : ''}>Act Dep: {stop.actualDeparture}</span>}
+                                                        </div>
+                                                         {stop.delayMinutes !== undefined && stop.delayMinutes !== null && (
+                                                            <p className={cn("text-xs font-medium mt-0.5", getDelayColor(stop.delayMinutes))}>
+                                                                 {stop.delayMinutes === 0 ? "On Time" : `Delayed by ${stop.delayMinutes} min`}
+                                                            </p>
+                                                         )}
+                                                    </div>
+                                                </li>
+                                             )
+                                        })}
                                     </ul>
                                 </ScrollArea>
                              </div>
                         </CardContent>
+                         {/* Optional Map Placeholder */}
+                         {trainStatus.mapUrlPlaceholder && (
+                            <div className="relative h-40 bg-muted flex items-center justify-center border-t">
+                                <Image src={trainStatus.mapUrlPlaceholder} alt="Map Placeholder" layout="fill" objectFit="cover" data-ai-hint="map placeholder train route" />
+                                <p className="absolute bottom-1 right-1 bg-background/80 backdrop-blur-sm p-1 rounded shadow-md text-xs text-muted-foreground">Map view (placeholder)</p>
+                            </div>
+                        )}
                     </Card>
                  )}
             </main>
