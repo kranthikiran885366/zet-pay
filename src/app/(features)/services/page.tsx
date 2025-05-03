@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, MoreHorizontal, Bus, Ticket, Clapperboard, TramFront, Train } from 'lucide-react'; // Added Bus, Ticket, Clapperboard, TramFront, Train
+import { ArrowLeft, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, MoreHorizontal, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned } from 'lucide-react'; // Added MapPinned
 import Link from 'next/link';
 
 // Expanded list of services - add more as needed
@@ -26,6 +26,9 @@ const allServices = [
   { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets & Travel" },
   { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Tickets & Travel" },
   { name: "Train Tickets", icon: Train, href: "/travels/train", category: "Tickets & Travel" },
+   // Live Tracking
+  { name: "Live Bus Tracking", icon: MapPinned, href: "/live/bus", category: "Live Tracking" },
+  { name: "Live Train Tracking", icon: MapPinned, href: "/live/train", category: "Live Tracking" }, // Reuse icon
   // Others
   { name: "Rent Payment", icon: FileText, href: "/pay/rent", category: "Other Services" }, // Example
   // ... add many more services

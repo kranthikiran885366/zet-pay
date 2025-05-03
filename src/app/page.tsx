@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train
+import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train, MapPinned
 import Image from 'next/image';
 
 // Mock data (replace with actual data fetching)
@@ -231,22 +231,18 @@ export default function Home() {
                 <span className="text-xs">Home</span>
             </Button>
          </Link>
-         {/* Stores might be future feature */}
-         {/* <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-           <RadioTower className="h-5 w-5 mb-1" />
-           <span className="text-xs">Stores</span>
-         </Button> */}
-         <Link href="/services?category=Insurance" passHref>
+          <Link href="/services" passHref>
+             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
+                 <Bolt className="h-5 w-5 mb-1" /> {/* Example: Bills Icon */}
+                 <span className="text-xs">Bills</span>
+             </Button>
+          </Link>
+          <Link href="/live/bus" passHref> {/* Link to Live Tracking */}
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-            <ShieldCheck className="h-5 w-5 mb-1" />
-            <span className="text-xs">Insurance</span>
+            <MapPinned className="h-5 w-5 mb-1" />
+            <span className="text-xs">Live Tracking</span>
             </Button>
          </Link>
-         {/* Wealth might be future feature */}
-         {/* <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-            <ShoppingBag className="h-5 w-5 mb-1" />
-            <span className="text-xs">Wealth</span>
-         </Button> */}
          <Link href="/history" passHref>
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
                 <History className="h-5 w-5 mb-1" />
