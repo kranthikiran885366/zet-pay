@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle } from 'lucide-react'; // Added icons
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower } from 'lucide-react'; // Added icons including RadioTower
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus } from '@/services/recharge'; // Use service functions and Plan interface
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
@@ -19,7 +19,7 @@ import { recommendRechargePlans, RecommendRechargePlansInput } from '@/ai/flows/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, addDays } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"; // For horizontal scroll
@@ -961,7 +961,7 @@ export default function RechargePage() {
                     <p className="text-xs text-muted-foreground pt-2">Note: Benefits are subject to operator terms and conditions.</p>
                  </div>
                 <DialogFooter>
-                     <Button variant="secondary" onClick={() => { handlePlanSelect(showTariffModal!);}}>Select Plan</Button>
+                     <Button variant="secondary" onClick={() => { if (showTariffModal) handlePlanSelect(showTariffModal);}}>Select Plan</Button>
                      <Button onClick={() => setShowTariffModal(null)}>Close</Button>
                 </DialogFooter>
             </DialogContent>
@@ -972,3 +972,4 @@ export default function RechargePage() {
     </div>
   );
 }
+
