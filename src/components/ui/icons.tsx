@@ -43,6 +43,16 @@ import {
   Home,
   Car,
   Motorcycle,
+  CalendarCheck,
+  Video,
+    Sparkles,
+  ShoppingBasket,
+  HeartHandshake,
+  Music,
+    Map,
+    Hotel,
+    Users,
+    QrCode,
 } from "lucide-react";
 
 export {
@@ -91,4 +101,3 @@ export {
     Car,
     Motorcycle
 }
-

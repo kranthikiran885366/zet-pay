@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import Link from 'next/link';
-import { useToast } from "@/hooks/use-toast";
-// Assuming these functions exist - removed unused imports
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge"; // Import Badge component
 import {
   ArrowLeft,
   Landmark,
@@ -45,17 +45,16 @@ import {
   ParkingMeter, // Corrected icon
   Fuel, // Corrected icon
   Taxi as TaxiIcon,
-  MoreHorizontal, // Keep one import
-   PhoneCall,
-    Plane,
-    ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home, // Added Temple icon (using Home as placeholder)
-    Car,
-    Motorcycle,
+  PhoneCall,
+  Plane,
+  ShoppingBag,
+  Gift as GiftIcon, //Alias Gift to avoid conflict
+  Home, // Added Temple icon (using Home as placeholder)
+  Car,
+  Motorcycle,
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
-import { useEffect, useState } from 'react'; // Import useEffect and useState
+import { useState } from 'react'; // Import useEffect and useState
 
 const templeServices = [
   { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Booking" },
@@ -79,11 +78,9 @@ const travelServices = [
     { name: "Book Train Tickets", icon: Train, href: "/travels/train", category: "Travel"},
 ];
 
-
 const groupServicesByCategory = (services: any) => {
     const grouped: { [key: string]: any } = {};
     const categoryOrder = ["Transfers & Payments", "Recharge & Bill Payments", "Tickets & Travel", "Services", "Travel"]; // Define order
-
     categoryOrder.forEach(cat => { grouped[cat] = []; });
 
     services.forEach((service: any) => {
@@ -98,9 +95,7 @@ const groupServicesByCategory = (services: any) => {
 }
 
 export default function TempleServicesPage() {
-    const [selectedTemple, setSelectedTemple] = useState<string>('');
-    const allServices = [...templeServices, ...travelServices];
-    const groupedServices = groupServicesByCategory(allServices);
+    const groupedServices = groupServicesByCategory([...templeServices, ...travelServices]);
     const categories = Object.keys(groupedServices);
 //     const categories = {
 //   "Transfers & Payments": [
@@ -142,6 +137,7 @@ export default function TempleServicesPage() {
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold">Services</h1>
             </header>
+
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                 {categories.map((category) => (
@@ -167,4 +163,3 @@ export default function TempleServicesPage() {
         </div>
     );
 }
-
