@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ArrowLeft, Landmark, Eye, EyeOff, RefreshCw, Loader2, Lock } from 'lucide-react';
@@ -12,6 +12,7 @@ import { BankAccount, checkBalance, getLinkedAccounts, linkBankAccount, setDefau
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // Removed Trigger
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {useRef} from 'react';
 
 // Interface extending BankAccount with UI state
 interface AccountBalance extends BankAccount {
@@ -279,5 +280,3 @@ export default function CheckBalancePage() {
     </div>
   );
 }
-
-     
