@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, Armchair, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, Armchair, X, Loader2, ChevronUp } from 'lucide-react'; // Added ChevronUp
 import Link from 'next/link';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +30,7 @@ interface Movie {
     imageUrl: string;
     releaseDate?: Date;
     isUpcoming?: boolean;
+    dataAiHint?: string; // Added optional AI hint
 }
 
 const mockMovies: Movie[] = [
@@ -189,7 +190,7 @@ export default function MovieBookingPage() {
     };
 
     const handleSelectCinema = (cinema: Cinema) => {
-        setSelectedCinema(cinema);
+        setSelectedCinema(prev => prev?.id === cinema.id ? null : cinema); // Toggle cinema selection
          setSelectedShowtime(null); // Reset showtime when cinema changes
     };
 
@@ -289,7 +290,7 @@ export default function MovieBookingPage() {
                                 {movies.filter(m => !m.isUpcoming).map(movie => (
                                     <Card key={movie.id} className={cn("shadow-sm cursor-pointer hover:shadow-md transition-shadow", selectedMovie?.id === movie.id && "border-primary ring-1 ring-primary")} onClick={() => handleSelectMovie(movie)}>
                                         <CardContent className="p-3 flex gap-3 items-start">
-                                             <Image src={movie.imageUrl} alt={movie.title} width={80} height={120} className="rounded objec-cover w-20 h-auto" data-ai-hint={movie.dataAiHint}/>
+                                             <Image src={movie.imageUrl} alt={movie.title} width={80} height={120} className="rounded object-cover w-20 h-auto" data-ai-hint={movie.dataAiHint}/>
                                              <div>
                                                 <p className="font-semibold text-sm">{movie.title}</p>
                                                 <p className="text-xs text-muted-foreground">{movie.genre}</p>
