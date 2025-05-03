@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -11,6 +10,7 @@ import { useEffect, useState } from 'react'; // Import useEffect and useState
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service with subscription
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
+import { auth } from '@/lib/firebase';
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -48,32 +48,47 @@ export default function Home() {
     setIsLoadingTransactions(true);
     console.log("Subscribing to recent transactions...");
 
-    const unsubscribe = subscribeToTransactionHistory(
-      (transactions) => {
-        console.log("Received recent transactions update:", transactions);
-        setRecentTransactions(transactions);
-        setIsLoadingTransactions(false);
-      },
-      (error) => {
-        console.error("Failed to subscribe to recent transactions:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Could not load recent transactions.",
-        });
-        setIsLoadingTransactions(false);
-        setRecentTransactions([]); // Clear on error
-      },
-      undefined, // No specific filters for home page recent list
-      3 // Limit to latest 3 transactions
-    );
+    // Check if user is logged in before subscribing
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        const unsubscribeFromTransactions = subscribeToTransactionHistory(
+          (transactions) => {
+            console.log("Received recent transactions update:", transactions);
+            setRecentTransactions(transactions);
+            setIsLoadingTransactions(false);
+          },
+          (error) => {
+            console.error("Failed to subscribe to recent transactions:", error);
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: "Could not load recent transactions.",
+            });
+            setIsLoadingTransactions(false);
+            setRecentTransactions([]); // Clear on error
+          },
+          undefined, // No specific filters for home page recent list
+          3 // Limit to latest 3 transactions
+        );
 
-    // Cleanup subscription on unmount
-    return () => {
-      if (unsubscribe) {
-        console.log("Unsubscribing from recent transactions.");
-        unsubscribe();
+        // Cleanup subscription on unmount
+        return () => {
+          if (unsubscribeFromTransactions) {
+            console.log("Unsubscribing from recent transactions.");
+            unsubscribeFromTransactions();
+          }
+        };
+      } else {
+        console.log("User is not logged in. Not subscribing to transactions.");
+        setRecentTransactions([]);
+        setIsLoadingTransactions(false);
+        return () => {}; // No subscription to unsubscribe from
       }
+    });
+
+    // Cleanup auth state listener on unmount
+    return () => {
+      unsubscribe();
     };
   }, [toast]); // Dependency array includes toast for error handling
 
@@ -111,7 +126,7 @@ export default function Home() {
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold text-primary">Send Money</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-4 gap-4 text-center">
+          <CardContent className="grid grid-cols-4 gap-x-4 gap-y-6 text-center">
             <Link href="/scan" passHref>
               <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="bg-primary/10 text-primary p-3 rounded-full">
@@ -196,7 +211,6 @@ export default function Home() {
              ))}
           </CardContent>
         </Card>
-
 
         {/* Switch Section */}
         <Card className="shadow-md">
