@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed
+import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard } from "lucide-react"; // Added relevant icons
 import Image from 'next/image';
 
 // Mock data (replace with actual data fetching)
@@ -32,14 +32,13 @@ const switchApps = [
 
 const quickLinks = [
   // Recharge & Bill Payments
-  { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile" },
+  { name: "Mobile", icon: Smartphone, href: "/recharge/mobile" },
   { name: "DTH", icon: Tv, href: "/recharge/dth" },
   { name: "Electricity", icon: Bolt, href: "/bills/electricity" },
-  { name: "Credit Card", icon: Banknote, href: "/bills/credit-card" },
+  { name: "Credit Card", icon: CreditCard, href: "/bills/credit-card" }, // Use specific icon
   { name: "FASTag", icon: RadioTower, href: "/recharge/fastag" },
-  // Travel & Tickets
-  { name: "Bus Tickets", icon: Bus, href: "/travels/bus" },
-  { name: "Movie Tickets", icon: Clapperboard, href: "/movies" },
+  { name: "Broadband", icon: Wifi, href: "/bills/broadband" },
+  { name: "Data Card", icon: HardDrive, href: "/recharge/datacard" },
   { name: "See All", icon: BadgePercent, href: "/services" }, // Keep "See All" last in this section or move it
 ];
 
@@ -183,7 +182,7 @@ export default function Home() {
            <CardContent className="grid grid-cols-4 gap-4 text-center">
              {switchApps.map((app) => (
                  <Link key={app.id} href={app.href} passHref>
-                    <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity"> {/* Removed onClick */}
+                    <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                       <div className={`${app.bgColor} ${app.color} p-3 rounded-full`}>
                         <app.icon className="h-6 w-6" />
                       </div>
@@ -235,7 +234,7 @@ export default function Home() {
          </Link>
           <Link href="/services" passHref>
              <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                 <Bolt className="h-5 w-5 mb-1" /> {/* Example: Bills Icon */}
+                 <Bolt className="h-5 w-5 mb-1" /> {/* Use Electricity icon for Bills */}
                  <span className="text-xs">Bills</span>
              </Button>
           </Link>
