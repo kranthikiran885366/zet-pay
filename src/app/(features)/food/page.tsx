@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -120,6 +121,14 @@ export default function OrderFoodPage() {
         setFilters(prev => ({ ...prev, [filterName]: value }));
     };
 
+    const handleLocationChange = () => {
+        // Simulate location change - In a real app, this would open a map or search modal
+        const newLocation = "New Mock Location";
+        setLocation(newLocation);
+        toast({ title: "Location Changed", description: `Showing restaurants near ${newLocation}` });
+        // Optionally, re-fetch restaurants based on the new location
+    }
+
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
             {/* Header */}
@@ -130,7 +139,7 @@ export default function OrderFoodPage() {
                     </Button>
                 </Link>
                  {/* Location Button (Enhanced) */}
-                 <Button variant="ghost" size="sm" className="text-left h-auto p-0 hover:bg-primary/80">
+                 <Button variant="ghost" size="sm" className="text-left h-auto p-0 hover:bg-primary/80" onClick={handleLocationChange}>
                     <div className="flex items-center gap-1">
                         <MapPin className="h-4 w-4 flex-shrink-0" />
                         <div className="flex-grow">
@@ -339,8 +348,3 @@ function RestaurantCardSkeleton() {
         </Card>
     );
 }
-
-// Mock dynamic restaurant page (Create /app/food/[restaurantId]/page.tsx)
-// export default function RestaurantDetailsPage({ params }: { params: { restaurantId: string } }) {
-//     return <div>Details for Restaurant ID: {params.restaurantId} (Not Implemented)</div>;
-// }
