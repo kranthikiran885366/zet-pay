@@ -1,8 +1,9 @@
+
 /**
  * @fileOverview Service functions for managing transaction history in Firestore.
  */
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, onSnapshot, Unsubscribe, QueryConstraint } from 'firebase/firestore';
 import type { DateRange } from "react-day-picker";
 
 // Interface matching the one in history page
@@ -29,7 +30,43 @@ export interface TransactionFilters {
 }
 
 /**
+ * Builds Firestore query constraints based on filters.
+ * @param userId The current user's ID.
+ * @param filters Optional filters.
+ * @param count Optional limit.
+ * @returns An array of QueryConstraint objects.
+ */
+const buildTransactionQueryConstraints = (
+    userId: string,
+    filters?: TransactionFilters,
+    count?: number
+): QueryConstraint[] => {
+    const constraints: QueryConstraint[] = [orderBy('date', 'desc')]; // Always order by date desc initially
+
+    if (filters?.type && filters.type !== 'all') {
+        constraints.push(where('type', '==', filters.type));
+    }
+    if (filters?.status && filters.status !== 'all') {
+        constraints.push(where('status', '==', filters.status));
+    }
+    if (filters?.dateRange?.from) {
+        constraints.push(where('date', '>=', Timestamp.fromDate(filters.dateRange.from)));
+    }
+    if (filters?.dateRange?.to) {
+        const toDate = new Date(filters.dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        constraints.push(where('date', '<=', Timestamp.fromDate(toDate)));
+    }
+    if (count) {
+        constraints.push(limit(count));
+    }
+
+    return constraints;
+};
+
+/**
  * Asynchronously retrieves the transaction history for the current user, optionally filtered.
+ * Performs a one-time fetch.
  *
  * @param filters Optional filters for transaction type, status, date range, and search term.
  * @param count Optional limit on the number of transactions to retrieve.
@@ -42,32 +79,12 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
         return [];
     }
     const userId = currentUser.uid;
-    console.log(`Fetching transaction history for user ${userId} with filters:`, filters);
+    console.log(`Fetching transaction history (one-time) for user ${userId} with filters:`, filters);
 
     try {
         const transactionsColRef = collection(db, 'users', userId, 'transactions');
-        let q = query(transactionsColRef, orderBy('date', 'desc')); // Default sort: newest first
-
-        // Apply Firestore server-side filters where possible
-        if (filters?.type && filters.type !== 'all') {
-            q = query(q, where('type', '==', filters.type));
-        }
-        if (filters?.status && filters.status !== 'all') {
-             q = query(q, where('status', '==', filters.status));
-        }
-        if (filters?.dateRange?.from) {
-             q = query(q, where('date', '>=', Timestamp.fromDate(filters.dateRange.from)));
-        }
-         if (filters?.dateRange?.to) {
-            // Adjust 'to' date to include the whole day
-            const toDate = new Date(filters.dateRange.to);
-            toDate.setHours(23, 59, 59, 999);
-            q = query(q, where('date', '<=', Timestamp.fromDate(toDate)));
-        }
-
-        if (count) {
-             q = query(q, limit(count));
-        }
+        const queryConstraints = buildTransactionQueryConstraints(userId, filters, count);
+        const q = query(transactionsColRef, ...queryConstraints);
 
         const querySnapshot = await getDocs(q);
 
@@ -77,10 +94,12 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
                 id: doc.id,
                 ...data,
                 date: (data.date as Timestamp).toDate(), // Convert Firestore Timestamp to JS Date
+                // Ensure avatarSeed is always present
+                avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id,
             } as Transaction;
         });
 
-        // Apply client-side search term filtering if provided (more flexible than Firestore limitations)
+        // Apply client-side search term filtering if provided
          if (filters?.searchTerm) {
             const lowerSearchTerm = filters.searchTerm.toLowerCase();
             transactions = transactions.filter(tx =>
@@ -93,8 +112,7 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
             );
         }
 
-
-        console.log(`Fetched ${transactions.length} transactions.`);
+        console.log(`Fetched ${transactions.length} transactions (one-time).`);
         return transactions;
 
     } catch (error) {
@@ -102,6 +120,78 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
         throw new Error("Could not fetch transaction history.");
     }
 }
+
+/**
+ * Subscribes to real-time updates for the current user's transaction history.
+ *
+ * @param onUpdate Callback function triggered with the updated list of transactions.
+ * @param onError Callback function triggered on error.
+ * @param filters Optional filters for transaction type, status, date range.
+ * @param count Optional limit on the number of transactions to retrieve.
+ * @returns An unsubscribe function to stop listening for updates.
+ */
+export function subscribeToTransactionHistory(
+    onUpdate: (transactions: Transaction[]) => void,
+    onError: (error: Error) => void,
+    filters?: TransactionFilters,
+    count?: number
+): Unsubscribe | null {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        console.log("No user logged in to subscribe to transaction history.");
+        onError(new Error("User not logged in."));
+        return null;
+    }
+    const userId = currentUser.uid;
+    console.log(`Subscribing to transaction history for user ${userId} with filters:`, filters);
+
+    try {
+        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        // Note: Real-time search term filtering is best done client-side after receiving updates.
+        const queryConstraints = buildTransactionQueryConstraints(userId, { ...filters, searchTerm: undefined }, count);
+        const q = query(transactionsColRef, ...queryConstraints);
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            let transactions = querySnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    date: (data.date as Timestamp).toDate(),
+                    // Ensure avatarSeed is always present
+                    avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id,
+                } as Transaction;
+            });
+
+            // Apply client-side search term filtering if provided in the original filters
+             if (filters?.searchTerm) {
+                const lowerSearchTerm = filters.searchTerm.toLowerCase();
+                transactions = transactions.filter(tx =>
+                    tx.name.toLowerCase().includes(lowerSearchTerm) ||
+                    tx.description.toLowerCase().includes(lowerSearchTerm) ||
+                    tx.amount.toString().includes(lowerSearchTerm) ||
+                    tx.upiId?.toLowerCase().includes(lowerSearchTerm) ||
+                    tx.billerId?.toLowerCase().includes(lowerSearchTerm) ||
+                    tx.id.toLowerCase().includes(lowerSearchTerm)
+                );
+            }
+
+            console.log(`Received ${transactions.length} real-time transactions.`);
+            onUpdate(transactions); // Pass the updated list to the callback
+        }, (error) => {
+            console.error("Error subscribing to transaction history:", error);
+            onError(new Error("Could not subscribe to transaction history."));
+        });
+
+        return unsubscribe; // Return the unsubscribe function
+
+    } catch (error) {
+        console.error("Error setting up transaction subscription:", error);
+        onError(new Error("Could not set up transaction subscription."));
+        return null;
+    }
+}
+
 
 /**
  * Adds a new transaction record to Firestore for the current user.
@@ -123,6 +213,8 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id' | '
             ...transactionData,
             userId: userId,
             date: serverTimestamp(), // Use server timestamp
+            // Generate avatarSeed here before saving
+            avatarSeed: transactionData.name.toLowerCase().replace(/\s+/g, '') || 'default_seed',
         };
         const docRef = await addDoc(transactionsColRef, dataToSave);
         console.log("Transaction added with ID:", docRef.id);
@@ -135,7 +227,7 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id' | '
             id: docRef.id,
             userId: userId,
             date: new Date(), // Use client date for immediate feedback
-            avatarSeed: transactionData.name.toLowerCase().replace(/\s+/g, '') || 'default',
+            avatarSeed: dataToSave.avatarSeed, // Use the generated seed
         };
         return newTransaction;
 

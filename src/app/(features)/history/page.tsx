@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,33 +13,19 @@ import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Use the Firestore service
+import { subscribeToTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Use the Firestore service with subscription
 import { useToast } from '@/hooks/use-toast';
+import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
 
 const statusIcons = {
   Completed: <CheckCircle className="h-4 w-4 text-green-600" />,
   Pending: <Clock className="h-4 w-4 text-yellow-600" />,
   Failed: <XCircle className="h-4 w-4 text-destructive" />,
-  'Processing Activation': <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />, // Added status
+  'Processing Activation': <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
 };
 
-// Debounce function
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-
-  return (...args: Parameters<F>): Promise<ReturnType<F>> =>
-    new Promise(resolve => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-
-      timeout = setTimeout(() => resolve(func(...args)), waitFor);
-    });
-}
-
-
 export default function HistoryPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]); // Holds data from subscription
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -49,58 +34,73 @@ export default function HistoryPage() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const { toast } = useToast();
 
-
-   // Fetch transactions based on filters
-   const fetchTransactions = useCallback(async (filters: TransactionFilters, sort: 'newest' | 'oldest') => {
-    setIsLoading(true);
-    try {
-      // Use Firestore service
-      let fetchedTransactions = await getTransactionHistory(filters);
-
-      // Client-side sorting if Firestore doesn't support the desired combined sort/filter
-      fetchedTransactions.sort((a, b) => {
-            if (sort === 'newest') {
-                return b.date.getTime() - a.date.getTime();
-            } else {
-                return a.date.getTime() - b.date.getTime();
-            }
-       });
-
-      setTransactions(fetchedTransactions);
-    } catch (error) {
-      console.error("Failed to fetch transaction history:", error);
-       toast({
-            variant: "destructive",
-            title: "Error Loading History",
-            description: "Could not fetch transaction data. Please try again later.",
-       });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  // Debounced search fetch
-  const debouncedFetchTransactions = useCallback(debounce(fetchTransactions, 300), [fetchTransactions]);
-
-
-  // Apply filters and sorting whenever dependencies change
+  // Subscribe to real-time transaction updates
   useEffect(() => {
-     const filters: TransactionFilters = {
-         type: filterType !== 'all' ? filterType : undefined,
-         status: filterStatus !== 'all' ? filterStatus : undefined,
-         dateRange: dateRange,
-         searchTerm: searchTerm || undefined,
-     };
-     // Use debounced fetch only for search term changes (client-side search handled in fetch)
-    // if (searchTerm) {
-    //    debouncedFetchTransactions(filters, sortOrder);
-    // } else {
-       fetchTransactions(filters, sortOrder);
-    // }
-  }, [filterType, filterStatus, dateRange, sortOrder, searchTerm, fetchTransactions]);
+    setIsLoading(true);
+
+    // Prepare filters (excluding search term for subscription)
+    const filters: TransactionFilters = {
+        type: filterType !== 'all' ? filterType : undefined,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
+        dateRange: dateRange,
+        // Search term will be applied client-side after receiving updates
+    };
+
+    const unsubscribe = subscribeToTransactionHistory(
+      (transactions) => {
+        // Apply client-side search filtering here before setting state
+        let filteredTransactions = transactions;
+        if (searchTerm) {
+            const lowerSearchTerm = searchTerm.toLowerCase();
+            filteredTransactions = transactions.filter(tx =>
+                tx.name.toLowerCase().includes(lowerSearchTerm) ||
+                tx.description.toLowerCase().includes(lowerSearchTerm) ||
+                tx.amount.toString().includes(lowerSearchTerm) ||
+                tx.upiId?.toLowerCase().includes(lowerSearchTerm) ||
+                tx.billerId?.toLowerCase().includes(lowerSearchTerm) ||
+                tx.id.toLowerCase().includes(lowerSearchTerm)
+            );
+        }
+        setAllTransactions(filteredTransactions);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Failed to subscribe to transaction history:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Loading History",
+          description: "Could not load real-time transaction data. Please try again later.",
+        });
+        setIsLoading(false);
+        setAllTransactions([]); // Clear data on error
+      },
+      filters // Pass filters (without search term) to subscription
+      // Limit is handled by the subscription function if needed, or apply client-side
+    );
+
+    // Cleanup subscription on component unmount or when filters change
+    return () => {
+      if (unsubscribe) {
+        console.log("Unsubscribing from transaction history");
+        unsubscribe();
+      }
+    };
+  }, [filterType, filterStatus, dateRange, toast, searchTerm]); // Re-subscribe if filters change (except sortOrder, handled client-side)
 
 
-  // Group transactions by date (e.g., "Today", "Yesterday", "June 20, 2024")
+  // Apply client-side sorting
+  const sortedTransactions = useMemo(() => {
+    return [...allTransactions].sort((a, b) => {
+      if (sortOrder === 'newest') {
+        return b.date.getTime() - a.date.getTime();
+      } else {
+        return a.date.getTime() - b.date.getTime();
+      }
+    });
+  }, [allTransactions, sortOrder]);
+
+
+   // Group transactions by date (e.g., "Today", "Yesterday", "June 20, 2024")
    const groupTransactionsByDate = (txs: Transaction[]) => {
        const groups: { [key: string]: Transaction[] } = {};
        const today = new Date(); today.setHours(0,0,0,0);
@@ -126,7 +126,7 @@ export default function HistoryPage() {
        return groups;
    };
 
-  const groupedTransactions = groupTransactionsByDate(transactions);
+  const groupedTransactions = groupTransactionsByDate(sortedTransactions);
 
    const clearFilters = () => {
         setFilterType('all');
@@ -246,7 +246,7 @@ export default function HistoryPage() {
       </div>
 
       {/* Transaction List */}
-      <main className="flex-grow p-4 space-y-4">
+      <main className="flex-grow p-4 space-y-4 pb-20"> {/* Added pb-20 */}
          {isLoading && (
              <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -273,8 +273,8 @@ export default function HistoryPage() {
                          <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
                            <div className="flex items-center gap-3 overflow-hidden">
                              <Avatar className="h-9 w-9 flex-shrink-0">
-                               <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed}/40/40`} alt={tx.name} data-ai-hint="transaction related avatar"/>
-                               <AvatarFallback>{tx.name.charAt(0)}</AvatarFallback>
+                               <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="transaction related avatar"/>
+                               <AvatarFallback>{tx.name?.charAt(0) || '?'}</AvatarFallback>
                              </Avatar>
                              <div className="flex-grow overflow-hidden">
                                <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
@@ -300,5 +300,3 @@ export default function HistoryPage() {
     </div>
   );
 }
-
-     

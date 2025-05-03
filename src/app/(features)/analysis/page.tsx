@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { getTransactionHistory, Transaction } from '@/services/transactions';
+import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use subscription
 import { analyzeSpending, AnalyzeSpendingInput, AnalyzeSpendingOutput } from '@/ai/flows/spending-analysis';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
 
 interface SpendingCategory {
   category: string;
@@ -32,8 +33,8 @@ const COLORS = ['#008080', '#32CD32', '#FFC107', '#2196F3', '#9C27B0', '#FF5722'
 
 // Function to categorize transactions (simple example, AI can enhance this)
 const categorizeTransaction = (tx: Transaction): string => {
-    const name = tx.name.toLowerCase();
-    const desc = tx.description.toLowerCase();
+    const name = tx.name?.toLowerCase() || ''; // Handle potentially undefined name
+    const desc = tx.description?.toLowerCase() || ''; // Handle potentially undefined description
     if (tx.type === 'Recharge' || tx.type === 'Bill Payment') return tx.type;
     if (name.includes('food') || name.includes('restaurant') || name.includes('cafe') || desc.includes('dinner') || desc.includes('lunch')) return 'Food & Dining';
     if (name.includes('grocery') || name.includes('market') || name.includes('supermarket')) return 'Groceries';
@@ -48,8 +49,8 @@ const categorizeTransaction = (tx: Transaction): string => {
 export default function SpendingAnalysisPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [analysis, setAnalysis] = useState<AnalyzeSpendingOutput | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+    const [isLoading, setIsLoading] = useState(true); // Manages overall page loading (including initial transactions)
+    const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false); // Manages AI analysis loading state
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [isBudgetDialogOpen, setIsBudgetDialogOpen] = useState(false);
     const [currentBudget, setCurrentBudget] = useState<Partial<Budget>>({});
@@ -65,46 +66,63 @@ export default function SpendingAnalysisPage() {
         }
     }, []);
 
-     // Fetch transactions and trigger analysis
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
+    // Function to trigger AI analysis
+    const triggerAnalysis = async (currentTransactions: Transaction[]) => {
+        if (currentTransactions.length > 0) {
             setIsLoadingAnalysis(true);
             try {
-                const fetchedTransactions = await getTransactionHistory(); // Fetch all for analysis
-                setTransactions(fetchedTransactions);
+                 const input: AnalyzeSpendingInput = {
+                    transactionHistory: JSON.stringify(currentTransactions.map(tx => ({
+                        name: tx.name,
+                        description: tx.description,
+                        amount: tx.amount,
+                        date: tx.date.toISOString(),
+                        type: tx.type,
+                        status: tx.status,
+                    }))),
+                    // Add user preferences if available
+                 };
+                 const analysisResult = await analyzeSpending(input);
+                 setAnalysis(analysisResult);
+             } catch(error) {
+                 console.error("Error analyzing spending:", error);
+                 toast({ variant: "destructive", title: "Analysis Error", description: "Could not generate spending analysis." });
+                 setAnalysis(null);
+             } finally {
+                 setIsLoadingAnalysis(false);
+             }
+        } else {
+             setAnalysis(null); // No transactions, no analysis
+             setIsLoadingAnalysis(false);
+        }
+    };
 
-                if (fetchedTransactions.length > 0) {
-                    const input: AnalyzeSpendingInput = {
-                        // Convert transactions to a simpler format if needed by the AI
-                        transactionHistory: JSON.stringify(fetchedTransactions.map(tx => ({
-                            name: tx.name,
-                            description: tx.description,
-                            amount: tx.amount,
-                            date: tx.date.toISOString(),
-                            type: tx.type,
-                            status: tx.status,
-                        }))),
-                        // Add user preferences if available
-                    };
-                    const analysisResult = await analyzeSpending(input);
-                    setAnalysis(analysisResult);
-                 } else {
-                    setAnalysis(null); // No transactions, no analysis
-                 }
 
-            } catch (error) {
-                console.error("Error fetching data or analyzing spending:", error);
-                toast({ variant: "destructive", title: "Error", description: "Could not load or analyze spending data." });
-            } finally {
-                setIsLoading(false);
-                setIsLoadingAnalysis(false);
+     // Fetch transactions using real-time subscription and trigger analysis
+    useEffect(() => {
+        setIsLoading(true); // Set loading true when starting subscription
+        const unsubscribe = subscribeToTransactionHistory(
+             (fetchedTransactions) => {
+                 setTransactions(fetchedTransactions);
+                 triggerAnalysis(fetchedTransactions); // Trigger analysis whenever transactions update
+                 setIsLoading(false); // Set loading false after first fetch completes
+             },
+             (error) => {
+                 console.error("Error fetching transactions:", error);
+                 toast({ variant: "destructive", title: "Error", description: "Could not load transaction data." });
+                 setIsLoading(false); // Also stop loading on error
+             }
+        );
+
+        // Cleanup subscription on unmount
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
             }
         };
-        fetchData();
-    }, [toast]);
+    }, [toast]); // Re-subscribe might not be needed often unless user context changes dramatically
 
-    // Process data for charts and budgets
+    // Process data for charts and budgets based on the current transactions state
     const { spendingData, totalSpending, availableCategories } = useMemo(() => {
         const spending: { [key: string]: number } = {};
         let total = 0;
@@ -128,9 +146,9 @@ export default function SpendingAnalysisPage() {
             .sort((a, b) => b.amount - a.amount); // Sort by amount descending
 
         return { spendingData, totalSpending: total, availableCategories: Array.from(categories).sort() };
-    }, [transactions]);
+    }, [transactions]); // Recalculate when transactions update
 
-     // Budget related functions
+     // Budget related functions (remain the same)
     const saveBudget = () => {
         if (!currentBudget.category || !currentBudget.limit || currentBudget.limit <= 0) {
             toast({ variant: "destructive", title: "Invalid Budget", description: "Please select a category and enter a valid limit." });
@@ -197,7 +215,7 @@ export default function SpendingAnalysisPage() {
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
-                {isLoading && <div className="flex justify-center p-6"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
+                {isLoading && <div className="flex justify-center p-6"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <span className="ml-2">Loading data...</span></div>}
 
                 {!isLoading && transactions.length === 0 && (
                      <Card className="shadow-md text-center">
@@ -216,7 +234,7 @@ export default function SpendingAnalysisPage() {
                                 <CardTitle className="flex items-center gap-2">
                                     <DollarSign className="h-5 w-5 text-primary"/> Spending Overview
                                 </CardTitle>
-                                <CardDescription>Your spending distribution for the current period.</CardDescription>
+                                <CardDescription>Your spending distribution.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="h-60 w-full">
@@ -261,8 +279,10 @@ export default function SpendingAnalysisPage() {
                                         <div><strong>Insights:</strong> {analysis.insights || 'No insights generated.'}</div>
                                          <div><strong>Recommendations:</strong> {analysis.recommendations || 'No recommendations generated.'}</div>
                                     </>
-                                ) : !isLoadingAnalysis ? (
+                                ) : !isLoadingAnalysis && transactions.length > 0 ? (
                                     <p className="text-muted-foreground">Could not generate AI insights.</p>
+                                ) : !isLoadingAnalysis && transactions.length === 0 ? (
+                                     <p className="text-muted-foreground">No transactions yet to generate insights.</p>
                                 ) : null }
                             </CardContent>
                         </Card>
@@ -363,4 +383,3 @@ export default function SpendingAnalysisPage() {
         </div>
     );
 }
-

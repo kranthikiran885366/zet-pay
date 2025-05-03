@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent } from "lucide-react";
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2 } from "lucide-react"; // Added Loader2
 import Image from 'next/image';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
-import { getTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service
+import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service with subscription
 import { useToast } from "@/hooks/use-toast"; // Import useToast
+import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -42,28 +43,39 @@ export default function Home() {
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const { toast } = useToast();
 
-  // Fetch recent transactions on component mount
+  // Subscribe to recent transactions on component mount
   useEffect(() => {
-    const fetchRecent = async () => {
-      setIsLoadingTransactions(true);
-      try {
-        // Fetch only the latest 3 transactions
-        const transactions = await getTransactionHistory(undefined, 3);
+    setIsLoadingTransactions(true);
+    console.log("Subscribing to recent transactions...");
+
+    const unsubscribe = subscribeToTransactionHistory(
+      (transactions) => {
+        console.log("Received recent transactions update:", transactions);
         setRecentTransactions(transactions);
-      } catch (error) {
-        console.error("Failed to fetch recent transactions:", error);
+        setIsLoadingTransactions(false);
+      },
+      (error) => {
+        console.error("Failed to subscribe to recent transactions:", error);
         toast({
           variant: "destructive",
           title: "Error",
           description: "Could not load recent transactions.",
         });
-      } finally {
         setIsLoadingTransactions(false);
+        setRecentTransactions([]); // Clear on error
+      },
+      undefined, // No specific filters for home page recent list
+      3 // Limit to latest 3 transactions
+    );
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) {
+        console.log("Unsubscribing from recent transactions.");
+        unsubscribe();
       }
     };
-
-    fetchRecent();
-  }, [toast]);
+  }, [toast]); // Dependency array includes toast for error handling
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -216,7 +228,10 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoadingTransactions ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Loading transactions...</p>
+                 <div className="flex justify-center items-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground ml-2">Loading transactions...</p>
+                 </div>
             ) : recentTransactions.length === 0 ? (
                  <p className="text-sm text-muted-foreground text-center py-4">No recent transactions.</p>
             ) : (
@@ -224,12 +239,11 @@ export default function Home() {
                  <div key={tx.id} className="flex items-center justify-between">
                    <div className="flex items-center gap-3">
                      <Avatar className="h-9 w-9">
-                       <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed}/40/40`} alt={tx.name} data-ai-hint="person avatar"/>
-                       <AvatarFallback>{tx.name.charAt(0)}</AvatarFallback>
+                       <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="person avatar"/>
+                       <AvatarFallback>{tx.name?.charAt(0) || '?'}</AvatarFallback>
                      </Avatar>
                      <div>
                        <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                       {/* Use tx.date directly */}
                        <p className="text-xs text-muted-foreground">{tx.date.toLocaleDateString()}</p>
                      </div>
                    </div>
@@ -280,4 +294,3 @@ export default function Home() {
     </div>
   );
 }
-      
