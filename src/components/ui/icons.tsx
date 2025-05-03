@@ -1,4 +1,3 @@
-
 import {
   ArrowLeft,
   Calendar as CalendarIcon,
@@ -43,18 +42,8 @@ import {
   Gift as GiftIcon,
   Home,
   Car,
-  Motorbike,
-  Sparkles,
-  Percent,
-  Clock,
-  ArrowUpDown,
-  Flame,
-  IndianRupee,
-  CheckCircle,
-  Salad,
-  Search,
-  Filter
-} from "lucide-react"
+  Motorcycle,
+} from "lucide-react";
 
 export {
   ArrowLeft,
@@ -100,15 +89,6 @@ export {
     GiftIcon,
     Home,
     Car,
-    Motorbike,
-    Sparkles,
-    Percent,
-    Clock,
-    ArrowUpDown,
-    Flame,
-    IndianRupee,
-    CheckCircle,
-    Salad,
-    Search,
-    Filter
+    Motorcycle
 }
+

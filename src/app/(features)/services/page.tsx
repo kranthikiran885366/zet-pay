@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
@@ -51,7 +52,7 @@ import {
     Gift as GiftIcon, //Alias Gift to avoid conflict
     Home, // Added Temple icon (using Home as placeholder)
     Car,
-    Motorcycle
+    Motorcycle,
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
@@ -94,9 +95,10 @@ const groupServicesByCategory = (services: any) => {
     });
 
     return grouped;
-};
+}
 
 export default function TempleServicesPage() {
+    const [selectedTemple, setSelectedTemple] = useState<string>('');
     const allServices = [...templeServices, ...travelServices];
     const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
