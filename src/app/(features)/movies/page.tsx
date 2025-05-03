@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, Armchair, X, Loader2, ChevronUp } from 'lucide-react'; // Added ChevronUp
+import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, Armchair, X, Loader2, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +18,7 @@ import { format, addDays, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import React from 'react';
 
 // Mock Data (Replace with actual API calls)
 interface Movie {
@@ -94,7 +95,7 @@ interface Seat {
 }
 
 // Generate mock cinema seats
-const generateCinemaSeats = (basePrice: number): Seat[] => {
+const generateCinemaSeats = (basePrice: number): { seats: Seat[], rows: string[], maxCols: number } => {
     const seats: Seat[] = [];
     const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const cols = 15;
@@ -104,13 +105,13 @@ const generateCinemaSeats = (basePrice: number): Seat[] => {
             const id = `${row}${c}`;
             let type: Seat['type'] = 'Normal';
             let price = basePrice;
-            if (row >= 'F') { type = 'Premium'; price += 50; }
+            if (['F', 'G'].includes(row)) { type = 'Premium'; price += 50; }
             if (row === 'H') { type = 'Recliner'; price += 150; }
 
             seats.push({ id, row, number: c, type, isAvailable: Math.random() > 0.4, price });
         }
     }
-    return seats;
+    return { seats, rows, maxCols: cols };
 };
 
 
@@ -125,6 +126,8 @@ export default function MovieBookingPage() {
     const [selectedCinema, setSelectedCinema] = useState<Cinema | null>(null);
     const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null);
     const [seatLayout, setSeatLayout] = useState<Seat[]>([]);
+    const [seatRows, setSeatRows] = useState<string[]>([]);
+    const [seatMaxCols, setSeatMaxCols] = useState(0);
     const [selectedSeats, setSelectedSeats] = useState<Seat[]>([]);
     const [showSeatSelection, setShowSeatSelection] = useState(false);
     const [isBooking, setIsBooking] = useState(false);
@@ -197,8 +200,10 @@ export default function MovieBookingPage() {
     const handleSelectShowtime = (showtime: Showtime) => {
         if (!selectedMovie || !selectedCinema) return;
         setSelectedShowtime(showtime);
-        const mockSeats = generateCinemaSeats(showtime.price); // Generate seats based on base showtime price
-        setSeatLayout(mockSeats);
+        const { seats, rows, maxCols } = generateCinemaSeats(showtime.price); // Generate seats based on base showtime price
+        setSeatLayout(seats);
+        setSeatRows(rows);
+        setSeatMaxCols(maxCols);
         setSelectedSeats([]);
         setShowSeatSelection(true); // Open seat selection modal/dialog
     };
@@ -417,7 +422,7 @@ export default function MovieBookingPage() {
 
                  {/* Seat Selection Dialog */}
                  <Dialog open={showSeatSelection} onOpenChange={setShowSeatSelection}>
-                     <DialogContent className="max-w-lg p-0">
+                     <DialogContent className="max-w-3xl p-0"> {/* Increased max-width */}
                          <DialogHeader className="p-4 border-b">
                              <DialogTitle>Select Seats</DialogTitle>
                              <DialogDescription>
@@ -429,43 +434,65 @@ export default function MovieBookingPage() {
                          </DialogHeader>
                          <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
                               {/* Screen Indicator */}
-                              <div className="w-full h-1 bg-primary rounded mx-auto mb-4 text-center text-xs text-muted-foreground">SCREEN</div>
+                               <div className="w-4/5 mx-auto mb-6">
+                                    <div className="h-1 bg-gray-400 rounded-t-full"></div>
+                                    <div className="text-center text-xs text-muted-foreground mt-1">Screen this way</div>
+                               </div>
 
-                             {/* Seat Grid */}
-                             <div className="grid grid-cols-15 gap-1.5 justify-center"> {/* Adjust based on max cols */}
-                                 {seatLayout.map(seat => (
-                                    <Button
-                                        key={seat.id}
-                                        variant={selectedSeats.some(s => s.id === seat.id) ? "default" : "outline"}
-                                        size="icon"
-                                        className={cn(
-                                            "h-6 w-6 text-[10px] leading-none border",
-                                            !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
-                                            selectedSeats.some(s => s.id === seat.id) && "bg-primary text-primary-foreground",
-                                            seat.type === 'Premium' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-yellow-500",
-                                            seat.type === 'Recliner' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-blue-500",
-                                            seat.type === 'Recliner' && "w-8" // Make recliners slightly wider
-                                        )}
-                                        onClick={() => handleSeatSelect(seat)}
-                                        disabled={!seat.isAvailable}
-                                        title={`${seat.type} - ₹${seat.price}`}
-                                    >
-                                        {seat.number}
-                                    </Button>
-                                ))}
-                             </div>
+                               {/* Enhanced Seat Grid with Row Labels */}
+                                <div className="flex gap-4 justify-center">
+                                    {/* Row Labels Column */}
+                                    <div className="flex flex-col gap-1 justify-between items-center py-1">
+                                        {seatRows.map(row => (
+                                             <div key={`label-${row}`} className="h-6 w-6 text-xs font-semibold text-muted-foreground flex items-center justify-center">{row}</div>
+                                        ))}
+                                    </div>
+                                     {/* Seat Grid Container */}
+                                    <div className="overflow-x-auto pb-2">
+                                         <div
+                                            className="grid gap-1.5 justify-center"
+                                            style={{ gridTemplateColumns: `repeat(${seatMaxCols}, minmax(0, 1fr))` }}
+                                         >
+                                            {seatLayout.map(seat => (
+                                                <Button
+                                                    key={seat.id}
+                                                    variant={selectedSeats.some(s => s.id === seat.id) ? "default" : "outline"}
+                                                    size="icon"
+                                                    className={cn(
+                                                        "h-6 w-6 text-[10px] leading-none border",
+                                                         // Add margin for aisle spacing (e.g., after seat 3 and 12)
+                                                         (seat.number === 3) && 'mr-2',
+                                                         (seat.number === 12) && 'mr-2',
+                                                        !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
+                                                        selectedSeats.some(s => s.id === seat.id) && "bg-primary text-primary-foreground",
+                                                        seat.type === 'Premium' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-yellow-500",
+                                                        seat.type === 'Recliner' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-blue-500",
+                                                        seat.type === 'Recliner' && "w-8" // Make recliners slightly wider
+                                                    )}
+                                                    onClick={() => handleSeatSelect(seat)}
+                                                    disabled={!seat.isAvailable}
+                                                    title={`${seat.id} (${seat.type}) - ₹${seat.price}`}
+                                                >
+                                                    {seat.number}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                     </div>
+                                </div>
+
                              {/* Legend */}
-                            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs pt-3">
-                                <div className="flex items-center gap-1"><div className="w-3 h-3 border border-gray-400 rounded-xs"></div> Available</div>
-                                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-primary rounded-xs"></div> Selected</div>
-                                <div className="flex items-center gap-1"><div className="w-3 h-3 border border-yellow-500 rounded-xs"></div> Premium</div>
-                                <div className="flex items-center gap-1"><div className="w-3 h-3 border border-blue-500 rounded-xs"></div> Recliner</div>
-                                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-300 border border-gray-400 rounded-xs"></div> Booked</div>
-                            </div>
+                             <Separator className="my-4"/>
+                             <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs">
+                                <div className="flex items-center gap-1.5"><div className="w-4 h-4 border border-gray-400 rounded-xs"></div> Available</div>
+                                <div className="flex items-center gap-1.5"><div className="w-4 h-4 bg-primary rounded-xs"></div> Selected</div>
+                                <div className="flex items-center gap-1.5"><div className="w-4 h-4 border border-yellow-500 rounded-xs"></div> Premium (₹+)</div>
+                                <div className="flex items-center gap-1.5"><div className="w-4 h-4 border border-blue-500 rounded-xs"></div> Recliner (₹++)</div>
+                                <div className="flex items-center gap-1.5"><div className="w-4 h-4 bg-gray-300 border border-gray-400 rounded-xs"></div> Booked</div>
+                             </div>
                          </div>
                           <DialogFooter className="p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
                             <div className="text-left">
-                                 <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.id).join(', ')} ({selectedSeats.length})</p>
+                                 <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.id).join(', ') || 'None'} ({selectedSeats.length})</p>
                                 <p className="text-lg font-bold">Total: ₹{totalFare.toFixed(2)}</p>
                             </div>
                              <Button
