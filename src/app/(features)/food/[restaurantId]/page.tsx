@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -7,6 +8,9 @@ import { ArrowLeft, Star, Clock, Info, Share2, Search, Heart } from 'lucide-reac
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Input } from '@/components/ui/input'; // Import Input component
+import { Badge } from '@/components/ui/badge'; // Import Badge component
+
 
 // Mock function to get restaurant details (replace with API call)
 const getMockRestaurantDetails = async (id: string) => {
@@ -70,7 +74,10 @@ interface RestaurantDetails extends Restaurant {
 const mockRestaurants: Restaurant[] = [ // Keep this list consistent or import from shared location
     { id: 'r1', name: "Pizza Palace", cuisine: ["Pizza", "Italian", "Fast Food"], rating: 4.5, deliveryTimeMinutes: 35, priceForTwo: 700, imageUrl: "https://picsum.photos/seed/pizza/400/250", offers: ["50% OFF up to ₹100"], distanceKm: 2.1, isPromoted: true },
     { id: 'r2', name: "Biryani Bliss", cuisine: ["Biryani", "North Indian", "Mughlai"], rating: 4.2, deliveryTimeMinutes: 45, priceForTwo: 500, imageUrl: "https://picsum.photos/seed/biryani/400/250", offers: ["₹125 OFF above ₹249"], distanceKm: 4.5, isTrending: true },
-    // ... include other restaurants from the list page
+    { id: 'r3', name: "Green Leaf Cafe", cuisine: ["South Indian", "Healthy Food", "Vegan"], rating: 4.8, deliveryTimeMinutes: 25, priceForTwo: 300, imageUrl: "https://picsum.photos/seed/vegcafe/400/250", isPureVeg: true, distanceKm: 1.5 },
+    { id: 'r4', name: "Dragon Wok", cuisine: ["Chinese", "Asian", "Thai"], rating: 4.0, deliveryTimeMinutes: 40, priceForTwo: 800, imageUrl: "https://picsum.photos/seed/chinese/400/250", offers: ["Free Delivery"], distanceKm: 3.8 },
+    { id: 'r5', name: "Burger Barn", cuisine: ["Burgers", "American", "Fast Food"], rating: 4.3, deliveryTimeMinutes: 30, priceForTwo: 450, imageUrl: "https://picsum.photos/seed/burger/400/250", distanceKm: 2.9, isTrending: true },
+    { id: 'r6', name: "Curry House", cuisine: ["North Indian", "Punjabi"], rating: 3.9, deliveryTimeMinutes: 50, priceForTwo: 600, imageUrl: "https://picsum.photos/seed/curry/400/250", distanceKm: 5.2 },
 ];
 
 
