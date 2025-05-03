@@ -1,87 +1,89 @@
 /**
- * @fileOverview Service functions for managing transaction history.
+ * @fileOverview Service functions for managing transaction history in Firestore.
  */
-
+import { db, auth } from '@/lib/firebase';
+import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { DateRange } from "react-day-picker";
 
 // Interface matching the one in history page
 export interface Transaction {
-  id: string;
+  id: string; // Firestore document ID
+  userId: string; // ID of the user this transaction belongs to
   type: 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Failed' | 'Refund' | 'Cashback';
   name: string; // Payee/Payer/Service name
   description: string; // e.g., Mobile Number, Bill type, reason
   amount: number; // Positive for received/refunds/cashback, negative for sent/payments
-  date: Date;
-  status: 'Completed' | 'Pending' | 'Failed';
-  avatarSeed: string; // For generating consistent mock avatars
-  upiId?: string; // Optional UPI ID involved
-  billerId?: string; // Optional biller ID for recharge/bills
+  date: Date; // Stored as Timestamp in Firestore, converted to Date here
+  status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation'; // Added Processing Activation
+  avatarSeed: string; // Kept for client-side generation
+  upiId?: string;
+  billerId?: string;
+  // Add other relevant fields like reference numbers, etc.
 }
 
-// Mock data (can be expanded)
-const mockTransactions: Transaction[] = [
-    { id: 'tx1', type: 'Sent', name: "Alice Smith", description: "Dinner", amount: -50.00, date: new Date(2024, 6, 21, 19, 30), status: 'Completed', avatarSeed: 'alice', upiId: 'alice@payfriend' },
-    { id: 'tx2', type: 'Received', name: "Bob Johnson", description: "Project Payment", amount: 200.00, date: new Date(2024, 6, 20, 10, 0), status: 'Completed', avatarSeed: 'bob', upiId: 'bob@okbank' },
-    { id: 'tx3', type: 'Recharge', name: "Mobile Recharge", description: "+919876543210", amount: -99.00, date: new Date(2024, 6, 20, 15, 0), status: 'Completed', avatarSeed: 'recharge', billerId: 'airtel-prepaid' },
-    { id: 'tx4', type: 'Bill Payment', name: "Electricity Bill", description: "Consumer #12345", amount: -1250.50, date: new Date(2024, 6, 19, 11, 0), status: 'Completed', avatarSeed: 'electricity', billerId: 'bescom' },
-    { id: 'tx5', type: 'Sent', name: "Charlie Brown", description: "Coffee", amount: -15.00, date: new Date(2024, 6, 18, 9, 0), status: 'Pending', avatarSeed: 'charlie', upiId: 'charlie@paytm' },
-    { id: 'tx6', type: 'Failed', name: "David Williams", description: "Transfer Failed - Insufficient Funds", amount: -100.00, date: new Date(2024, 6, 17, 14, 0), status: 'Failed', avatarSeed: 'david', upiId: 'david.w@ybl' },
-    { id: 'tx7', type: 'Received', name: "Eve Davis", description: "Refund for Order #123", amount: 30.00, date: new Date(2024, 6, 16, 16, 0), status: 'Completed', avatarSeed: 'eve' },
-    { id: 'tx8', type: 'Bill Payment', name: "Water Bill", description: "Conn #W54321", amount: -350.00, date: new Date(2024, 6, 15, 10, 0), status: 'Completed', avatarSeed: 'water', billerId: 'bwssb'},
-    { id: 'tx9', type: 'Cashback', name: "Offer Cashback", description: "Electricity Bill Offer", amount: 50.00, date: new Date(2024, 6, 19, 11, 5), status: 'Completed', avatarSeed: 'cashback'},
-    { id: 'tx10', type: 'Sent', name: "Alice Smith", description: "Movie Tickets", amount: -250.00, date: new Date(2024, 6, 10, 20, 0), status: 'Completed', avatarSeed: 'alice', upiId: 'alice@payfriend' },
-].sort((a, b) => b.date.getTime() - a.date.getTime()); // Ensure sorted by date descending initially
-
-
 export interface TransactionFilters {
-    type?: string; // 'all', 'sent', 'received', etc.
-    status?: string; // 'all', 'completed', 'pending', 'failed'
+    type?: string;
+    status?: string;
     dateRange?: DateRange;
-    searchTerm?: string; // Search by name, description, amount, upiId
+    searchTerm?: string;
 }
 
 /**
- * Asynchronously retrieves the transaction history, optionally filtered.
+ * Asynchronously retrieves the transaction history for the current user, optionally filtered.
  *
  * @param filters Optional filters for transaction type, status, date range, and search term.
+ * @param count Optional limit on the number of transactions to retrieve.
  * @returns A promise that resolves to an array of Transaction objects.
  */
-export async function getTransactionHistory(filters?: TransactionFilters): Promise<Transaction[]> {
-    console.log("Fetching transaction history with filters:", filters);
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 300));
+export async function getTransactionHistory(filters?: TransactionFilters, count?: number): Promise<Transaction[]> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        console.log("No user logged in to get transaction history.");
+        return [];
+    }
+    const userId = currentUser.uid;
+    console.log(`Fetching transaction history for user ${userId} with filters:`, filters);
 
-    let results = mockTransactions;
+    try {
+        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        let q = query(transactionsColRef, orderBy('date', 'desc')); // Default sort: newest first
 
-    if (filters) {
-        // Filter by Type
-        if (filters.type && filters.type !== 'all') {
-          // Handle combined types if needed, e.g., 'payments' = 'recharge' + 'billpayment'
-          // Simple matching for now:
-          results = results.filter(tx => tx.type.toLowerCase().replace(/ /g, '') === filters.type);
+        // Apply Firestore server-side filters where possible
+        if (filters?.type && filters.type !== 'all') {
+            q = query(q, where('type', '==', filters.type));
         }
-
-        // Filter by Status
-        if (filters.status && filters.status !== 'all') {
-          results = results.filter(tx => tx.status.toLowerCase() === filters.status);
+        if (filters?.status && filters.status !== 'all') {
+             q = query(q, where('status', '==', filters.status));
         }
-
-        // Filter by Date Range
-        if (filters.dateRange?.from) {
-            const fromDate = new Date(filters.dateRange.from);
-            fromDate.setHours(0, 0, 0, 0); // Start of the day
-            results = results.filter(tx => tx.date >= fromDate);
+        if (filters?.dateRange?.from) {
+             q = query(q, where('date', '>=', Timestamp.fromDate(filters.dateRange.from)));
         }
-         if (filters.dateRange?.to) {
+         if (filters?.dateRange?.to) {
+            // Adjust 'to' date to include the whole day
             const toDate = new Date(filters.dateRange.to);
-            toDate.setHours(23, 59, 59, 999); // End of the day
-            results = results.filter(tx => tx.date <= toDate);
+            toDate.setHours(23, 59, 59, 999);
+            q = query(q, where('date', '<=', Timestamp.fromDate(toDate)));
         }
 
-        // Filter by Search Term
-        if (filters.searchTerm) {
+        if (count) {
+             q = query(q, limit(count));
+        }
+
+        const querySnapshot = await getDocs(q);
+
+        let transactions = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                date: (data.date as Timestamp).toDate(), // Convert Firestore Timestamp to JS Date
+            } as Transaction;
+        });
+
+        // Apply client-side search term filtering if provided (more flexible than Firestore limitations)
+         if (filters?.searchTerm) {
             const lowerSearchTerm = filters.searchTerm.toLowerCase();
-            results = results.filter(tx =>
+            transactions = transactions.filter(tx =>
                 tx.name.toLowerCase().includes(lowerSearchTerm) ||
                 tx.description.toLowerCase().includes(lowerSearchTerm) ||
                 tx.amount.toString().includes(lowerSearchTerm) ||
@@ -90,27 +92,55 @@ export async function getTransactionHistory(filters?: TransactionFilters): Promi
                 tx.id.toLowerCase().includes(lowerSearchTerm)
             );
         }
-    }
 
-    // Return already sorted mock data (by date descending) after filtering
-    return results;
+
+        console.log(`Fetched ${transactions.length} transactions.`);
+        return transactions;
+
+    } catch (error) {
+        console.error("Error fetching transaction history:", error);
+        throw new Error("Could not fetch transaction history.");
+    }
 }
 
 /**
- * Adds a new transaction to the mock history.
- * In a real app, this would likely happen server-side after a payment.
- * This is primarily for simulation purposes.
+ * Adds a new transaction record to Firestore for the current user.
  *
- * @param transaction The transaction details to add.
+ * @param transactionData The transaction details to add (excluding id, userId, date, avatarSeed).
+ * @returns A promise that resolves to the newly created Transaction object (with id, userId, date).
  */
-export function addTransaction(transaction: Omit<Transaction, 'id' | 'date' | 'avatarSeed'>): Transaction {
-    console.log("Adding transaction:", transaction);
-    const newTransaction: Transaction = {
-        ...transaction,
-        id: `txn_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        date: new Date(),
-        avatarSeed: transaction.name.toLowerCase().replace(/\s+/g, '') || 'default', // Generate seed from name
-    };
-    mockTransactions.unshift(newTransaction); // Add to beginning (newest)
-    return newTransaction;
+export async function addTransaction(transactionData: Omit<Transaction, 'id' | 'userId' | 'date' | 'avatarSeed'>): Promise<Transaction> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error("User must be logged in to add transaction.");
+    }
+    const userId = currentUser.uid;
+    console.log("Adding transaction for user:", userId, transactionData);
+
+    try {
+        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        const dataToSave = {
+            ...transactionData,
+            userId: userId,
+            date: serverTimestamp(), // Use server timestamp
+        };
+        const docRef = await addDoc(transactionsColRef, dataToSave);
+        console.log("Transaction added with ID:", docRef.id);
+
+        // We need to fetch the doc again to get the server timestamp resolved to a date
+        // Or we can just return with a client-side date for immediate feedback,
+        // knowing the server timestamp is slightly different. Let's use client-side for now.
+        const newTransaction: Transaction = {
+            ...transactionData,
+            id: docRef.id,
+            userId: userId,
+            date: new Date(), // Use client date for immediate feedback
+            avatarSeed: transactionData.name.toLowerCase().replace(/\s+/g, '') || 'default',
+        };
+        return newTransaction;
+
+    } catch (error) {
+        console.error("Error adding transaction:", error);
+        throw new Error("Could not add transaction.");
+    }
 }

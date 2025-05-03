@@ -1,20 +1,21 @@
 
 'use client';
 
-import { useParams, useRouter } from 'next/navigation'; // Import useRouter
+import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Landmark, Banknote, Loader2, Send, X } from 'lucide-react'; // Added X
+import { ArrowLeft, User, Landmark, Loader2, Send, X } from 'lucide-react'; // Removed Banknote icon
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { suggestFrequentContacts, SmartPayeeSuggestionInput } from '@/ai/flows/smart-payee-suggestion';
-import { getContacts, Payee } from '@/services/contacts'; // Import contact service
-import { processUpiPayment, UpiTransaction } from '@/services/upi'; // Import UPI service
+import { getContacts, Payee } from '@/services/contacts'; // Use Firestore contact service
+import { processUpiPayment, UpiTransaction } from '@/services/upi';
 import { addTransaction } from '@/services/transactions'; // Import transaction service
+import { auth } from '@/lib/firebase'; // Import Firebase auth instance
 
 // Debounce function
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -33,17 +34,17 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 
 export default function SendMoneyPage() {
   const params = useParams();
-  const router = useRouter(); // Initialize router
-  const type = typeof params.type === 'string' ? (params.type === 'bank' ? 'bank' : 'mobile') : 'mobile'; // Default to mobile
+  const router = useRouter();
+  const type = typeof params.type === 'string' ? (params.type === 'bank' ? 'bank' : 'mobile') : 'mobile';
 
   const [searchTerm, setSearchTerm] = useState('');
   const [amount, setAmount] = useState('');
   const [selectedPayee, setSelectedPayee] = useState<Payee | null>(null);
-  const [manualIdentifier, setManualIdentifier] = useState(''); // For manual input
+  const [manualIdentifier, setManualIdentifier] = useState('');
   const [filteredPayees, setFilteredPayees] = useState<Payee[]>([]);
   const [suggestedPayees, setSuggestedPayees] = useState<Payee[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [isLoadingSearch, setIsLoadingSearch] = useState(false); // Loading state for search
+  const [isLoadingSearch, setIsLoadingSearch] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
 
@@ -56,11 +57,16 @@ export default function SendMoneyPage() {
     const fetchSuggestions = async () => {
       setIsLoadingSuggestions(true);
       try {
-        const allContacts = await getContacts(); // Get all contacts for suggestion base
+        // Get contacts from Firestore to base suggestions on
+        const allContacts = await getContacts();
+        // Get current user ID
+        const currentUserId = auth.currentUser?.uid;
+        if (!currentUserId) return; // Need user ID for AI call
+
         const recentContactsData: SmartPayeeSuggestionInput = {
-          userId: 'currentUser123', // Replace with actual user ID
-          // Use IDs from fetched contacts for better accuracy if API allows
-          recentContacts: allContacts.slice(0, 5).map(c => c.id) // Mock recent contacts
+          userId: currentUserId,
+          // Use actual contact IDs for the AI flow
+          recentContacts: allContacts.slice(0, 10).map(c => c.id) // Use IDs, limit for demo
         };
         const result = await suggestFrequentContacts(recentContactsData);
         const suggestions = result.suggestedContacts
@@ -70,15 +76,14 @@ export default function SendMoneyPage() {
       } catch (error) {
         console.error("Failed to fetch suggestions:", error);
         // Optional: Show non-critical toast
-        // toast({ variant: "default", title: "Could not load suggestions" });
       } finally {
         setIsLoadingSuggestions(false);
       }
     };
     fetchSuggestions();
-  }, []); // Run only once
+  }, []);
 
-    // Function to fetch contacts based on search
+    // Function to fetch contacts based on search from Firestore
     const searchContacts = useCallback(async (term: string) => {
         if (term.trim() === '') {
             setFilteredPayees([]);
@@ -87,10 +92,10 @@ export default function SendMoneyPage() {
         }
         setIsLoadingSearch(true);
         try {
+            // Use Firestore service to search
             const results = await getContacts(term);
-            // Filter results further based on the send 'type' if needed
             const relevantResults = results.filter(payee =>
-                 type === 'mobile' ? payee.type === 'mobile' : true // Mobile only allows mobile, Bank allows bank/upi id
+                 type === 'mobile' ? payee.type === 'mobile' : true // Mobile only allows mobile, Bank allows bank/upi id/account
              );
             setFilteredPayees(relevantResults);
         } catch (error) {
@@ -108,18 +113,18 @@ export default function SendMoneyPage() {
 
   // Trigger search when searchTerm changes
   useEffect(() => {
-     if (!selectedPayee) { // Only search if no payee is selected
+     if (!selectedPayee) {
         debouncedSearchContacts(searchTerm);
      } else {
-        setFilteredPayees([]); // Clear results if a payee is selected
+        setFilteredPayees([]);
      }
   }, [searchTerm, selectedPayee, debouncedSearchContacts]);
 
   const handleSelectPayee = (payee: Payee) => {
     setSelectedPayee(payee);
-    setSearchTerm(payee.name); // Fill search bar with name for display
-    setManualIdentifier(''); // Clear manual identifier
-    setFilteredPayees([]); // Hide dropdown
+    setSearchTerm(payee.name);
+    setManualIdentifier('');
+    setFilteredPayees([]);
   };
 
   const handleSendMoney = async (e: React.FormEvent) => {
@@ -137,7 +142,7 @@ export default function SendMoneyPage() {
       return;
     }
 
-    // Basic validation for UPI ID / Mobile / Account Number (can be improved)
+    // Basic validation
      if (type === 'mobile' && !targetIdentifier.match(/^[6-9]\d{9}$/)) {
         toast({ variant: "destructive", title: "Invalid Mobile Number" });
         return;
@@ -147,41 +152,40 @@ export default function SendMoneyPage() {
          return;
      }
 
-
     setIsSending(true);
     console.log("Sending money:", { identifier: targetIdentifier, amount, type });
 
     try {
-        // Simulate payment processing - Replace with actual API call
-        // In a real app, this would involve PIN entry securely
-        // const paymentResult = await processUpiPayment(targetIdentifier, Number(amount), enteredPin);
+        // ** TODO: Integrate secure PIN entry here before calling processUpiPayment **
+        const enteredPin = prompt("Enter UPI PIN (DEMO ONLY - DO NOT USE IN PROD)"); // SECURITY RISK - FOR DEMO ONLY
+        if (!enteredPin) {
+            toast({ title: "PIN Entry Cancelled" });
+            setIsSending(false);
+            return;
+        }
 
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
-        const paymentResult: UpiTransaction = { // Mock success result
-             transactionId: `TXN${Date.now()}`,
-             amount: Number(amount),
-             recipientUpiId: targetIdentifier,
-             status: 'Completed',
-        };
+        const paymentResult = await processUpiPayment(targetIdentifier, Number(amount), enteredPin, `Payment to ${targetPayeeName}`);
 
-
-        // Add to local transaction history (simulation)
-        addTransaction({
-            type: 'Sent',
+        // Add transaction to Firestore history
+        await addTransaction({
+            type: paymentResult.status === 'Completed' ? 'Sent' : 'Failed',
             name: targetPayeeName,
-            description: `Sent via ${type === 'mobile' ? 'Mobile' : 'UPI/Bank'}`,
-            amount: -Number(amount), // Negative for sent
-            status: paymentResult.status as Transaction['status'], // Cast status
-            upiId: targetIdentifier, // Store the identifier used
+            description: `Sent via ${type === 'mobile' ? 'Mobile' : 'UPI/Bank'} ${paymentResult.message ? `- ${paymentResult.message}` : ''}`,
+            amount: -Number(amount),
+            status: paymentResult.status as Transaction['status'],
+            upiId: targetIdentifier,
+            billerId: undefined, // Not applicable
         });
 
-         toast({
-            title: "Payment Successful",
-            description: `₹${amount} sent to ${targetPayeeName}`,
-        });
-
-        // Redirect to home or history page after success
-        router.push('/');
+         if (paymentResult.status === 'Completed') {
+             toast({
+                title: "Payment Successful",
+                description: `₹${amount} sent to ${targetPayeeName}`,
+             });
+             router.push('/'); // Redirect on success
+         } else {
+             throw new Error(paymentResult.message || `Payment ${paymentResult.status}`);
+         }
 
     } catch (error: any) {
         console.error("Payment failed:", error);
@@ -190,22 +194,22 @@ export default function SendMoneyPage() {
             title: "Payment Failed",
             description: error.message || "Could not complete the transaction.",
          });
-         // Add failed transaction to history
-          addTransaction({
-            type: 'Failed',
-            name: targetPayeeName,
-            description: `Payment Failed - ${error.message || 'Unknown Error'}`,
-            amount: -Number(amount),
-            status: 'Failed',
-            upiId: targetIdentifier,
-        });
+         // Add failed transaction to history even if processUpiPayment throws
+          try {
+                await addTransaction({
+                    type: 'Failed',
+                    name: targetPayeeName,
+                    description: `Payment Failed - ${error.message || 'Unknown Error'}`,
+                    amount: -Number(amount),
+                    status: 'Failed',
+                    upiId: targetIdentifier,
+                    billerId: undefined,
+                });
+          } catch (historyError) {
+                console.error("Failed to add failed transaction to history:", historyError);
+          }
     } finally {
        setIsSending(false);
-       // Optionally clear form fields here if not redirecting immediately
-        // setSelectedPayee(null);
-        // setSearchTerm('');
-        // setManualIdentifier('');
-        // setAmount('');
     }
   };
 
@@ -244,22 +248,21 @@ export default function SendMoneyPage() {
                 <Input
                   id="payee-input"
                   placeholder={pageDetails.placeholder}
-                  value={selectedPayee ? selectedPayee.name : searchTerm} // Show name if selected, else search term
+                  value={selectedPayee ? selectedPayee.name : searchTerm}
                   onChange={(e) => {
                       setSearchTerm(e.target.value);
                       if (selectedPayee) {
-                         setSelectedPayee(null); // Deselect if user modifies search after selection
+                         setSelectedPayee(null);
                          setManualIdentifier('');
                       }
                   }}
-                  required={!selectedPayee && !manualIdentifier} // Required if nothing is selected/entered
-                  className="pr-10" // Make space for loader or clear button
-                  disabled={!!selectedPayee} // Disable input if payee is selected from list
+                  required={!selectedPayee && !manualIdentifier}
+                  className="pr-10"
+                  disabled={!!selectedPayee}
                 />
                  {isLoadingSearch && !selectedPayee && (
                      <Loader2 className="absolute right-3 top-[34px] h-4 w-4 animate-spin text-muted-foreground" />
                  )}
-                 {/* Clear button for search input when not selected */}
                   {searchTerm && !selectedPayee && !isLoadingSearch && (
                      <Button variant="ghost" size="icon" className="absolute right-1 top-[26px] h-7 w-7" onClick={() => setSearchTerm('')}>
                         <X className="h-4 w-4 text-muted-foreground"/>
@@ -267,7 +270,7 @@ export default function SendMoneyPage() {
                  )}
 
                  {/* Suggestions/Results Dropdown */}
-                 {(!selectedPayee && !isLoadingSearch && (filteredPayees.length > 0 || (searchTerm.trim() === '' && suggestedPayees.length > 0))) && (
+                 {(!selectedPayee && (filteredPayees.length > 0 || (searchTerm.trim() === '' && suggestedPayees.length > 0))) && (
                     <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
                         <p className="text-xs font-semibold p-2 text-muted-foreground">
                             {searchTerm.trim() === '' ? 'Suggested Contacts' : 'Search Results'}
@@ -279,7 +282,7 @@ export default function SendMoneyPage() {
                             onClick={() => handleSelectPayee(payee)}
                             >
                             <Avatar className="h-8 w-8 mr-3">
-                                <AvatarImage src={`https://picsum.photos/seed/${payee.avatarSeed}/40/40`} alt={payee.name} data-ai-hint="person avatar"/>
+                                <AvatarImage src={`https://picsum.photos/seed/${payee.avatarSeed || payee.id}/40/40`} alt={payee.name} data-ai-hint="person avatar"/>
                                 <AvatarFallback>{payee.name.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div>
@@ -288,8 +291,8 @@ export default function SendMoneyPage() {
                             </div>
                             </div>
                         ))}
-                        {isLoadingSuggestions && searchTerm.trim() === '' && <p className="p-2 text-sm text-muted-foreground">Loading suggestions...</p>}
-                         {(searchTerm.trim() !== '' && filteredPayees.length === 0) && <p className="p-2 text-sm text-muted-foreground">No contacts found.</p>}
+                        {isLoadingSuggestions && searchTerm.trim() === '' && !isLoadingSearch && <p className="p-2 text-sm text-muted-foreground">Loading suggestions...</p>}
+                         {(searchTerm.trim() !== '' && !isLoadingSearch && filteredPayees.length === 0) && <p className="p-2 text-sm text-muted-foreground">No contacts found.</p>}
                     </div>
                  )}
               </div>
@@ -298,7 +301,7 @@ export default function SendMoneyPage() {
               {selectedPayee && (
                 <div className="flex items-center p-3 border border-primary rounded-md bg-primary/5">
                   <Avatar className="h-9 w-9 mr-3">
-                     <AvatarImage src={`https://picsum.photos/seed/${selectedPayee.avatarSeed}/40/40`} alt={selectedPayee.name} data-ai-hint="person avatar"/>
+                     <AvatarImage src={`https://picsum.photos/seed/${selectedPayee.avatarSeed || selectedPayee.id}/40/40`} alt={selectedPayee.name} data-ai-hint="person avatar"/>
                     <AvatarFallback>{selectedPayee.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-grow overflow-hidden">
@@ -311,7 +314,7 @@ export default function SendMoneyPage() {
                 </div>
               )}
 
-              {/* Manual Identifier Input (Show only if no payee selected from search/suggestions) */}
+              {/* Manual Identifier Input */}
                {!selectedPayee && (
                  <div className="space-y-2">
                     <Label htmlFor="manual-identifier">Enter {pageDetails.identifierLabel}</Label>
@@ -320,11 +323,10 @@ export default function SendMoneyPage() {
                     placeholder={`Manually enter ${pageDetails.identifierLabel}`}
                     value={manualIdentifier}
                     onChange={(e) => setManualIdentifier(e.target.value)}
-                    required={!selectedPayee} // Required only if no payee selected
+                    required={!selectedPayee}
                     />
                 </div>
                )}
-
 
               {/* Amount Input */}
               <div className="space-y-2">
@@ -340,8 +342,8 @@ export default function SendMoneyPage() {
                     required
                     min="1"
                     step="0.01"
-                    className="pl-7 text-lg font-semibold" // Make amount input larger
-                    disabled={!selectedPayee && !manualIdentifier.trim()} // Disable if no recipient identifier
+                    className="pl-7 text-lg font-semibold"
+                    disabled={!selectedPayee && !manualIdentifier.trim()}
                   />
                 </div>
               </div>
@@ -369,3 +371,4 @@ export default function SendMoneyPage() {
     </div>
   );
 }
+      

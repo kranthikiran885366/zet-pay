@@ -1,21 +1,27 @@
 /**
- * @fileOverview Service functions for authentication.
+ * @fileOverview Service functions for authentication using Firebase.
  */
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase'; // Import initialized Firebase auth instance
 
 /**
- * Logs the user out.
- * In a real application, this would clear tokens/session state and potentially call a backend endpoint.
+ * Logs the user out using Firebase Authentication.
  *
  * @returns A promise that resolves when logout is complete.
  */
 export async function logout(): Promise<void> {
-    console.log("Logging out user...");
-    // TODO: Implement actual logout logic:
-    // - Clear local/session storage tokens
-    // - Clear any user state in context/store
-    // - Call backend logout endpoint if necessary
-    // - Redirect to login page
-    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API call
-    console.log("Logout successful (simulated).");
-    // In a real app, you'd redirect here: window.location.href = '/login';
+    console.log("Logging out user via Firebase...");
+    try {
+        await signOut(auth);
+        console.log("Firebase logout successful.");
+        // Additional client-side cleanup (e.g., clearing user state) might be needed here
+        // Redirection should happen in the component calling this service.
+    } catch (error) {
+        console.error("Firebase logout error:", error);
+        // Re-throw the error so the calling component can handle it (e.g., show toast)
+        throw new Error("Logout failed. Please try again.");
+    }
 }
+
+// TODO: Implement login, signup, password reset functions using Firebase Auth as needed.
+// e.g., signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail

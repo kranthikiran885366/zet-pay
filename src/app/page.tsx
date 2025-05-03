@@ -1,22 +1,17 @@
 
-'use client'; // Add this directive to make it a Client Component
+'use client';
 
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
-import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard } from "lucide-react"; // Added relevant icons
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent } from "lucide-react";
 import Image from 'next/image';
+import { useEffect, useState } from 'react'; // Import useEffect and useState
+import { getTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
-// Mock data (replace with actual data fetching)
-const recentTransactions = [
-  { id: 1, name: "Alice Smith", amount: -50.00, date: "Today", avatar: "/avatars/01.png" },
-  { id: 2, name: "Bob Johnson", amount: 200.00, date: "Yesterday", avatar: "/avatars/02.png" },
-  { id: 3, name: "Pizza Place", amount: -25.50, date: "Yesterday", avatar: "/avatars/03.png" },
-];
-
+// Static data (can be fetched later if needed)
 const offers = [
   { id: 1, title: "50% off on Movies", description: "Book tickets via PayFriend", imageUrl: "https://picsum.photos/seed/movie/200/100", dataAiHint: "movie ticket discount" },
   { id: 2, title: "Flat ₹100 Cashback", description: "On Electricity Bill Payment", imageUrl: "https://picsum.photos/seed/electricity/200/100", dataAiHint: "cashback electricity bill" },
@@ -24,10 +19,10 @@ const offers = [
 ];
 
 const switchApps = [
-  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/bus" }, // Use bus booking page as placeholder
-  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Link to home for now
-  { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"}, // Updated icon & href
-  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Link to home for now
+  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/" }, // Placeholder href
+  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Placeholder href
+  { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"},
+  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Placeholder href
 ];
 
 const quickLinks = [
@@ -35,14 +30,41 @@ const quickLinks = [
   { name: "Mobile", icon: Smartphone, href: "/recharge/mobile" },
   { name: "DTH", icon: Tv, href: "/recharge/dth" },
   { name: "Electricity", icon: Bolt, href: "/bills/electricity" },
-  { name: "Credit Card", icon: CreditCard, href: "/bills/credit-card" }, // Use specific icon
+  { name: "Credit Card", icon: CreditCard, href: "/bills/credit-card" },
   { name: "FASTag", icon: RadioTower, href: "/recharge/fastag" },
   { name: "Broadband", icon: Wifi, href: "/bills/broadband" },
   { name: "Data Card", icon: HardDrive, href: "/recharge/datacard" },
-  { name: "See All", icon: BadgePercent, href: "/services" }, // Keep "See All" last in this section or move it
+  { name: "See All", icon: MoreHorizontal, href: "/services" },
 ];
 
 export default function Home() {
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
+  const { toast } = useToast();
+
+  // Fetch recent transactions on component mount
+  useEffect(() => {
+    const fetchRecent = async () => {
+      setIsLoadingTransactions(true);
+      try {
+        // Fetch only the latest 3 transactions
+        const transactions = await getTransactionHistory(undefined, 3);
+        setRecentTransactions(transactions);
+      } catch (error) {
+        console.error("Failed to fetch recent transactions:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not load recent transactions.",
+        });
+      } finally {
+        setIsLoadingTransactions(false);
+      }
+    };
+
+    fetchRecent();
+  }, [toast]);
+
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
       {/* Header */}
@@ -50,15 +72,11 @@ export default function Home() {
         <div className="flex items-center gap-2">
           <Link href="/profile" passHref>
             <Avatar className="h-8 w-8 cursor-pointer">
-              <AvatarImage src="https://picsum.photos/seed/user/40/40" alt="User" data-ai-hint="user profile"/>
+              <AvatarImage src="https://picsum.photos/seed/user1/40/40" alt="User" data-ai-hint="user profile"/>
               <AvatarFallback>U</AvatarFallback>
             </Avatar>
           </Link>
-          <div>
-            {/* Location can be dynamic later */}
-            {/* <div className="text-sm font-medium">Your Location</div>
-            <div className="text-xs opacity-80">City, State</div> */}
-          </div>
+          {/* Location can be dynamic later */}
         </div>
         <div className="flex items-center gap-3">
           <Link href="/scan" passHref>
@@ -66,10 +84,6 @@ export default function Home() {
               <ScanLine className="h-5 w-5" />
             </Button>
           </Link>
-          {/* Search might be implemented later */}
-          {/* <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
-            <Search className="h-5 w-5" />
-          </Button> */}
           <Link href="/scan?showMyQR=true" passHref>
             <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
               <QrCode className="h-5 w-5" />
@@ -149,7 +163,7 @@ export default function Home() {
             </Link>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-             {offers.slice(0, 3).map((offer) => ( // Show only first 3 offers
+             {offers.slice(0, 3).map((offer) => (
               <Link href={`/offers/${offer.id}`} key={offer.id} passHref>
                 <div className="relative rounded-lg overflow-hidden cursor-pointer group">
                   <Image
@@ -177,7 +191,6 @@ export default function Home() {
            <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg font-semibold text-primary">PayFriend Switch</CardTitle>
             {/* Link to a dedicated Switch page if needed */}
-             {/* <Button variant="link" size="sm" className="text-primary p-0 h-auto">See More</Button> */}
            </CardHeader>
            <CardContent className="grid grid-cols-4 gap-4 text-center">
              {switchApps.map((app) => (
@@ -202,23 +215,30 @@ export default function Home() {
              </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentTransactions.slice(0, 3).map((tx) => ( // Show only first 3 transactions
-             <div key={tx.id} className="flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                 <Avatar className="h-9 w-9">
-                   <AvatarImage src={`https://picsum.photos/seed/${tx.id}/40/40`} alt={tx.name} data-ai-hint="person avatar"/>
-                   <AvatarFallback>{tx.name.charAt(0)}</AvatarFallback>
-                 </Avatar>
-                 <div>
-                   <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                   <p className="text-xs text-muted-foreground">{tx.date}</p>
+            {isLoadingTransactions ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Loading transactions...</p>
+            ) : recentTransactions.length === 0 ? (
+                 <p className="text-sm text-muted-foreground text-center py-4">No recent transactions.</p>
+            ) : (
+                 recentTransactions.map((tx) => (
+                 <div key={tx.id} className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <Avatar className="h-9 w-9">
+                       <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed}/40/40`} alt={tx.name} data-ai-hint="person avatar"/>
+                       <AvatarFallback>{tx.name.charAt(0)}</AvatarFallback>
+                     </Avatar>
+                     <div>
+                       <p className="text-sm font-medium text-foreground">{tx.name}</p>
+                       {/* Use tx.date directly */}
+                       <p className="text-xs text-muted-foreground">{tx.date.toLocaleDateString()}</p>
+                     </div>
+                   </div>
+                   <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
+                     {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(2)}
+                   </p>
                  </div>
-               </div>
-               <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
-                 {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(2)}
-               </p>
-             </div>
-            ))}
+                ))
+            )}
           </CardContent>
          </Card>
 
@@ -234,11 +254,11 @@ export default function Home() {
          </Link>
           <Link href="/services" passHref>
              <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                 <Bolt className="h-5 w-5 mb-1" /> {/* Use Electricity icon for Bills */}
+                 <Bolt className="h-5 w-5 mb-1" />
                  <span className="text-xs">Bills</span>
              </Button>
           </Link>
-          <Link href="/live/bus" passHref> {/* Link to Live Tracking */}
+          <Link href="/live/bus" passHref>
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
             <MapPinned className="h-5 w-5 mb-1" />
             <span className="text-xs">Live Tracking</span>
@@ -260,3 +280,4 @@ export default function Home() {
     </div>
   );
 }
+      

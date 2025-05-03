@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation'; // Import useRouter
-import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react'; // Import useRef
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,19 +11,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Send, Lock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { processUpiPayment, UpiTransaction, verifyUpiId } from '@/services/upi'; // Use actual service, added verifyUpiId
-import { addTransaction, Transaction } from '@/services/transactions'; // Use transaction service
+import { processUpiPayment, UpiTransaction, verifyUpiId, getLinkedAccounts, BankAccount } from '@/services/upi'; // Use actual service
+import { addTransaction, Transaction } from '@/services/transactions';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Import Select
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // For PIN prompt
+
 
 // Helper to parse UPI URL (basic example)
 const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; amount?: string, note?: string } => {
     try {
-        const decodedUrl = decodeURIComponent(url); // Decode first
+        const decodedUrl = decodeURIComponent(url);
         const params = new URLSearchParams(decodedUrl.substring(decodedUrl.indexOf('?') + 1));
         return {
             payeeName: params.get('pn') || undefined,
             payeeAddress: params.get('pa') || undefined,
             amount: params.get('am') || undefined,
-            note: params.get('tn') || undefined, // Transaction Note
+            note: params.get('tn') || undefined,
         };
     } catch (error) {
         console.error("Failed to parse UPI URL:", error);
@@ -33,27 +36,49 @@ const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; 
 
 export default function PaymentConfirmationPage() {
     const searchParams = useSearchParams();
-    const router = useRouter(); // Initialize useRouter
+    const router = useRouter();
     const { toast } = useToast();
 
     // State for payment details
     const [payeeName, setPayeeName] = useState<string>('Verifying Payee...');
     const [payeeAddress, setPayeeAddress] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
-    const [note, setNote] = useState<string>(''); // State for transaction note
+    const [note, setNote] = useState<string>('');
     const [upiPin, setUpiPin] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
-    const [isVerifying, setIsVerifying] = useState(true); // State for initial verification
-    const [paymentResult, setPaymentResult] = useState<Transaction | null>(null); // Use Transaction interface
+    const [isVerifying, setIsVerifying] = useState(true);
+    const [paymentResult, setPaymentResult] = useState<Transaction | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [accounts, setAccounts] = useState<BankAccount[]>([]); // State for linked accounts
+    const [selectedAccountUpiId, setSelectedAccountUpiId] = useState<string>(''); // State for selected account
+    const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
+    const pinPromiseResolverRef = useRef<{ resolve: (pin: string | null) => void } | null>(null);
+
+    // Fetch linked accounts and set default
+    useEffect(() => {
+        const fetchUserAccounts = async () => {
+             try {
+                 const userAccounts = await getLinkedAccounts();
+                 setAccounts(userAccounts);
+                 const defaultAccount = userAccounts.find(acc => acc.isDefault);
+                 setSelectedAccountUpiId(defaultAccount?.upiId || userAccounts[0]?.upiId || '');
+             } catch (accError) {
+                 console.error("Failed to fetch accounts for payment:", accError);
+                 setError("Could not load your payment accounts.");
+                 toast({ variant: "destructive", title: "Error", description: "Could not load payment accounts." });
+             }
+         };
+         fetchUserAccounts();
+    }, [toast]);
+
 
     // Extract details from URL parameters and verify UPI ID
     useEffect(() => {
         const directPayeeId = searchParams.get('pa');
         const directPayeeName = searchParams.get('pn');
         const directAmount = searchParams.get('am');
-        const directNote = searchParams.get('tn'); // Get note from direct params too
-        const upiData = searchParams.get('data'); // For scanned QR data
+        const directNote = searchParams.get('tn');
+        const upiData = searchParams.get('data');
 
         let details = {
             payeeName: directPayeeName,
@@ -64,7 +89,7 @@ export default function PaymentConfirmationPage() {
 
         if (upiData) {
             const parsed = parseUpiUrl(upiData);
-            details = { ...details, ...parsed }; // Parsed data can override direct params
+            details = { ...details, ...parsed };
         }
 
         if (!details.payeeAddress) {
@@ -75,17 +100,17 @@ export default function PaymentConfirmationPage() {
         }
 
         setPayeeAddress(details.payeeAddress);
-        setAmount(details.amount || ''); // Set amount or empty string if missing
-        setNote(details.note || ''); // Set note or empty string if missing
-        setPayeeName(details.payeeName || 'Verifying Payee...'); // Initial name
+        setAmount(details.amount || '');
+        setNote(details.note || '');
+        setPayeeName(details.payeeName || 'Verifying Payee...');
 
         // Verify UPI ID
         const verifyRecipient = async (address: string) => {
             setIsVerifying(true);
-            setError(null); // Clear previous errors
+            setError(null);
             try {
                  const verifiedName = await verifyUpiId(address);
-                 setPayeeName(verifiedName); // Update with verified name
+                 setPayeeName(verifiedName);
                  toast({ title: "Payee Verified", description: `Paying ${verifiedName}` });
             } catch (verificationError: any) {
                  console.error("UPI ID Verification failed:", verificationError);
@@ -101,6 +126,33 @@ export default function PaymentConfirmationPage() {
 
     }, [searchParams, toast]);
 
+    // Function to show PIN dialog and return a Promise
+    const promptForPin = (): Promise<string | null> => {
+        return new Promise((resolve) => {
+            setUpiPin(''); // Clear previous PIN
+            pinPromiseResolverRef.current = { resolve }; // Store the resolver
+            setIsPinDialogOpen(true);
+        });
+    };
+
+    const handlePinSubmit = () => {
+        if ((upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
+            pinPromiseResolverRef.current.resolve(upiPin);
+            pinPromiseResolverRef.current = null;
+            setIsPinDialogOpen(false);
+        } else {
+            toast({ variant: "destructive", title: "Invalid PIN", description: "Please enter a 4 or 6 digit UPI PIN." });
+        }
+    };
+
+    const handlePinCancel = () => {
+        if (pinPromiseResolverRef.current) {
+            pinPromiseResolverRef.current.resolve(null); // Resolve with null on cancel
+            pinPromiseResolverRef.current = null;
+        }
+        setIsPinDialogOpen(false);
+    };
+
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!payeeAddress || !amount || Number(amount) <= 0) {
@@ -108,59 +160,81 @@ export default function PaymentConfirmationPage() {
             toast({ variant: "destructive", title: "Invalid Amount" });
             return;
         }
-        if (upiPin.length !== 4 && upiPin.length !== 6) {
-            setError("Please enter your 4 or 6 digit UPI PIN.");
-            toast({ variant: "destructive", title: "Invalid UPI PIN" });
-            return;
-        }
+         if (!selectedAccountUpiId) {
+             setError("Please select a bank account to pay from.");
+             toast({ variant: "destructive", title: "Account Not Selected" });
+             return;
+         }
+
         setError(null);
         setIsLoading(true);
         setPaymentResult(null);
 
         try {
-            // Call the actual UPI service
-            const result = await processUpiPayment(payeeAddress, Number(amount), upiPin, note || `Payment to ${payeeName}`);
+             // Prompt for PIN
+             const enteredPin = await promptForPin();
+             if (enteredPin === null) {
+                 toast({ title: "Payment Cancelled", description: "PIN entry was cancelled." });
+                 setIsLoading(false);
+                 return;
+             }
 
-            // Add transaction to history using the transaction service
-            const historyEntry = addTransaction({
+            // Call the actual UPI service with selected account (implicitly handled by SDK usually)
+            const result = await processUpiPayment(payeeAddress, Number(amount), enteredPin, note || `Payment to ${payeeName}`);
+
+            // Add transaction to Firestore history using the transaction service
+            const historyEntry = await addTransaction({
                 type: result.status === 'Completed' ? 'Sent' : 'Failed',
                 name: payeeName,
-                description: note || `Payment to ${payeeName}${result.status !== 'Completed' ? ` (${result.status})` : ''}`,
-                amount: -Number(amount), // Negative for sent/failed payment attempts
+                description: note || `Payment to ${payeeName}${result.status !== 'Completed' ? ` (${result.status} - ${result.message || ''})` : ''}`,
+                amount: -Number(amount),
                 status: result.status as Transaction['status'],
                 upiId: payeeAddress,
-                 // Assuming processUpiPayment returns a similar structure or can be mapped
-                 // id: result.transactionId, // This should be handled by addTransaction
-                 // date: new Date(), // This should be handled by addTransaction
-                 // avatarSeed: payeeName, // This should be handled by addTransaction
+                billerId: undefined, // Not applicable
             });
 
-            setPaymentResult(historyEntry); // Display result using the Transaction interface structure
+            setPaymentResult(historyEntry);
 
             if (result.status === 'Completed') {
                  toast({ title: "Payment Successful!", description: `₹${amount} sent to ${payeeName}. Transaction ID: ${result.transactionId}` });
-                 // Redirect to home after a delay
                  setTimeout(() => router.push('/'), 2000);
             } else {
-                 // Error handled in catch block, but set status here
-                 setError(`Payment ${result.status.toLowerCase()}. Transaction ID: ${result.transactionId || 'N/A'}`);
-                 toast({ variant: "destructive", title: `Payment ${result.status}`, description: `Failed to send ₹${amount} to ${payeeName}` });
+                 setError(`Payment ${result.status.toLowerCase()}. ${result.message || ''}`);
+                 toast({ variant: "destructive", title: `Payment ${result.status}`, description: result.message || `Failed to send ₹${amount} to ${payeeName}` });
             }
         } catch (err: any) {
              console.error("Payment failed:", err);
              const message = err.message || "Payment failed due to an unexpected error.";
              setError(message);
 
-              // Add failed transaction to history
-            const failedEntry = addTransaction({
-                 type: 'Failed',
-                 name: payeeName,
-                 description: `Payment Failed - ${message}`,
-                 amount: -Number(amount),
-                 status: 'Failed',
-                 upiId: payeeAddress,
-             });
-             setPaymentResult(failedEntry);
+             // Add failed transaction to history
+              try {
+                const failedEntry = await addTransaction({
+                     type: 'Failed',
+                     name: payeeName,
+                     description: `Payment Failed - ${message}`,
+                     amount: -Number(amount),
+                     status: 'Failed',
+                     upiId: payeeAddress,
+                     billerId: undefined,
+                 });
+                  setPaymentResult(failedEntry);
+             } catch (historyError) {
+                 console.error("Failed to log failed transaction:", historyError);
+                 setPaymentResult({ // Fallback local result display
+                     id: `local_${Date.now()}`,
+                     type: 'Failed',
+                     name: payeeName,
+                     description: `Payment Failed - ${message} (History logging failed)`,
+                     amount: -Number(amount),
+                     status: 'Failed',
+                     date: new Date(),
+                     avatarSeed: payeeName,
+                     userId: 'local', // Indicate it wasn't saved properly
+                     upiId: payeeAddress,
+                 })
+             }
+
              toast({ variant: "destructive", title: "Payment Failed", description: message });
         } finally {
             setIsLoading(false);
@@ -169,14 +243,13 @@ export default function PaymentConfirmationPage() {
     };
 
     // Determine if the payment button should be disabled
-    const isPayDisabled = isLoading || isVerifying || !!error || !payeeAddress || !amount || Number(amount) <= 0;
+    const isPayDisabled = isLoading || isVerifying || !!error || !payeeAddress || !amount || Number(amount) <= 0 || !selectedAccountUpiId;
 
 
     return (
     <div className="min-h-screen bg-secondary flex flex-col">
         {/* Header */}
         <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-            {/* Allow going back only if payment not attempted/successful */}
             { !isLoading && paymentResult?.status !== 'Completed' ? (
                  <Link href="/" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -184,7 +257,6 @@ export default function PaymentConfirmationPage() {
                     </Button>
                 </Link>
             ) : (
-                 // Use a disabled button or just remove the Link/Button
                  <Button variant="ghost" size="icon" className="text-primary-foreground opacity-50 cursor-not-allowed">
                      <ArrowLeft className="h-5 w-5" />
                  </Button>
@@ -223,9 +295,8 @@ export default function PaymentConfirmationPage() {
                  <Card className="shadow-md">
                     <CardHeader className="items-center text-center">
                         <Avatar className="h-16 w-16 mb-2 border">
-                             {/* Use a generic avatar or one based on seed */}
                             <AvatarImage src={`https://picsum.photos/seed/${payeeAddress}/80/80`} alt={payeeName} data-ai-hint="payee avatar"/>
-                            <AvatarFallback>{payeeName.charAt(0)}</AvatarFallback>
+                            <AvatarFallback>{payeeName.charAt(0) || '?'}</AvatarFallback>
                         </Avatar>
                          <CardTitle className="flex items-center gap-2">
                             Pay {payeeName}
@@ -241,9 +312,9 @@ export default function PaymentConfirmationPage() {
                                 <Label htmlFor="amount" className="text-sm text-muted-foreground">Amount to Pay</Label>
                                 <div className="text-4xl font-bold flex items-center justify-center">
                                     <span className="mr-1">₹</span>
-                                     {searchParams.get('am') ? ( // If amount was in params, display it
+                                     {searchParams.get('am') ? (
                                          <span>{Number(amount).toFixed(2)}</span>
-                                     ) : ( // Otherwise allow input
+                                     ) : (
                                          <Input
                                             id="amount"
                                             type="number"
@@ -252,7 +323,7 @@ export default function PaymentConfirmationPage() {
                                             required
                                             min="1"
                                             step="0.01"
-                                            className="text-4xl font-bold h-auto p-0 border-0 text-center bg-transparent focus-visible:ring-0 shadow-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-grow w-32" // Limit width slightly
+                                            className="text-4xl font-bold h-auto p-0 border-0 text-center bg-transparent focus-visible:ring-0 shadow-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-grow w-32"
                                             placeholder="0.00"
                                             disabled={isLoading || isVerifying}
                                         />
@@ -270,40 +341,37 @@ export default function PaymentConfirmationPage() {
                                     value={note}
                                     onChange={(e) => setNote(e.target.value)}
                                     disabled={isLoading || isVerifying}
-                                    maxLength={50} // UPI note limit
+                                    maxLength={50}
                                 />
                             </div>
 
 
-                            {/* Bank Account Selection (If multiple linked) */}
-                            {/* Placeholder - Add account selection dropdown if needed */}
-                            {/* <div className="space-y-2">
+                            {/* Bank Account Selection */}
+                            <div className="space-y-2">
                                 <Label htmlFor="account">Pay From</Label>
-                                <Select defaultValue={defaultAccount.upiId} disabled={isLoading || isVerifying}>
-                                    <SelectTrigger id="account"> <SelectValue placeholder="Select account"/> </SelectTrigger>
-                                    <SelectContent> ... options ... </SelectContent>
+                                <Select value={selectedAccountUpiId} onValueChange={setSelectedAccountUpiId} disabled={isLoading || isVerifying || accounts.length === 0}>
+                                    <SelectTrigger id="account">
+                                        <SelectValue placeholder={accounts.length > 0 ? "Select account" : "No accounts linked"}/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accounts.map(acc => (
+                                             <SelectItem key={acc.upiId} value={acc.upiId}>
+                                                 {acc.bankName} - {acc.accountNumber}
+                                             </SelectItem>
+                                        ))}
+                                    </SelectContent>
                                 </Select>
+                            </div>
+
+
+                             {/* UPI PIN Input is now in a dialog triggered by the button */}
+                            {/* <div className="space-y-2">
+                                <Label htmlFor="upi-pin">Enter UPI PIN</Label>
+                                <Input ... />
                             </div> */}
 
-                            {/* UPI PIN Input */}
-                            <div className="space-y-2">
-                                <Label htmlFor="upi-pin">Enter UPI PIN</Label>
-                                <Input
-                                id="upi-pin"
-                                type="password" // Use password for masking
-                                inputMode="numeric" // Hint for numeric keyboard
-                                value={upiPin}
-                                onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, 6))} // Allow only digits, max 6
-                                placeholder="Enter 4 or 6 digit PIN"
-                                required
-                                maxLength={6}
-                                className="text-center tracking-[0.3em]" // Center and add spacing for PIN look
-                                disabled={isLoading || isVerifying || !!error} // Disable if verifying or error
-                                />
-                            </div>
-
                             {/* Display error message if exists */}
-                            {error && <p className="text-sm text-destructive text-center">{error}</p>}
+                            {error && !isVerifying && <p className="text-sm text-destructive text-center">{error}</p>}
 
 
                             <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isPayDisabled}>
@@ -326,7 +394,41 @@ export default function PaymentConfirmationPage() {
                 </Card>
             )}
         </main>
+
+        {/* UPI PIN Dialog */}
+        <AlertDialog open={isPinDialogOpen} onOpenChange={(open) => { if (!open) handlePinCancel(); }}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Enter your 4 or 6 digit UPI PIN to authorize this payment of ₹{Number(amount).toFixed(2)} to {payeeName}.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="pin-input-dialog" className="sr-only">UPI PIN</Label>
+                    <Input
+                        id="pin-input-dialog"
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={upiPin}
+                        onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="text-center text-xl tracking-[0.3em]"
+                        placeholder="****"
+                        autoFocus
+                    />
+                </div>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={handlePinCancel}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePinSubmit} disabled={upiPin.length !== 4 && upiPin.length !== 6}>
+                        <Lock className="mr-2 h-4 w-4" /> Confirm Payment
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
     </div>
     );
 }
 
+      
