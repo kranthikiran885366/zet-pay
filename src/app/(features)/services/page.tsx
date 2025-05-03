@@ -1,8 +1,9 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, MoreHorizontal, Bus, Ticket, Clapperboard, TramFront, Train } from 'lucide-react'; // Added Bus, Ticket, Clapperboard, TramFront, Train
 import Link from 'next/link';
 
 // Expanded list of services - add more as needed
@@ -19,6 +20,12 @@ const allServices = [
   { name: "Loan Repayment", icon: LifeBuoy, href: "/bills/loan", category: "Bill Payments" }, // Example
   { name: "Broadband/Landline", icon: Wifi, href: "/bills/broadband", category: "Bill Payments" }, // Example
   { name: "Piped Gas", icon: Tag, href: "/bills/gas", category: "Bill Payments" }, // Example - Reuse Tag icon
+  // Tickets & Travel
+  { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Tickets & Travel" },
+  { name: "Bus Tickets", icon: Bus, href: "/travels/bus", category: "Tickets & Travel" },
+  { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets & Travel" },
+  { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Tickets & Travel" },
+  { name: "Train Tickets", icon: Train, href: "/travels/train", category: "Tickets & Travel" },
   // Others
   { name: "Rent Payment", icon: FileText, href: "/pay/rent", category: "Other Services" }, // Example
   // ... add many more services
@@ -50,7 +57,7 @@ export default function AllServicesPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4 space-y-6">
+      <main className="flex-grow p-4 space-y-6 pb-20"> {/* Added pb-20 for bottom nav */}
         {Object.entries(groupedServices).map(([category, services]) => (
           <Card key={category} className="shadow-md">
             <CardHeader className="pb-3">

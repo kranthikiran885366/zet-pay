@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText } from "lucide-react";
+import { QrCode, ScanLine, Search, User, Banknote, Landmark, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Tag, Plane, ShoppingBag, BadgePercent, Gift, History, Settings, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train } from "lucide-react"; // Added Bus, Ticket, Clapperboard, TramFront, Train
 import Image from 'next/image';
 
 // Mock data (replace with actual data fetching)
@@ -31,14 +31,16 @@ const switchApps = [
 ];
 
 const quickLinks = [
+  // Recharge & Bill Payments
   { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile" },
   { name: "DTH", icon: Tv, href: "/recharge/dth" },
   { name: "Electricity", icon: Bolt, href: "/bills/electricity" },
   { name: "Credit Card", icon: Banknote, href: "/bills/credit-card" },
   { name: "FASTag", icon: RadioTower, href: "/recharge/fastag" },
-  { name: "Water", icon: Droplet, href: "/bills/water" },
-  { name: "Insurance", icon: ShieldCheck, href: "/bills/insurance" },
-  { name: "See All", icon: BadgePercent, href: "/services" },
+  // Travel & Tickets
+  { name: "Bus Tickets", icon: Bus, href: "/travels/bus" },
+  { name: "Movie Tickets", icon: Clapperboard, href: "/movies" },
+  { name: "See All", icon: BadgePercent, href: "/services" }, // Keep "See All" last in this section or move it
 ];
 
 export default function Home() {
@@ -120,10 +122,10 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Recharge &amp; Pay Bills Section */}
+        {/* Quick Links: Recharge, Bills, Tickets Section */}
         <Card className="shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Recharge &amp; Pay Bills</CardTitle>
+            <CardTitle className="text-lg font-semibold text-primary">Recharge, Bills & Tickets</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-4 gap-x-4 gap-y-6 text-center">
             {quickLinks.map((link) => (
