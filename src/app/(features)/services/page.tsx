@@ -1,12 +1,7 @@
 'use client';
 
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -44,103 +39,140 @@ import {
   History,
   ParkingMeter, // Corrected icon
   Fuel, // Corrected icon
-  Taxi as TaxiIcon,
+  CarTaxiFront as TaxiIcon, // Corrected icon import
   PhoneCall,
   Plane,
   ShoppingBag,
   Gift as GiftIcon, //Alias Gift to avoid conflict
   Home, // Added Temple icon (using Home as placeholder)
   Car,
-  Motorcycle,
+  Bike as Motorbike, // Corrected icon name
+  CalendarCheck,
+  Video,
+    Sparkles,
+  ShoppingBasket,
+  HeartHandshake,
+  Music,
+    Map,
+    Hotel,
+    Users,
+    QrCode,
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
-import { useState } from 'react'; // Import useEffect and useState
+import { useState } from 'react'; // Import useState
 
 const templeServices = [
-  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Booking" },
-  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Experience" },
-  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Experience" },
-  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Booking" },
-  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Support" },
-  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Info" },
-  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Experience" },
-  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Booking" },
-  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Info" },
-  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Booking" },
-  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Booking" },
+  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Temple Services" },
+  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Temple Services" },
+  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services" },
+  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Temple Services" },
+  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
+  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services" },
+  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services" },
+  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services" },
+  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Temple Services" },
+  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Temple Services" },
+  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services" },
 ];
 
 const travelServices = [
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel" },
-    { name: "Bike Rentals", icon: Motorcycle, href: "/travels/bike", category: "Travel" },
+    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel" },
     { name: "Book Bus Tickets", icon: Bus, href: "/travels/bus", category: "Travel"},
     { name: "Book Flight Tickets", icon: Plane, href: "/travels/flight", category: "Travel"},
     { name: "Book Train Tickets", icon: Train, href: "/travels/train", category: "Travel"},
 ];
 
-const groupServicesByCategory = (services: any) => {
-    const grouped: { [key: string]: any } = {};
-    const categoryOrder = ["Transfers & Payments", "Recharge & Bill Payments", "Tickets & Travel", "Services", "Travel"]; // Define order
-    categoryOrder.forEach(cat => { grouped[cat] = []; });
+const otherServices = [
+   // Recharge & Bill Payments (Example subset)
+    { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills" },
+    { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills" },
+    { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills" },
+    { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Recharge & Bills" },
+    { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
+    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
 
-    services.forEach((service: any) => {
+    // Tickets
+    { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets" },
+    // Bus, Train, Flight moved to Travel
+
+    // Vouchers & More
+    { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
+    { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Vouchers & More" },
+    { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" },
+
+    // Financial Services (Placeholder)
+    { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Financial Services"},
+    { name: "Insurance Premium", icon: ShieldCheck, href: "/bills/insurance", category: "Financial Services"},
+
+    // Other Payments
+    { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Payments" },
+    { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
+    { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Payments" }, // Smart Parking
+    { name: "Cab/Taxi Bill Payments", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
+    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Payments" },
+    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Payments" },
+    { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Payments" },
+    { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Payments" },
+
+];
+
+
+const groupServicesByCategory = (services: any[]) => {
+    const grouped: { [key: string]: any[] } = {};
+    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Vouchers & More", "Financial Services", "Payments"]; // Define order
+
+    // Initialize categories
+    categoryOrder.forEach(cat => { grouped[cat] = []; });
+     grouped["Other"] = []; // Catch-all for unlisted categories
+
+    services.forEach((service) => {
         const category = service.category;
-        if (!grouped[category]) {
-            grouped[category] = []; // Fallback if category not in order list
+        if (grouped[category]) {
+            grouped[category].push(service);
+        } else {
+             console.warn(`Service category "${category}" not found in defined order. Adding to "Other".`);
+             grouped["Other"].push(service);
         }
-        grouped[category].push(service);
     });
 
-    return grouped;
+     // Filter out empty categories except "Other" if it's also empty
+     const finalGrouped: { [key: string]: any[] } = {};
+     for (const cat of categoryOrder) {
+         if (grouped[cat].length > 0) {
+             finalGrouped[cat] = grouped[cat];
+         }
+     }
+     if (grouped["Other"].length > 0) {
+        finalGrouped["Other"] = grouped["Other"];
+     }
+
+
+    return finalGrouped;
 }
 
-export default function TempleServicesPage() {
-    const groupedServices = groupServicesByCategory([...templeServices, ...travelServices]);
+
+export default function AllServicesPage() {
+    const allServices = [...templeServices, ...travelServices, ...otherServices];
+    const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
-//     const categories = {
-//   "Transfers & Payments": [
-//     "Send to Contact",
-//     "Send to Bank",
-//     "Request Money",
-//     "Check Balance",
-//     "Scan QR Code",
-//     "UPI",
-//     "Linked Accounts"
-//   ],
-//   "Recharge & Bill Payments": [
-//     "Mobile",
-//     "DTH",
-//     "Electricity",
-//     "Credit Card",
-//     "FASTag"
-//   ],
-//   "Tickets & Travel": [
-//     "Movies",
-//     "Bus",
-//     "Train"
-//   ],
-//   "Services": [
-//     "Help & Support",
-//     "Offers"
-//   ]
-// };
+
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
             {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-                <Link href="/services" passHref>
+                <Link href="/" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                 </Link>
-                {/* Using Home icon as placeholder for Temple */}
                 <Sparkles className="h-6 w-6" />
-                <h1 className="text-lg font-semibold">Services</h1>
+                <h1 className="text-lg font-semibold">All Services</h1>
             </header>
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
-                {categories.map((category) => (
+                 {categories.map((category) => (
                     <Card key={category} className="shadow-md">
                         <CardHeader>
                             <CardTitle>{category}</CardTitle>
@@ -158,7 +190,7 @@ export default function TempleServicesPage() {
                             ))}
                         </CardContent>
                     </Card>
-                ))}
+                 ))}
             </main>
         </div>
     );
