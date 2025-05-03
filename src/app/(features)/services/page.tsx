@@ -49,8 +49,9 @@ import {
     Plane,
     ShoppingBag,
     Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home // Added Temple icon (using Home as placeholder)
-
+    Home, // Added Temple icon (using Home as placeholder)
+    Car,
+    Motorcycle
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
@@ -69,13 +70,22 @@ const templeServices = [
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Booking" },
 ];
 
-const groupServicesByCategory = (services: typeof templeServices) => {
-    const grouped: { [key: string]: typeof templeServices } = {};
-    const categoryOrder = ["Booking", "Experience", "Info", "Support"]; // Define order
+const travelServices = [
+    { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel" },
+    { name: "Bike Rentals", icon: Motorcycle, href: "/travels/bike", category: "Travel" },
+    { name: "Book Bus Tickets", icon: Bus, href: "/travels/bus", category: "Travel"},
+    { name: "Book Flight Tickets", icon: Plane, href: "/travels/flight", category: "Travel"},
+    { name: "Book Train Tickets", icon: Train, href: "/travels/train", category: "Travel"},
+];
+
+
+const groupServicesByCategory = (services: any) => {
+    const grouped: { [key: string]: any } = {};
+    const categoryOrder = ["Transfers & Payments", "Recharge & Bill Payments", "Tickets & Travel", "Services", "Travel"]; // Define order
 
     categoryOrder.forEach(cat => { grouped[cat] = []; });
 
-    services.forEach(service => {
+    services.forEach((service: any) => {
         const category = service.category;
         if (!grouped[category]) {
             grouped[category] = []; // Fallback if category not in order list
@@ -87,7 +97,8 @@ const groupServicesByCategory = (services: typeof templeServices) => {
 };
 
 export default function TempleServicesPage() {
-    const groupedServices = groupServicesByCategory(templeServices);
+    const allServices = [...templeServices, ...travelServices];
+    const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
 //     const categories = {
 //   "Transfers & Payments": [
@@ -137,7 +148,7 @@ export default function TempleServicesPage() {
                             <CardTitle>{category}</CardTitle>
                         </CardHeader>
                         <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
-                            {groupedServices[category].map((service) => (
+                            {groupedServices[category].map((service: any) => (
                                 <Link key={service.name} href={service.href} passHref legacyBehavior>
                                     <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                                         <div className="bg-primary/10 text-primary p-3 rounded-full">
