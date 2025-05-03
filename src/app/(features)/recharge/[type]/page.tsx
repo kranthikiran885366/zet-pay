@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower } from 'lucide-react'; // Added icons including RadioTower
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal } from 'lucide-react'; // Added more icons
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus } from '@/services/recharge'; // Use service functions and Plan interface
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
@@ -21,12 +21,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, addDays } from "date-fns";
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"; // For horizontal scroll
 import Image from 'next/image'; // For operator logos
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Separator } from '@/components/ui/separator'; // Import Separator
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
@@ -56,6 +57,8 @@ const mockSavedNumbers: Payee[] = [ // Use Payee interface for consistency
   { id: 'family1', name: 'Mom', identifier: '9876543210', type: 'mobile', avatarSeed: 'mom'},
   { id: 'family2', name: 'Dad', identifier: '9988776655', type: 'mobile', avatarSeed: 'dad'},
   { id: 'friend1', name: 'Alice', identifier: '9123456780', type: 'mobile', avatarSeed: 'alice'},
+  { id: 'friend2', name: 'Bob', identifier: '9112233440', type: 'mobile', avatarSeed: 'bob'},
+   { id: 'self', name: 'Self', identifier: '9876501234', type: 'mobile', avatarSeed: 'self'},
 ];
 
 // Debounce function
@@ -183,8 +186,9 @@ export default function RechargePage() {
       toast({ title: `Plan Selected: ₹${plan.price}`, description: plan.description });
       setIsCompareModalOpen(false);
       setShowTariffModal(null); // Close tariff modal if open
-      // Consider scrolling to payment section or focusing amount field
-      // inputRef.current?.focus();
+      // Scroll to payment section or focus amount field
+      const paymentSection = document.getElementById('payment-section');
+      paymentSection?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleRecharge = async (e: React.FormEvent) => {
@@ -469,6 +473,9 @@ export default function RechargePage() {
         } else {
              setIsManualOperatorSelect(true); // Allow manual selection if biller not found
         }
+         // Scroll to payment section
+        const paymentSection = document.getElementById('payment-section');
+        paymentSection?.scrollIntoView({ behavior: 'smooth' });
     } else {
       toast({ variant: "destructive", title: "Missing Details", description: "Cannot perform quick recharge for this entry." });
     }
@@ -561,7 +568,6 @@ export default function RechargePage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        {/* <details.icon className="h-6 w-6" /> */}
         <h1 className="text-lg font-semibold">{details.title}</h1>
         <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={() => alert('Help Clicked!')}>
           <HelpCircle className="h-5 w-5" />
@@ -571,9 +577,9 @@ export default function RechargePage() {
       {/* Main Content */}
       <main className="flex-grow p-4 space-y-4 pb-20">
 
-        {/* Contact Selection/Search */}
-         <Card className="shadow-md">
-            <CardHeader className="pb-3 pt-4">
+        {/* Select or Search Contact Section */}
+        <Card className="shadow-md">
+             <CardContent className="p-4 space-y-4">
                 <Input
                     id="identifier"
                     type={type === 'mobile' ? 'tel' : 'text'}
@@ -581,39 +587,39 @@ export default function RechargePage() {
                     ref={inputRef}
                     pattern={type === 'mobile' ? '[0-9]{10}' : undefined}
                     value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value.replace(/\D/g, '').slice(0, 10))} // Allow only 10 digits for mobile
+                     onChange={(e) => setIdentifier(e.target.value.replace(/\D/g, '').slice(0, 10))} // Allow only 10 digits for mobile
                     required
-                    className="text-base" // Slightly larger text
+                    className="text-base h-11" // Slightly larger text
                 />
-            </CardHeader>
-             {/* Recent Contacts Carousel */}
-             {type === 'mobile' && mockSavedNumbers.length > 0 && (
-                <CardContent className="pb-4 pt-2">
-                    <Label className="text-xs text-muted-foreground mb-2 block">Recents & Contacts</Label>
-                    <ScrollArea className="w-full whitespace-nowrap">
-                         <div className="flex space-x-4">
-                             {mockSavedNumbers.map((saved) => (
-                                 <button key={saved.id} onClick={() => handleSelectSavedNumber(saved)} className="flex flex-col items-center w-16 text-center hover:opacity-80 transition-opacity">
-                                     <Avatar className="h-10 w-10 mb-1 border">
-                                         <AvatarImage src={`https://picsum.photos/seed/${saved.avatarSeed}/40/40`} alt={saved.name} data-ai-hint="person avatar" />
-                                         <AvatarFallback>{saved.name.charAt(0)}</AvatarFallback>
-                                     </Avatar>
-                                     <span className="text-xs font-medium text-foreground truncate w-full">{saved.name}</span>
-                                     <span className="text-xs text-muted-foreground">{saved.identifier.slice(-4)}</span>
-                                 </button>
-                             ))}
-                             {/* Add New Contact Button */}
-                             <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert("Add New Contact flow")}>
-                                <div className="h-10 w-10 mb-1 border rounded-full flex items-center justify-center bg-secondary">
-                                    <Users className="h-5 w-5"/>
-                                </div>
-                                <span className="text-xs font-medium">Add New</span>
-                             </button>
-                         </div>
-                         <ScrollBar orientation="horizontal" />
-                    </ScrollArea>
-                </CardContent>
-             )}
+                {/* Recent Contacts Carousel */}
+                 {type === 'mobile' && mockSavedNumbers.length > 0 && (
+                    <div>
+                        <Label className="text-xs text-muted-foreground mb-2 block">Recents & Contacts</Label>
+                        <ScrollArea className="w-full whitespace-nowrap">
+                            <div className="flex space-x-4 pb-2">
+                                {mockSavedNumbers.map((saved) => (
+                                    <button key={saved.id} onClick={() => handleSelectSavedNumber(saved)} className="flex flex-col items-center w-16 text-center hover:opacity-80 transition-opacity">
+                                        <Avatar className="h-10 w-10 mb-1 border">
+                                            <AvatarImage src={`https://picsum.photos/seed/${saved.avatarSeed}/40/40`} alt={saved.name} data-ai-hint="person avatar" />
+                                            <AvatarFallback>{saved.name.charAt(0)}</AvatarFallback>
+                                        </Avatar>
+                                        <span className="text-xs font-medium text-foreground truncate w-full">{saved.name}</span>
+                                        <span className="text-xs text-muted-foreground">{saved.identifier.slice(-4)}</span>
+                                    </button>
+                                ))}
+                                {/* Add New Contact Button */}
+                                <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert("Add New Contact flow")}>
+                                    <div className="h-10 w-10 mb-1 border-2 border-dashed border-muted-foreground rounded-full flex items-center justify-center bg-secondary">
+                                        <UserPlus className="h-5 w-5"/>
+                                    </div>
+                                    <span className="text-xs font-medium">Add New</span>
+                                </button>
+                            </div>
+                            <ScrollBar orientation="horizontal" />
+                        </ScrollArea>
+                    </div>
+                )}
+            </CardContent>
         </Card>
 
          {/* Recharge History */}
@@ -643,8 +649,8 @@ export default function RechargePage() {
         )}
 
 
-        {/* Auto-Fetched Operator / Manual Select */}
-         {identifier.match(/^[6-9]\d{9}$/) && (
+         {/* Auto-Fetched Operator / Manual Select Section */}
+         {(type === 'mobile' && identifier.match(/^[6-9]\d{9}$/)) && (
              <Card className="shadow-md">
                  <CardContent className="p-4">
                      {isDetecting ? (
@@ -654,19 +660,19 @@ export default function RechargePage() {
                      ) : detectedOperator && !isManualOperatorSelect ? (
                          <div className="flex items-center justify-between">
                              <div className="flex items-center gap-3">
-                                <Image src={operatorLogoUrl} alt={detectedOperator.billerName} width={32} height={32} className="h-8 w-8 rounded-full object-contain border bg-white" data-ai-hint="operator logo small"/>
+                                <Image src={operatorLogoUrl} alt={detectedOperator.billerName} width={32} height={32} className="h-8 w-8 rounded-full object-contain border bg-white p-0.5" data-ai-hint="operator logo small"/>
                                 <div>
                                     <p className="text-sm font-medium">{detectedOperator.billerName}</p>
                                     <p className="text-xs text-muted-foreground">{detectedRegion || "Region"} | Prepaid</p>
                                 </div>
                             </div>
-                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={handleManualEditOperator}>
-                                <Pencil className="h-4 w-4" />
+                             <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={handleManualEditOperator}>
+                                <Pencil className="h-3 w-3 mr-1" /> Edit
                             </Button>
                         </div>
                      ) : (
                          <div className="space-y-2">
-                             <Label htmlFor="biller-manual">Operator</Label>
+                             <Label htmlFor="biller-manual">Select Operator</Label>
                               <Select value={selectedBiller} onValueChange={setSelectedBiller} required>
                                 <SelectTrigger id="biller-manual">
                                      <SelectValue placeholder={isLoading ? "Loading..." : "Select Operator"} />
@@ -692,14 +698,15 @@ export default function RechargePage() {
          {selectedBiller && (
                 <Card className="shadow-md">
                     <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-start justify-between flex-wrap gap-2">
                              <div>
                                 <CardTitle className="text-md flex items-center gap-1">Browse Plans</CardTitle>
                                  {/* Validity Tracking */}
                                 {mockCurrentPlan && remainingValidityDays !== null && (
-                                    <p className={`text-xs mt-1 ${remainingValidityDays <= 3 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                                    <Badge variant={remainingValidityDays <= 3 ? "destructive" : "secondary"} className="mt-1 text-xs">
+                                         <CalendarDays className="h-3 w-3 mr-1"/>
                                          Current plan expires in {remainingValidityDays} day{remainingValidityDays !== 1 ? 's' : ''} ({format(mockCurrentPlan.expiryDate, 'MMM d')})
-                                    </p>
+                                    </Badge>
                                 )}
                              </div>
                             {plansToCompare.length >= 2 && (
@@ -718,7 +725,7 @@ export default function RechargePage() {
                     </CardHeader>
                     <CardContent className="pt-2">
                         {isPlanLoading || isRecommending ? (
-                           <div className="flex items-center justify-center py-4">
+                           <div className="flex items-center justify-center py-6">
                              <Loader2 className="h-6 w-6 animate-spin text-primary" />
                              <p className="ml-2 text-sm text-muted-foreground">
                                 {isRecommending ? 'Finding best plans for you...' : 'Loading plans...'}
@@ -730,34 +737,43 @@ export default function RechargePage() {
                            <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName}.</p>
                          ) : (
                            <Tabs defaultValue={planCategories[0] || 'Recommended'} className="w-full">
-                             <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-6 mb-4">
-                                {planCategories.map(category => (
-                                    <TabsTrigger key={category} value={category} className="text-xs px-1.5 h-8"> {/* Adjusted size */}
-                                        {category === 'Recommended' && <Star className="h-3 w-3 mr-1 text-yellow-500" />}
-                                        {category === 'Offers' && <Gift className="h-3 w-3 mr-1 text-red-500" />}
-                                        {category}
-                                    </TabsTrigger>
-                                ))}
-                             </TabsList>
+                             <ScrollArea className="w-full pb-3">
+                                <TabsList className="flex w-max mb-4">
+                                    {planCategories.map(category => (
+                                        <TabsTrigger key={category} value={category} className="text-xs px-3 h-8 flex-shrink-0"> {/* Adjusted size */}
+                                            {category === 'Recommended' && <Star className="h-3 w-3 mr-1 text-yellow-500 fill-current" />}
+                                            {category === 'Offers' && <Gift className="h-3 w-3 mr-1 text-red-500" />}
+                                            {category}
+                                        </TabsTrigger>
+                                    ))}
+                                </TabsList>
+                                <ScrollBar orientation="horizontal" />
+                             </ScrollArea>
+
                              {planCategories.map(category => (
                                 <TabsContent key={category} value={category} className="mt-0 space-y-2">
                                     {/* Plan Cards */}
                                     {filteredPlansByCategory[category]?.map(plan => (
-                                       <Card key={plan.planId} className={`p-3 border rounded-lg ${selectedPlan?.planId === plan.planId ? 'border-primary ring-1 ring-primary' : 'border-border'}`}>
+                                       <Card key={plan.planId} className={cn(
+                                           "p-3 border rounded-lg cursor-pointer transition-all hover:border-primary/50",
+                                           selectedPlan?.planId === plan.planId ? 'border-primary ring-1 ring-primary bg-primary/5' : 'border-border'
+                                        )} onClick={() => handlePlanSelect(plan)}>
                                           <div className="flex justify-between items-start gap-2">
                                               <div>
                                                   <p className="font-bold text-lg">₹{plan.price}</p>
                                                    {plan.isOffer && <Badge variant="destructive" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1">Offer</Badge>}
-                                                   {category === 'Recommended' && <Badge variant="secondary" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1 flex items-center gap-1"><Star className="h-3 w-3 text-yellow-500"/> Recommended</Badge>}
+                                                   {category === 'Recommended' && <Badge variant="secondary" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1 flex items-center gap-1 bg-yellow-100 text-yellow-800"><Star className="h-3 w-3 text-yellow-500 fill-current"/> Recommended</Badge>}
                                               </div>
-                                               <Button variant={selectedPlan?.planId === plan.planId ? "default" : "outline"} size="sm" className="h-8 px-3" onClick={() => handlePlanSelect(plan)}>
+                                               {/* Remove explicit select button, selection happens on card click */}
+                                               {/* <Button variant={selectedPlan?.planId === plan.planId ? "default" : "outline"} size="sm" className="h-8 px-3" onClick={() => handlePlanSelect(plan)}>
                                                    {selectedPlan?.planId === plan.planId ? "Selected" : "Select"}
-                                                </Button>
+                                                </Button> */}
                                           </div>
                                            <p className="text-sm mt-1 text-muted-foreground">{plan.description}</p>
-                                          <div className="text-xs mt-2 text-muted-foreground flex items-center justify-between">
-                                                <div className="flex items-center gap-1"><CalendarClock className="h-3 w-3"/> Validity: {plan.validity}</div>
-                                                <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={() => openTariffModal(plan)}>View Details</Button>
+                                          <div className="text-xs mt-2 text-muted-foreground flex items-center justify-between flex-wrap gap-x-4 gap-y-1">
+                                                <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
+                                                <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>
+                                                <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
                                           </div>
                                           <div className="mt-2">
                                                <Checkbox
@@ -766,7 +782,8 @@ export default function RechargePage() {
                                                     onCheckedChange={(checked) => handleCompareCheckbox(plan, checked)}
                                                     disabled={plansToCompare.length >= 3 && !plansToCompare.some(p => p.planId === plan.planId)}
                                                     aria-label={`Compare ${plan.description}`}
-                                                /> <Label htmlFor={`compare-${plan.planId}`} className="text-xs ml-1 align-middle text-muted-foreground cursor-pointer">Compare</Label>
+                                                     onClick={(e) => e.stopPropagation()} // Prevent card click when interacting with checkbox
+                                                /> <Label htmlFor={`compare-${plan.planId}`} className="text-xs ml-1 align-middle text-muted-foreground cursor-pointer" onClick={(e) => e.stopPropagation()}>Compare</Label>
                                           </div>
                                       </Card>
                                     ))}
@@ -781,114 +798,124 @@ export default function RechargePage() {
           {/* Manual Amount Input */}
            <Card className="shadow-md">
                 <CardContent className="p-4">
-                     <Label htmlFor="amount">Or Enter Recharge Amount</Label>
-                     <div className="relative mt-2">
-                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">₹</span>
+                     <Label htmlFor="amount" className="text-sm font-medium text-muted-foreground">Or Enter Recharge Amount</Label>
+                     <div className="relative mt-1">
+                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-lg">₹</span>
                         <Input
                           id="amount"
                           type="number"
-                          placeholder="Enter Amount"
+                          placeholder="Amount"
                           value={amount}
                           onChange={(e) => {setAmount(e.target.value); setSelectedPlan(null);}}
                           required={!selectedPlan} // Required if no plan is selected
                           min="1"
                           step="0.01"
-                          className="pl-7 text-lg font-semibold"
+                          className="pl-7 text-lg font-semibold h-11"
                           disabled={!selectedBiller} // Disable if no operator selected
                         />
                      </div>
+                     {type === 'mobile' && !selectedPlan && amount && (
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs mt-1" onClick={() => alert("Show Top-up Vouchers")}>
+                          Check Talktime Vouchers
+                        </Button>
+                    )}
                  </CardContent>
            </Card>
 
           {/* Schedule Recharge Section */}
            <Card className="shadow-md">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-md">Schedule Recharge (Optional)</CardTitle>
-                </CardHeader>
-                 <CardContent className="space-y-3">
-                     <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <Label htmlFor="schedule-date">Start Date</Label>
-                             <Popover>
-                                <PopoverTrigger asChild>
-                                <Button
-                                    id="schedule-date"
-                                    variant={"outline"}
-                                    className={cn(
-                                    "w-full justify-start text-left font-normal h-9",
-                                    !scheduledDate && "text-muted-foreground"
-                                    )}
-                                >
-                                    <CalendarClock className="mr-2 h-4 w-4" />
-                                    {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
-                                </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                <Calendar
-                                    mode="single"
-                                    selected={scheduledDate}
-                                    onSelect={setScheduledDate}
-                                    initialFocus
-                                    disabled={(date) => date < new Date() || date < new Date("1900-01-01")} // Disable past dates
-                                />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                         <div>
-                             <Label htmlFor="schedule-frequency">Frequency</Label>
-                             <Select value={scheduleFrequency} onValueChange={(value) => setScheduleFrequency(value as 'monthly' | 'weekly')}>
-                                <SelectTrigger id="schedule-frequency" className="h-9">
-                                    <SelectValue placeholder="Select Frequency" />
-                                </SelectTrigger>
-                                 <SelectContent>
-                                    <SelectItem value="monthly">Monthly</SelectItem>
-                                    <SelectItem value="weekly">Weekly</SelectItem>
-                                    {/* Add more options like 'bi-weekly', 'quarterly' if needed */}
-                                </SelectContent>
-                             </Select>
-                         </div>
-                     </div>
-                     <Button
-                        variant="secondary"
-                        className="w-full"
-                        onClick={handleScheduleRecharge}
-                        disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || !selectedBiller}
-                    >
-                         {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
-                         Schedule Recharge
-                    </Button>
-                     <p className="text-xs text-muted-foreground text-center">Recharge will occur automatically on the selected date and frequency.</p>
-                 </CardContent>
+                <Accordion type="single" collapsible>
+                    <AccordionItem value="schedule">
+                        <AccordionTrigger className="px-4 py-3 text-sm font-medium">
+                             <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-muted-foreground"/>
+                                Schedule Recharge (Optional)
+                             </div>
+                         </AccordionTrigger>
+                        <AccordionContent className="px-4 pb-4">
+                             <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <Label htmlFor="schedule-date" className="text-xs">Start Date</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                        <Button
+                                            id="schedule-date"
+                                            variant={"outline"}
+                                            className={cn(
+                                            "w-full justify-start text-left font-normal h-9 mt-1 text-xs",
+                                            !scheduledDate && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarDays className="mr-2 h-4 w-4" />
+                                            {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
+                                        </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                        <Calendar
+                                            mode="single"
+                                            selected={scheduledDate}
+                                            onSelect={setScheduledDate}
+                                            initialFocus
+                                            disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0)) || date < new Date("1900-01-01")} // Disable past dates
+                                        />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div>
+                                    <Label htmlFor="schedule-frequency" className="text-xs">Frequency</Label>
+                                    <Select value={scheduleFrequency} onValueChange={(value) => setScheduleFrequency(value as 'monthly' | 'weekly')}>
+                                        <SelectTrigger id="schedule-frequency" className="h-9 mt-1 text-xs">
+                                            <SelectValue placeholder="Select Frequency" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="monthly">Monthly</SelectItem>
+                                            <SelectItem value="weekly">Weekly</SelectItem>
+                                            {/* Add more options like 'bi-weekly', 'quarterly' if needed */}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                             </div>
+                             <Button
+                                variant="secondary"
+                                className="w-full h-9 text-sm"
+                                onClick={handleScheduleRecharge}
+                                disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || !selectedBiller}
+                            >
+                                {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
+                                Schedule Recharge
+                            </Button>
+                             <p className="text-xs text-muted-foreground text-center mt-2">Recharge will occur automatically on the selected date and frequency.</p>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
            </Card>
 
 
         {/* Payment Section */}
-         <Card className="shadow-md">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-md">Payment Details</CardTitle>
-            </CardHeader>
-             <CardContent className="space-y-4">
+         <Card className="shadow-md" id="payment-section">
+             <CardContent className="p-4 space-y-4">
                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Paying from:</span>
-                    <Button variant="link" size="sm" className="p-0 h-auto text-sm">(Wallet / Linked Account)</Button> {/* Make clickable */}
+                     <span className="text-muted-foreground flex items-center gap-1"><Wallet className="h-4 w-4"/> Paying from:</span>
+                     <Button variant="link" size="sm" className="p-0 h-auto text-sm">(Wallet / Linked Account)</Button> {/* Make clickable */}
                  </div>
                   <div className="flex justify-between items-center text-sm">
                      <span className="text-muted-foreground">Available Balance:</span>
                      <span className="font-medium text-primary">₹{mockAccountBalance.toFixed(2)}</span>
                  </div>
+                  <Separator />
                   <div className="relative">
                      <Input
                          id="coupon"
                          placeholder="Enter Coupon Code (Optional)"
                          value={couponCode}
                          onChange={(e) => setCouponCode(e.target.value)}
-                         className="pr-16" // Space for apply button
+                         className="pr-16 h-10" // Space for apply button
                      />
                      <Button variant="link" size="sm" className="absolute right-1 top-1/2 transform -translate-y-1/2 h-auto px-2 text-xs" onClick={handleApplyCoupon}>Apply</Button>
                   </div>
                   <Button
                     type="submit"
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white" // PhonePe-style purple button
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white h-11 text-base" // PhonePe-style purple button
                     disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || !selectedBiller}
                     onClick={handleRecharge} // Trigger form submission
                   >
@@ -902,7 +929,7 @@ export default function RechargePage() {
          <div className="text-center text-xs text-muted-foreground mt-6 space-y-1">
             <p className="flex items-center justify-center gap-1"><ShieldCheck className="h-3 w-3 text-green-600"/> 100% Safe & Secure Payments</p>
              <Link href="/support" className="hover:text-primary">
-                PhonePe Customer Care | FAQs
+                PayFriend Customer Care | FAQs
              </Link>
          </div>
 
@@ -972,4 +999,3 @@ export default function RechargePage() {
     </div>
   );
 }
-
