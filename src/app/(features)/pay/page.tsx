@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -7,10 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, WifiOff } from 'lucide-react'; // Added icons
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, Landmark, Clock, HelpCircle, Ticket } from 'lucide-react'; // Added HelpCircle, Ticket
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount } from '@/services/upi';
+import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult } from '@/services/upi'; // Import UpiTransactionResult
 import { addTransaction, Transaction } from '@/services/transactions';
 import { payViaWallet, getWalletBalance } from '@/services/wallet'; // Import wallet services
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,6 +38,9 @@ const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; 
 
 type PaymentSource = 'upi' | 'wallet';
 
+// Combine Transaction and UpiTransactionResult for the result state
+type PaymentResultState = (Transaction & { ticketId?: string; refundEta?: string });
+
 export default function PaymentConfirmationPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -50,7 +54,7 @@ export default function PaymentConfirmationPage() {
     const [upiPin, setUpiPin] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false); // General loading state for async operations like verify/pay
     const [isVerifying, setIsVerifying] = useState(true); // Specifically for UPI ID verification
-    const [paymentResult, setPaymentResult] = useState<Transaction | null>(null); // Store final transaction outcome
+    const [paymentResult, setPaymentResult] = useState<PaymentResultState | null>(null); // Store final transaction outcome including potential failure details
     const [error, setError] = useState<string | null>(null); // Store general error messages
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
     const [selectedAccountUpiId, setSelectedAccountUpiId] = useState<string>('');
@@ -98,7 +102,7 @@ export default function PaymentConfirmationPage() {
                  setSelectedPaymentSource(userAccounts.length > 0 ? 'upi' : (currentWalletBalance > 0 ? 'wallet' : 'upi'));
             } else if (currentWalletBalance > 0) {
                  setSelectedPaymentSource('wallet'); // Default to wallet if no bank accounts but has balance
-                 setError("No linked bank accounts found. Paying via Wallet.");
+                 // setError("No linked bank accounts found. Paying via Wallet."); // Don't show error, just default
             } else {
                  setError("No linked bank accounts or wallet balance found. Please link an account or add funds.");
             }
@@ -163,7 +167,7 @@ export default function PaymentConfirmationPage() {
             } catch (verificationError: any) {
                  console.error("UPI ID Verification failed:", verificationError);
                  setPayeeName('Verification Failed');
-                 setError(`Could not verify UPI ID: ${address}.`); // Set error message
+                 setError(`Could not verify UPI ID: ${address}. Please check and try again.`); // Set error message
             } finally {
                 setIsVerifying(false);
             }
@@ -184,10 +188,14 @@ export default function PaymentConfirmationPage() {
 
     // Handle PIN submission from dialog
     const handlePinSubmit = () => {
-        if ((upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
+        const expectedLength = accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength;
+        if (expectedLength && upiPin.length === expectedLength && pinPromiseResolverRef.current) {
+            pinPromiseResolverRef.current.resolve(upiPin);
+        } else if (!expectedLength && (upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
+            // Fallback if length not specified
             pinPromiseResolverRef.current.resolve(upiPin);
         } else {
-            toast({ variant: "destructive", title: "Invalid PIN", description: "Please enter a 4 or 6 digit UPI PIN." });
+            toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
             pinPromiseResolverRef.current?.resolve(null); // Resolve null on error
         }
         pinPromiseResolverRef.current = null;
@@ -237,6 +245,7 @@ export default function PaymentConfirmationPage() {
         let finalStatus: Transaction['status'] = 'Failed';
         let transactionId: string | undefined = undefined;
         let descriptionSuffix = '';
+        let upiPaymentResult: UpiTransactionResult | null = null; // Store the full UPI result
 
         try {
              if (selectedPaymentSource === 'upi') {
@@ -248,12 +257,12 @@ export default function PaymentConfirmationPage() {
                  }
 
                  // Pass userId to processUpiPayment for fallback check
-                 const result = await processUpiPayment(payeeAddress, currentAmount, enteredPin, note || `Payment to ${payeeName}`, userId);
-                 paymentSuccess = result.status === 'Completed' || result.status === 'FallbackSuccess';
-                 finalStatus = result.status;
-                 resultMessage = result.message || (paymentSuccess ? "Transaction Successful" : `Payment ${result.status}`);
-                 transactionId = result.transactionId || result.walletTransactionId; // Use wallet txn ID if fallback used
-                 if(result.usedWalletFallback) descriptionSuffix = ' (Paid via Wallet)';
+                 upiPaymentResult = await processUpiPayment(payeeAddress, currentAmount, enteredPin, note || `Payment to ${payeeName}`, userId);
+                 paymentSuccess = upiPaymentResult.status === 'Completed' || upiPaymentResult.status === 'FallbackSuccess';
+                 finalStatus = upiPaymentResult.status === 'FallbackSuccess' ? 'Completed' : upiPaymentResult.status; // Map FallbackSuccess to Completed for history
+                 resultMessage = upiPaymentResult.message || (paymentSuccess ? "Transaction Successful" : `Payment ${upiPaymentResult.status}`);
+                 transactionId = upiPaymentResult.transactionId || upiPaymentResult.walletTransactionId; // Use wallet txn ID if fallback used
+                 if(upiPaymentResult.usedWalletFallback) descriptionSuffix = ' (Paid via Wallet)';
 
              } else { // Paying via Wallet
                  const result = await payViaWallet(userId, payeeAddress, currentAmount, note || `Payment to ${payeeName}`);
@@ -266,18 +275,25 @@ export default function PaymentConfirmationPage() {
 
 
             // Add transaction to Firestore history
-            const historyEntry = await addTransaction({
-                type: paymentSuccess ? 'Sent' : 'Failed',
+             const historyEntry = await addTransaction({
+                type: finalStatus === 'Completed' ? 'Sent' : finalStatus, // Use Sent for success, Failed for failure
                 name: payeeName,
                 description: `${note || `Payment to ${payeeName}`}${descriptionSuffix}${!paymentSuccess ? ` (${finalStatus} - ${resultMessage})` : ''}`,
                 amount: -currentAmount,
                 status: finalStatus,
                 upiId: payeeAddress,
                 billerId: undefined,
-                avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress // Generate seed
+                // avatarSeed is now handled within addTransaction
             });
 
-            setPaymentResult({ ...historyEntry, id: transactionId || historyEntry.id }); // Show result view with appropriate ID
+            // Combine history entry with potential ticket/ETA from UPI result
+            setPaymentResult({
+                ...historyEntry,
+                id: transactionId || historyEntry.id, // Use payment system ID if available
+                ticketId: upiPaymentResult?.ticketId,
+                refundEta: upiPaymentResult?.refundEta,
+             });
+
 
             if (paymentSuccess) {
                  toast({
@@ -286,15 +302,26 @@ export default function PaymentConfirmationPage() {
                      duration: 5000
                  });
             } else {
+                 // Error toast now shown in the catch block to include ticket info
                  setError(`Payment ${finalStatus}. ${resultMessage}`);
-                 toast({ variant: "destructive", title: `Payment ${finalStatus}`, description: resultMessage });
             }
         } catch (err: any) {
              console.error("Payment processing error:", err);
              const message = err.message || "Payment failed due to an unexpected error.";
              setError(message);
              finalStatus = 'Failed'; // Ensure status is Failed
-             toast({ variant: "destructive", title: "Payment Failed", description: message });
+
+             // Check if UPI result contains ticket info (only if UPI was attempted)
+             const ticketInfo = upiPaymentResult && upiPaymentResult.status === 'Failed'
+                 ? { ticketId: upiPaymentResult.ticketId, refundEta: upiPaymentResult.refundEta }
+                 : {};
+
+             toast({
+                 variant: "destructive",
+                 title: "Payment Failed",
+                 description: `${message} ${ticketInfo.ticketId ? `(Ticket: ${ticketInfo.ticketId})` : ''}`
+             });
+
 
              // Add failed transaction to history
              try {
@@ -306,9 +333,14 @@ export default function PaymentConfirmationPage() {
                      status: 'Failed',
                      upiId: payeeAddress,
                      billerId: undefined,
-                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress // Generate seed
+                     // avatarSeed handled by addTransaction
                  });
-                  setPaymentResult({ ...failedEntry }); // Show result view even for failure
+                  // Show result view even for failure, including ticket info
+                  setPaymentResult({
+                      ...failedEntry,
+                      ticketId: ticketInfo.ticketId,
+                      refundEta: ticketInfo.refundEta,
+                  });
              } catch (historyError) {
                  console.error("Failed to log failed transaction:", historyError);
                  // Show a basic failure message if history logging also fails
@@ -320,9 +352,11 @@ export default function PaymentConfirmationPage() {
                      amount: -currentAmount,
                      status: 'Failed',
                      date: new Date(),
-                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress,
+                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress, // Manual seed generation
                      userId: userId || 'local_error', // Use userId if available
                      upiId: payeeAddress,
+                     ticketId: ticketInfo.ticketId, // Include ticket info even if logging fails
+                     refundEta: ticketInfo.refundEta,
                  });
              }
         } finally {
@@ -344,8 +378,11 @@ export default function PaymentConfirmationPage() {
              let descText = isSuccess
                  ? `Successfully sent ${amountText} to ${paymentResult.name}`
                  : `Failed to send ${amountText} to ${paymentResult.name}`;
-             if (paymentResult.status === 'FallbackSuccess') {
+             if (paymentResult.status === 'FallbackSuccess') { // Should not happen if mapping status correctly, but keep for safety
                  descText += ` (via Wallet)`;
+             }
+             if (paymentResult.description?.includes('(Paid via Wallet)')) {
+                  descText += ` (via Wallet)`; // Ensure fallback info is shown if present in description
              }
 
              return (
@@ -366,10 +403,18 @@ export default function PaymentConfirmationPage() {
                             <p><strong>Amount:</strong> {amountText}</p>
                             <p><strong>To:</strong> {paymentResult.name} ({paymentResult.upiId})</p>
                             <p><strong>Date:</strong> {format(paymentResult.date, 'PPp')}</p>
-                             {paymentResult.status === 'FallbackSuccess' && (
+                             {paymentResult.description?.includes('(Paid via Wallet)') && (
                                 <p className="font-medium text-blue-600 flex items-center justify-center gap-1"><Wallet className="h-3 w-3"/> Paid via Wallet (Recovery Scheduled)</p>
                              )}
-                             {!isSuccess && paymentResult.description && <p><strong>Reason:</strong> {paymentResult.description.replace('Payment Failed - ', '')}</p>}
+                              {!isSuccess && paymentResult.description && <p><strong>Reason:</strong> {paymentResult.description.replace('Payment Failed - ', '')}</p>}
+                              {paymentResult.ticketId && (
+                                  <p className='font-medium text-orange-600'>
+                                      <span className="flex items-center justify-center gap-1">
+                                         <Ticket className="h-3 w-3"/> Ticket ID: {paymentResult.ticketId}
+                                      </span>
+                                      {paymentResult.refundEta && <span className="text-xs block">(Refund ETA: {paymentResult.refundEta})</span>}
+                                  </p>
+                              )}
                             <p><strong>Transaction ID:</strong> {paymentResult.id}</p>
                          </div>
 
@@ -379,6 +424,11 @@ export default function PaymentConfirmationPage() {
                           {!isSuccess && (
                               <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); /* Reset other fields? */ }}>Try Again</Button>
                           )}
+                           {paymentResult.ticketId && ( // Show support link only if ticket generated
+                                <Link href={`/support?ticketId=${paymentResult.ticketId}`} passHref>
+                                    <Button variant="link" className="w-full flex items-center gap-1"><HelpCircle className="h-4 w-4"/> Get Help</Button>
+                                </Link>
+                            )}
                           <Link href="/history" passHref>
                                 <Button variant="link" className="w-full">View Transaction History</Button>
                           </Link>
@@ -520,7 +570,7 @@ export default function PaymentConfirmationPage() {
                             </Button>
 
                              {/* Emergency / Offline Payment Options (Placeholders) */}
-                            <div className="text-center pt-4">
+                             <div className="text-center pt-4">
                                  <p className="text-xs text-muted-foreground mb-2">Having trouble? Try emergency options:</p>
                                  <div className="flex gap-2 justify-center">
                                      <Button type="button" variant="outline" size="sm" onClick={() => alert("Offline SMS Pay: Feature coming soon!")}>
@@ -547,7 +597,7 @@ export default function PaymentConfirmationPage() {
         {/* Header */}
         <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
              {/* Conditionally render Link or disabled Button based on state */}
-             {(isLoading || (paymentResult && (paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess'))) ? (
+             {(isLoading || paymentResult) ? (
                  <Button variant="ghost" size="icon" className="text-primary-foreground opacity-50 cursor-not-allowed">
                      <ArrowLeft className="h-5 w-5" />
                  </Button>
@@ -572,9 +622,9 @@ export default function PaymentConfirmationPage() {
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
-                    <AlertDialogDescription>
+                     <AlertDialogDescription>
                          Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹{Number(amount).toFixed(2)} to {payeeName}.
-                    </AlertDialogDescription>
+                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4">
                     <Label htmlFor="pin-input-dialog" className="sr-only">UPI PIN</Label>
@@ -582,17 +632,24 @@ export default function PaymentConfirmationPage() {
                         id="pin-input-dialog"
                         type="password"
                         inputMode="numeric"
-                        maxLength={6}
+                        maxLength={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6} // Use dynamic length or default 6
                         value={upiPin}
                         onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         className="text-center text-xl tracking-[0.3em]"
-                        placeholder="****"
+                        placeholder={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******"} // Dynamic placeholder
                         autoFocus
                     />
                 </div>
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={handlePinCancel}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handlePinSubmit} disabled={upiPin.length !== 4 && upiPin.length !== 6}>
+                     <AlertDialogAction
+                        onClick={handlePinSubmit}
+                        disabled={!(
+                            (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 && upiPin.length === 4) ||
+                            (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 6 && upiPin.length === 6) ||
+                            (!accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength && (upiPin.length === 4 || upiPin.length === 6)) // Fallback check
+                        )}
+                    >
                         <Lock className="mr-2 h-4 w-4" /> Confirm Payment
                     </AlertDialogAction>
                 </AlertDialogFooter>

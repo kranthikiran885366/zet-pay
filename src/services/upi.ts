@@ -6,6 +6,7 @@ import { Transaction, addTransaction } from './transactions'; // Import Transact
 import { getUserProfileById, UserProfile } from './user'; // To check KYC and feature status
 import { getWalletBalance, payViaWallet, WalletTransactionResult } from './wallet'; // Import wallet functions
 import { scheduleRecovery } from './recovery'; // Import recovery scheduling function
+import { format, addBusinessDays } from 'date-fns'; // Added addBusinessDays
 
 export interface BankAccount {
   /**
@@ -32,7 +33,7 @@ export interface BankAccount {
 
 /**
  * Represents a UPI transaction result.
- * Adding a flag to indicate if fallback was used.
+ * Adding a flag to indicate if fallback was used, and ticket info for failures.
  */
 export interface UpiTransactionResult {
   /**
@@ -63,6 +64,14 @@ export interface UpiTransactionResult {
     * ID of the wallet transaction if fallback was used.
     */
    walletTransactionId?: string;
+   /**
+    * Unique ID for tracking failed-but-debited transactions.
+    */
+   ticketId?: string;
+   /**
+    * Estimated refund date/timeframe string.
+    */
+   refundEta?: string;
 }
 
 /**
@@ -167,6 +176,8 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     if (upiId === 'david.will@ybl') return "David Williams";
     // Simulate a specific ID hitting the limit for testing fallback
     if (upiId === 'limit@payfriend') return "Limit Exceeded User";
+     // Simulate a failed payment where money might be debited
+    if (upiId === 'debitfail@payfriend') return "Debit Fail User";
     if (upiId.includes('invalid') || !upiId.includes('@')) {
         throw new Error("Invalid UPI ID format or ID not found.");
     }
@@ -206,6 +217,7 @@ export async function processUpiPayment(
 
   let upiFailedDueToLimit = false;
   let upiFailureMessage = 'Payment failed.';
+  let mightBeDebited = false; // Flag for simulation
 
   // Simulate various UPI outcomes for demo
   try {
@@ -216,6 +228,11 @@ export async function processUpiPayment(
       upiFailedDueToLimit = true;
       upiFailureMessage = 'UPI daily limit exceeded.';
       throw new Error(upiFailureMessage);
+    }
+    if (recipientUpiId === 'debitfail@payfriend') { // Simulate failure where debit *might* happen
+        mightBeDebited = true;
+        upiFailureMessage = 'Payment failed due to network error at bank. Money may be debited.';
+        throw new Error(upiFailureMessage);
     }
     if (amount > 10000) { // Simulate insufficient balance (different from limit)
         throw new Error('Insufficient bank balance.');
@@ -278,7 +295,7 @@ export async function processUpiPayment(
 
           // Return a specific status indicating fallback success
           return {
-            transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID
+            // transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID // Error: upiPaymentResult is not defined here
             walletTransactionId: walletPaymentResult.transactionId,
             amount: amount,
             recipientUpiId: recipientUpiId,
@@ -297,11 +314,35 @@ export async function processUpiPayment(
         throw new Error(fallbackError.message || upiFailureMessage);
       }
     } else {
-      // UPI failed for reasons other than limit, or fallback not applicable/enabled
-      throw new Error(upiFailureMessage);
+       // Handle non-limit related UPI failures
+       // If it *might* be debited, generate ticket ID and ETA
+       if (mightBeDebited) {
+           const ticketId = `ZET_TKT_${Date.now()}`;
+           const refundDate = addBusinessDays(new Date(), 3); // Example: 3 business days
+           const refundEtaString = `Expected refund by ${format(refundDate, 'PPP')}`;
+            console.log(`Generating ticket ${ticketId} for potentially debited failed transaction.`);
+           return {
+               transactionId: `TXN_UPI_FAILED_${Date.now()}`, // Still generate a failure ID
+               amount: amount,
+               recipientUpiId: recipientUpiId,
+               status: 'Failed',
+               message: upiFailureMessage,
+               usedWalletFallback: false,
+               ticketId: ticketId,
+               refundEta: refundEtaString,
+           };
+       } else {
+            // Normal failure without potential debit
+             return {
+                 transactionId: `TXN_UPI_FAILED_${Date.now()}`,
+                 amount: amount,
+                 recipientUpiId: recipientUpiId,
+                 status: 'Failed',
+                 message: upiFailureMessage,
+                 usedWalletFallback: false,
+             };
+       }
     }
     // --- End Smart Wallet Bridge Logic ---
   }
 }
-    
-    
