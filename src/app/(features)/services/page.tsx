@@ -1,7 +1,6 @@
-
 'use client';
 
-import { Button } from "@/components/ui/button"; // Import Button
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -38,15 +37,15 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
+  ParkingMeter,
+  Fuel,
   CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
     ShoppingBag,
     Gift as GiftIcon, //Alias Gift to avoid conflict
     Home, // Added Temple icon (using Home as placeholder)
-    Car, // Use Car icon
+    Car,
     Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
@@ -72,28 +71,30 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
+    // CarWash, // lucide-react doesn't have CarWash
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
     ScissorsLineDashed, // Barber/Salon
     MoreHorizontal, // Added MoreHorizontal back
     FolderLock, // For Secure Vault
+    GraduationCap, // Added for Education Fees
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
 
 const templeServices = [
-  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Booking" },
-  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Experience" },
-  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Experience" },
-  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Booking" },
-  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Support" },
-  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Info" },
-  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Experience" },
-  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Booking" },
-  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Info" },
-  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Booking" },
-  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Booking" },
+  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Temple Services" },
+  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Temple Services" },
+  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services" },
+  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Temple Services" },
+  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
+  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services" },
+  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services" },
+  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services" },
+  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Temple Services" },
+  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Temple Services" },
+  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services" },
 ];
 
 const travelServices = [
@@ -132,7 +133,7 @@ const hyperlocalServices = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry Pickup", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring Services", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Updated icon
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Use Car icon
     { name: "Courier Service", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
@@ -151,6 +152,7 @@ const otherServices = [
     { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills" },
     { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills" },
     { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Recharge & Bills" },
+    { name: "Education Fees", icon: GraduationCap, href: "/bills/education", category: "Recharge & Bills" }, // Added Education Fees
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
     { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
     { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills" },
