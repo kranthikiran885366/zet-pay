@@ -193,7 +193,7 @@ export default function ProfilePage() {
 
          <Card className="shadow-md">
              <CardContent className="p-0 divide-y divide-border">
-                <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="Contact us, FAQs" />
+                <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="Contact us, FAQs, Live Chat" />
                  <SettingsItem href="/about" icon={Info} title="About PayFriend" description="App version, legal information" />
              </CardContent>
          </Card>
@@ -251,7 +251,7 @@ function SettingsItem({ icon: Icon, title, description, href, onClick, badgeStat
             </div>
             <div className="flex items-center gap-2">
                  {badgeStatus && (
-                    <Badge variant={badgeStatus === 'Verified' ? 'default' : 'secondary'} className={`${badgeStatus === 'Verified' ? 'bg-green-100 text-green-700' : badgeStatus === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'} pointer-events-none`}>
+                    <Badge variant={badgeStatus === 'Verified' ? 'default' : badgeStatus === 'Pending' ? 'secondary' : 'destructive'} className={`${badgeStatus === 'Verified' ? 'bg-green-100 text-green-700' : badgeStatus === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'} pointer-events-none`}>
                         {badgeStatus}
                     </Badge>
                  )}
@@ -289,23 +289,38 @@ interface SettingsSwitchItemProps {
 
 function SettingsSwitchItem({ icon: Icon, title, description, checked, onCheckedChange, disabled = false }: SettingsSwitchItemProps) {
     const id = title.toLowerCase().replace(/\s+/g, '-');
+    const [isUpdating, setIsUpdating] = useState(false); // Local state for individual switch updates
+
+    const handleChange = async (newChecked: boolean) => {
+        if (disabled) return;
+        setIsUpdating(true);
+        try {
+            await onCheckedChange(newChecked); // Call the async handler passed via props
+        } catch (error) {
+            // Error handled in the parent component's toast
+            console.error("Error during switch change:", error);
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
     return (
-        <div className={`flex items-center justify-between p-4 ${disabled ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center justify-between p-4 ${disabled && !isUpdating ? 'opacity-50' : ''}`}>
             <div className="flex items-center gap-4">
                 <Icon className="h-5 w-5 text-primary" />
                 <div>
-                    <Label htmlFor={id} className={`text-sm font-medium ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
+                    <Label htmlFor={id} className={`text-sm font-medium ${disabled && !isUpdating ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
                     <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
             </div>
             <div className="flex items-center">
-                {disabled && isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
+                {isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
                 <Switch
                     id={id}
                     checked={checked}
-                    onCheckedChange={onCheckedChange}
+                    onCheckedChange={handleChange} // Use internal handler
                     aria-label={title}
-                    disabled={disabled}
+                    disabled={disabled || isUpdating} // Disable if globally disabled or if this switch is updating
                 />
             </div>
         </div>
