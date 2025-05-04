@@ -3,23 +3,25 @@
  * @fileOverview Service functions for managing transaction history in Firestore.
  */
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, onSnapshot, Unsubscribe, QueryConstraint } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, onSnapshot, Unsubscribe, QueryConstraint, updateDoc, doc } from 'firebase/firestore'; // Added updateDoc, doc
 import type { DateRange } from "react-day-picker";
+import { differenceInMinutes } from 'date-fns'; // Added differenceInMinutes
 
 // Interface matching the one in history page
 export interface Transaction {
   id: string; // Firestore document ID
   userId: string; // ID of the user this transaction belongs to
-  type: 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Failed' | 'Refund' | 'Cashback' | 'Movie Booking' | 'Bus Booking' | 'Train Booking' | 'Car Booking' | 'Bike Booking' | 'Food Order' | 'Donation' | 'Prasadam Order' | 'Pooja Booking';
+  type: 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Failed' | 'Refund' | 'Cashback' | 'Movie Booking' | 'Bus Booking' | 'Train Booking' | 'Car Booking' | 'Bike Booking' | 'Food Order' | 'Donation' | 'Prasadam Order' | 'Pooja Booking' | 'Cancelled'; // Added Cancelled
   name: string; // Payee/Payer/Service name
   description: string; // e.g., Mobile Number, Bill type, reason
   amount: number; // Positive for received/refunds/cashback, negative for sent/payments
   date: Date; // Stored as Timestamp in Firestore, converted to Date here
-  status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation'; // Added Processing Activation
+  status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled'; // Added Processing Activation & Cancelled
   avatarSeed: string; // Kept for client-side generation
   upiId?: string;
   billerId?: string;
   // Add other relevant fields like reference numbers, etc.
+  loanId?: string; // Added optional loan ID
 }
 
 export interface TransactionFilters {
@@ -50,11 +52,14 @@ const buildTransactionQueryConstraints = (
         constraints.push(where('status', '==', filters.status));
     }
     if (filters?.dateRange?.from) {
-        constraints.push(where('date', '>=', Timestamp.fromDate(filters.dateRange.from)));
+        // Set time to the beginning of the day
+        const fromDate = new Date(filters.dateRange.from);
+        fromDate.setHours(0, 0, 0, 0);
+        constraints.push(where('date', '>=', Timestamp.fromDate(fromDate)));
     }
     if (filters?.dateRange?.to) {
         const toDate = new Date(filters.dateRange.to);
-        toDate.setHours(23, 59, 59, 999);
+        toDate.setHours(23, 59, 59, 999); // Set time to the end of the day
         constraints.push(where('date', '<=', Timestamp.fromDate(toDate)));
     }
     if (count) {
@@ -140,9 +145,9 @@ export function subscribeToTransactionHistory(
     const currentUser = auth.currentUser;
     if (!currentUser) {
         console.log("User not logged in. Cannot subscribe to transaction history.");
-        // Don't call onError here, let the component handle the lack of subscription
+        // Don't trigger error callback here, handle the null return in component
         // onError(new Error("User not logged in."));
-        return null; // Indicate no subscription was set up
+        return null;
     }
     const userId = currentUser.uid;
     console.log(`Subscribing to transaction history for user ${userId} with filters:`, filters);
@@ -241,3 +246,73 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id' | '
         throw new Error("Could not add transaction.");
     }
 }
+
+/**
+ * Attempts to cancel a recently completed or processing recharge transaction.
+ * Checks if the transaction occurred within the allowable time window (e.g., 30 minutes).
+ *
+ * @param transactionId The ID of the recharge transaction to cancel.
+ * @returns A promise resolving to an object indicating success and a message.
+ */
+export async function cancelRecharge(transactionId: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error("User must be logged in to cancel a recharge.");
+    }
+    console.log(`Attempting to cancel recharge transaction: ${transactionId}`);
+
+    try {
+        const transactionDocRef = doc(db, 'transactions', transactionId);
+        const transactionSnap = await getDoc(transactionDocRef);
+
+        if (!transactionSnap.exists()) {
+            throw new Error("Transaction not found.");
+        }
+
+        const tx = transactionSnap.data() as Omit<Transaction, 'id' | 'date'> & { date: Timestamp }; // Get data with Timestamp
+
+        // Validate ownership and type
+        if (tx.userId !== currentUser.uid) {
+            throw new Error("Permission denied.");
+        }
+        if (tx.type !== 'Recharge') {
+            throw new Error("Only recharge transactions can be cancelled.");
+        }
+        if (tx.status === 'Cancelled' || tx.status === 'Failed' || tx.status === 'Pending') {
+             throw new Error(`Cannot cancel a transaction with status: ${tx.status}.`);
+        }
+
+        // Check time window (e.g., 30 minutes)
+        const transactionDate = tx.date.toDate();
+        const now = new Date();
+        const minutesPassed = differenceInMinutes(now, transactionDate);
+
+        if (minutesPassed > 30) {
+            throw new Error("Cancellation window (30 minutes) has passed.");
+        }
+
+        // TODO: Implement the actual API call to the recharge aggregator/operator to attempt cancellation.
+        // This is highly dependent on the provider and might not always be possible.
+        console.log(`Simulating cancellation API call for ${transactionId}...`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+        const cancellationSuccess = Math.random() > 0.2; // Simulate 80% success rate
+
+        if (cancellationSuccess) {
+            // Update the transaction status in Firestore
+            await updateDoc(transactionDocRef, {
+                status: 'Cancelled',
+                description: `${tx.description} (Cancelled by User)`,
+            });
+            // TODO: Initiate refund process if applicable (might happen automatically via aggregator).
+            console.log(`Transaction ${transactionId} cancelled successfully.`);
+            return { success: true, message: "Recharge cancelled. Refund will be processed if applicable." };
+        } else {
+            throw new Error("Cancellation failed at operator/aggregator level.");
+        }
+
+    } catch (error: any) {
+        console.error("Error cancelling recharge:", error);
+        throw new Error(error.message || "Could not cancel recharge.");
+    }
+}
+

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -9,12 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Filter, Calendar as CalendarIcon, ArrowUpDown, CheckCircle, XCircle, Clock, Loader2, Search } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { ArrowLeft, Filter, Calendar as CalendarIcon, ArrowUpDown, CheckCircle, XCircle, Clock, Loader2, Search, Ban } from 'lucide-react'; // Added Ban icon
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, differenceInMinutes } from "date-fns"; // Added differenceInMinutes
 import type { DateRange } from "react-day-picker";
-import { subscribeToTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Use the Firestore service with subscription
+import { subscribeToTransactionHistory, Transaction, TransactionFilters, cancelRecharge } from '@/services/transactions'; // Use the Firestore service with subscription, import cancelRecharge
 import { useToast } from '@/hooks/use-toast';
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
 import { auth } from '@/lib/firebase'; // Import auth
@@ -23,7 +23,8 @@ const statusIcons = {
   Completed: <CheckCircle className="h-4 w-4 text-green-600" />,
   Pending: <Clock className="h-4 w-4 text-yellow-600" />,
   Failed: <XCircle className="h-4 w-4 text-destructive" />,
-  'Processing Activation': <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
+  Processing Activation: <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
+  Cancelled: <Ban className="h-4 w-4 text-muted-foreground" />, // Added Cancelled status
 };
 
 export default function HistoryPage() {
@@ -36,6 +37,7 @@ export default function HistoryPage() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const { toast } = useToast();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [isCancelling, setIsCancelling] = useState<string | null>(null); // State to track cancellation
 
   // Check login status
    useEffect(() => {
@@ -146,6 +148,26 @@ export default function HistoryPage() {
         setSortOrder('newest');
    }
 
+   // Handle Recharge Cancellation
+   const handleCancelRecharge = async (transactionId: string) => {
+       setIsCancelling(transactionId);
+       try {
+           const result = await cancelRecharge(transactionId);
+           if (result.success) {
+                toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
+                // Optimistically update the status locally or refetch history after a delay
+                // For now, just show toast and stop loading indicator
+           } else {
+                throw new Error(result.message || "Cancellation not possible.");
+           }
+       } catch (error: any) {
+            console.error("Cancellation failed:", error);
+            toast({ variant: "destructive", title: "Cancellation Failed", description: error.message });
+       } finally {
+           setIsCancelling(null);
+       }
+   }
+
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
       {/* Header */}
@@ -198,6 +220,7 @@ export default function HistoryPage() {
                       <SelectItem value="Donation">Donation</SelectItem>
                       <SelectItem value="Prasadam Order">Prasadam Order</SelectItem>
                       <SelectItem value="Pooja Booking">Pooja Booking</SelectItem>
+                       <SelectItem value="Cancelled">Cancelled</SelectItem> {/* Added Cancelled Type */}
                 </SelectContent>
              </Select>
 
@@ -212,6 +235,7 @@ export default function HistoryPage() {
                     <SelectItem value="Pending">Pending</SelectItem>
                     <SelectItem value="Failed">Failed</SelectItem>
                      <SelectItem value="Processing Activation">Processing Activation</SelectItem>
+                     <SelectItem value="Cancelled">Cancelled</SelectItem> {/* Added Cancelled Status */}
                 </SelectContent>
              </Select>
 
@@ -298,29 +322,58 @@ export default function HistoryPage() {
                  <h2 className="text-sm font-semibold text-muted-foreground mb-2 px-1">{dateKey}</h2>
                  <Card className="shadow-md overflow-hidden">
                     <CardContent className="p-0 divide-y divide-border">
-                        {txs.map((tx) => (
-                         <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
-                           <div className="flex items-center gap-3 overflow-hidden">
-                             <Avatar className="h-9 w-9 flex-shrink-0">
-                               <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="transaction related avatar"/>
-                               <AvatarFallback>{tx.name?.charAt(0) || '?'}</AvatarFallback>
-                             </Avatar>
-                             <div className="flex-grow overflow-hidden">
-                               <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
-                               <p className="text-xs text-muted-foreground truncate">{tx.description} <span className="text-xs">· {format(tx.date, "p")}</span></p>
-                             </div>
-                           </div>
-                            <div className="text-right flex-shrink-0 ml-2">
-                               <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
-                                 {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(2)}
-                               </p>
-                                <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                                   {statusIcons[tx.status as keyof typeof statusIcons] || <Clock className="h-4 w-4 text-muted-foreground" />}
-                                   <span>{tx.status}</span>
+                        {txs.map((tx) => {
+                            const minutesSinceTransaction = differenceInMinutes(new Date(), tx.date);
+                            const isRecharge = tx.type === 'Recharge'; // Check if it's a recharge type
+                             // Allow cancellation only for recent (e.g., < 30 mins) completed/processing recharges
+                            const canCancel = isRecharge && (tx.status === 'Completed' || tx.status === 'Processing Activation') && minutesSinceTransaction < 30;
+
+                           return (
+                                <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <Avatar className="h-9 w-9 flex-shrink-0">
+                                        <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="transaction related avatar"/>
+                                        <AvatarFallback>{tx.name?.charAt(0) || '?'}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-grow overflow-hidden">
+                                        <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
+                                        <p className="text-xs text-muted-foreground truncate">{tx.description} <span className="text-xs">· {format(tx.date, "p")}</span></p>
+                                        {/* Add Cancel Button conditionally */}
+                                        {canCancel && (
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="xs" className="mt-1 h-5 px-1.5 text-[10px]" disabled={isCancelling === tx.id}>
+                                                        {isCancelling === tx.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Ban className="h-3 w-3 mr-1"/>} Cancel
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Cancel Recharge?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            Are you sure you want to cancel this recharge of ₹{Math.abs(tx.amount).toFixed(2)} for {tx.name}? This can only be done shortly after the transaction.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Keep Recharge</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleCancelRecharge(tx.id)} className="bg-destructive hover:bg-destructive/90">Confirm Cancel</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        )}
+                                    </div>
                                 </div>
-                           </div>
-                         </div>
-                        ))}
+                                <div className="text-right flex-shrink-0 ml-2">
+                                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : tx.status === 'Cancelled' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                                        {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(2)}
+                                    </p>
+                                    <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                                        {statusIcons[tx.status as keyof typeof statusIcons] || <Clock className="h-4 w-4 text-muted-foreground" />}
+                                        <span>{tx.status}</span>
+                                    </div>
+                                </div>
+                                </div>
+                           );
+                        })}
                     </CardContent>
                  </Card>
             </div>
@@ -329,3 +382,4 @@ export default function HistoryPage() {
     </div>
   );
 }
+
