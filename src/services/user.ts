@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for managing user profile data in Firestore.
  */
@@ -15,6 +16,10 @@ export interface UserProfile {
     createdAt: Date;
     updatedAt: Date;
     // Add other profile fields as needed
+
+    // Zet Pay Smart Wallet Bridge Fields
+    isSmartWalletBridgeEnabled?: boolean; // User preference to enable/disable the feature
+    smartWalletBridgeLimit?: number; // Max amount per fallback transaction (e.g., 5000)
 }
 
 /**
@@ -44,6 +49,9 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
                 ...data,
                 createdAt: data.createdAt?.toDate(),
                 updatedAt: data.updatedAt?.toDate(),
+                // Provide defaults for new fields if they don't exist
+                isSmartWalletBridgeEnabled: data.isSmartWalletBridgeEnabled ?? false, // Default disabled
+                smartWalletBridgeLimit: data.smartWalletBridgeLimit ?? 5000, // Default limit
             } as UserProfile;
         } else {
             console.log("No profile document found for user:", userId);
@@ -90,6 +98,8 @@ export async function upsertUserProfile(profileData: Partial<Omit<UserProfile, '
                 updatedAt: serverTimestamp(),
                 // Set default values for other fields if needed
                 kycStatus: 'Not Verified',
+                isSmartWalletBridgeEnabled: false, // Default disabled on creation
+                smartWalletBridgeLimit: 5000, // Default limit on creation
             });
             console.log(`User profile created for ${userId}`);
         }
@@ -119,6 +129,9 @@ export async function getUserProfileById(userId: string): Promise<UserProfile | 
                 ...data,
                 createdAt: data.createdAt?.toDate(),
                 updatedAt: data.updatedAt?.toDate(),
+                 // Provide defaults for new fields if they don't exist
+                isSmartWalletBridgeEnabled: data.isSmartWalletBridgeEnabled ?? false,
+                smartWalletBridgeLimit: data.smartWalletBridgeLimit ?? 5000,
             } as UserProfile;
         } else {
             console.log("No profile document found for user:", userId);
@@ -127,5 +140,32 @@ export async function getUserProfileById(userId: string): Promise<UserProfile | 
     } catch (error) {
         console.error("Error fetching user profile by ID:", error);
         throw new Error("Could not fetch user profile.");
+    }
+}
+
+/**
+ * Updates the Smart Wallet Bridge settings for the current user.
+ *
+ * @param settings Partial settings to update (enabled status and/or limit).
+ * @returns A promise that resolves when the update is complete.
+ */
+export async function updateSmartWalletBridgeSettings(settings: Pick<UserProfile, 'isSmartWalletBridgeEnabled' | 'smartWalletBridgeLimit'>): Promise<void> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error("User must be logged in to update settings.");
+    }
+    const userId = currentUser.uid;
+    const userDocRef = doc(db, 'users', userId);
+
+    console.log(`Updating Smart Wallet Bridge settings for user ${userId}:`, settings);
+    try {
+        await updateDoc(userDocRef, {
+            ...settings,
+            updatedAt: serverTimestamp(),
+        });
+        console.log("Smart Wallet Bridge settings updated successfully.");
+    } catch (error) {
+        console.error("Error updating Smart Wallet Bridge settings:", error);
+        throw new Error("Could not update settings.");
     }
 }

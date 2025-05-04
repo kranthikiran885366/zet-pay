@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'; // Import useEffect
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2 } from 'lucide-react'; // Import Loader2
+import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2, Wallet } from 'lucide-react'; // Added Wallet
 import Link from 'next/link';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { logout } from '@/services/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { getCurrentUserProfile, UserProfile } from '@/services/user'; // Import user profile service
+import { getCurrentUserProfile, UserProfile, updateSmartWalletBridgeSettings } from '@/services/user'; // Import user profile service & update function
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 export default function ProfilePage() {
@@ -23,6 +23,9 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true); // Loading state
   const [notifications, setNotifications] = useState(true); // Mock state, replace later
   const [biometric, setBiometric] = useState(false); // Mock state, replace later
+  const [smartWalletBridgeEnabled, setSmartWalletBridgeEnabled] = useState(false); // State for smart wallet bridge
+  const [isUpdating, setIsUpdating] = useState(false); // State for async updates
+
   const { toast } = useToast();
   const router = useRouter();
 
@@ -34,8 +37,10 @@ export default function ProfilePage() {
         const profile = await getCurrentUserProfile();
         setUser(profile);
         // Set switch states based on fetched profile if available
-        // setNotifications(profile?.settings?.notificationsEnabled ?? true);
-        // setBiometric(profile?.settings?.biometricEnabled ?? false);
+         // Assuming settings are stored directly on the profile for simplicity
+        setNotifications(profile?.notificationsEnabled ?? true);
+        setBiometric(profile?.biometricEnabled ?? false);
+        setSmartWalletBridgeEnabled(profile?.isSmartWalletBridgeEnabled ?? false);
       } catch (error) {
         console.error("Failed to fetch user profile:", error);
         toast({
@@ -70,6 +75,34 @@ export default function ProfilePage() {
   }
 
   const kycStatus = user?.kycStatus || 'Not Verified';
+
+  // Handle Smart Wallet Bridge Toggle
+   const handleSmartWalletBridgeChange = async (checked: boolean) => {
+       if (!user) return; // Need user profile for KYC check
+       setIsUpdating(true);
+       setSmartWalletBridgeEnabled(checked); // Optimistic UI update
+
+       try {
+            // Check KYC status before enabling
+            if (checked && user.kycStatus !== 'Verified') {
+                 toast({ variant: "destructive", title: "KYC Required", description: "Please complete KYC verification to enable Smart Wallet Bridge." });
+                 setSmartWalletBridgeEnabled(false); // Revert optimistic update
+                 setIsUpdating(false);
+                 return;
+            }
+
+            await updateSmartWalletBridgeSettings({ isSmartWalletBridgeEnabled: checked, smartWalletBridgeLimit: user.smartWalletBridgeLimit }); // Pass current limit
+            toast({ title: `Smart Wallet Bridge ${checked ? 'Enabled' : 'Disabled'}` });
+            // Update local user state if needed
+            setUser(prev => prev ? { ...prev, isSmartWalletBridgeEnabled: checked } : null);
+       } catch (error: any) {
+           console.error("Failed to update Smart Wallet Bridge setting:", error);
+           setSmartWalletBridgeEnabled(!checked); // Revert UI on error
+           toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update setting." });
+       } finally {
+           setIsUpdating(false);
+       }
+   };
 
 
   return (
@@ -134,16 +167,25 @@ export default function ProfilePage() {
                     title="Notifications"
                     description="Receive alerts & updates"
                     checked={notifications}
-                    onCheckedChange={setNotifications}
-                    disabled={isLoading}
+                    onCheckedChange={setNotifications} // Basic toggle for now
+                    disabled={isLoading || isUpdating}
                 />
                  <SettingsSwitchItem
-                    icon={User}
-                    title="Biometric Lock"
-                    description="Use fingerprint/face unlock"
+                    icon={Lock} // Using Lock icon as Biometric might be handled in Security
+                    title="App Lock"
+                    description="Use PIN/Biometric to open app"
                     checked={biometric}
-                    onCheckedChange={setBiometric}
-                    disabled={isLoading}
+                    onCheckedChange={setBiometric} // Basic toggle for now
+                    disabled={isLoading || isUpdating}
+                />
+                 {/* Smart Wallet Bridge Toggle */}
+                  <SettingsSwitchItem
+                    icon={Wallet}
+                    title="Smart Wallet Bridge"
+                    description="Auto-pay via Wallet if UPI limit exceeded"
+                    checked={smartWalletBridgeEnabled}
+                    onCheckedChange={handleSmartWalletBridgeChange}
+                    disabled={isLoading || isUpdating} // Disable while loading or updating
                 />
             </CardContent>
         </Card>
@@ -256,14 +298,16 @@ function SettingsSwitchItem({ icon: Icon, title, description, checked, onChecked
                     <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
             </div>
-            <Switch
-                id={id}
-                checked={checked}
-                onCheckedChange={onCheckedChange}
-                aria-label={title}
-                disabled={disabled}
-            />
+            <div className="flex items-center">
+                {disabled && isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
+                <Switch
+                    id={id}
+                    checked={checked}
+                    onCheckedChange={onCheckedChange}
+                    aria-label={title}
+                    disabled={disabled}
+                />
+            </div>
         </div>
     );
 }
-      

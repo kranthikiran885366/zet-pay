@@ -1,26 +1,50 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Import useEffect
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Lock, Key, Fingerprint, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Lock, Key, Fingerprint, ChevronRight, Wallet, Info, Loader2 } from 'lucide-react'; // Added Wallet, Info, Loader2
 import Link from 'next/link';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-
-// Mock security state (replace with actual state/settings)
-const securitySettings = {
-  appLockEnabled: true,
-  biometricEnabled: false,
-  // pinSet: true, // PIN status is now managed under UPI settings
-};
+import { getCurrentUserProfile, UserProfile, updateSmartWalletBridgeSettings } from '@/services/user'; // Import user services
+import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
 export default function SecuritySettingsPage() {
-  const [appLock, setAppLock] = useState(securitySettings.appLockEnabled);
-  const [biometric, setBiometric] = useState(securitySettings.biometricEnabled);
+  const [appLock, setAppLock] = useState(false);
+  const [biometric, setBiometric] = useState(false);
+  const [smartWalletBridgeEnabled, setSmartWalletBridgeEnabled] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Loading state for profile fetch
+  const [isUpdating, setIsUpdating] = useState(false); // State for async updates
   const { toast } = useToast();
+
+    // Fetch user profile settings on mount
+    useEffect(() => {
+        const fetchSettings = async () => {
+            setIsLoading(true);
+            try {
+                const profile = await getCurrentUserProfile();
+                if (profile) {
+                    // Set initial state from profile (replace mock data)
+                    setAppLock(profile.appLockEnabled ?? false); // Assuming these exist on profile
+                    setBiometric(profile.biometricEnabled ?? false); // Assuming these exist on profile
+                    setSmartWalletBridgeEnabled(profile.isSmartWalletBridgeEnabled ?? false);
+                } else {
+                     toast({ variant: "destructive", title: "Error", description: "Could not load user settings." });
+                }
+            } catch (error) {
+                console.error("Failed to fetch user settings:", error);
+                toast({ variant: "destructive", title: "Error", description: "Could not load settings." });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchSettings();
+    }, [toast]);
+
 
    const handleAppLockChange = (checked: boolean) => {
         setAppLock(checked);
@@ -28,6 +52,7 @@ export default function SecuritySettingsPage() {
         toast({ title: `App Lock ${checked ? 'Enabled' : 'Disabled'}` });
         if (!checked) {
              setBiometric(false); // Disable biometric if app lock is turned off
+             // TODO: Call API to disable biometric too if needed
         }
    };
 
@@ -39,6 +64,32 @@ export default function SecuritySettingsPage() {
         setBiometric(checked);
         // TODO: Call API to update biometric setting
         toast({ title: `Biometric Unlock ${checked ? 'Enabled' : 'Disabled'}` });
+   };
+
+   // Handle Smart Wallet Bridge Toggle
+   const handleSmartWalletBridgeChange = async (checked: boolean) => {
+       setIsUpdating(true);
+       setSmartWalletBridgeEnabled(checked); // Optimistic UI update
+       try {
+            const currentProfile = await getCurrentUserProfile();
+            if (checked && currentProfile?.kycStatus !== 'Verified') {
+                 toast({ variant: "destructive", title: "KYC Required", description: "Please complete KYC verification to enable Smart Wallet Bridge." });
+                 setSmartWalletBridgeEnabled(false); // Revert optimistic update
+                 return;
+            }
+
+           // Fetch current limit to send it back, or use a default/null
+           const currentLimit = currentProfile?.smartWalletBridgeLimit; // Get current limit
+
+           await updateSmartWalletBridgeSettings({ isSmartWalletBridgeEnabled: checked, smartWalletBridgeLimit: currentLimit });
+           toast({ title: `Smart Wallet Bridge ${checked ? 'Enabled' : 'Disabled'}` });
+       } catch (error: any) {
+           console.error("Failed to update Smart Wallet Bridge setting:", error);
+           setSmartWalletBridgeEnabled(!checked); // Revert UI on error
+           toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update setting." });
+       } finally {
+           setIsUpdating(false);
+       }
    };
 
   return (
@@ -56,43 +107,77 @@ export default function SecuritySettingsPage() {
 
       {/* Main Content */}
       <main className="flex-grow p-4 space-y-6 pb-20">
-        <Card className="shadow-md">
-            <CardHeader>
-                <CardTitle>App Security</CardTitle>
-                <CardDescription>Manage how you secure the PayFriend app.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-                {/* Link to UPI PIN management */}
-                 <Link href="/profile/upi" passHref legacyBehavior>
-                    <SettingsItem
-                        icon={Key}
-                        title="Manage UPI PIN"
-                        description="Set or reset your UPI transaction PIN"
+        {isLoading ? (
+            <Card className="shadow-md"><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+        ) : (
+            <Card className="shadow-md">
+                <CardHeader>
+                    <CardTitle>App Security</CardTitle>
+                    <CardDescription>Manage how you secure the PayFriend app.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                    {/* Link to UPI PIN management */}
+                     <Link href="/profile/upi" passHref legacyBehavior>
+                        <SettingsItem
+                            icon={Key}
+                            title="Manage UPI PIN"
+                            description="Set or reset your UPI transaction PIN"
+                        />
+                     </Link>
+                    <Separator className="my-0" />
+
+                    {/* App Lock Switch */}
+                     <SettingsSwitchItem
+                        icon={Lock}
+                        title="App Lock"
+                        description="Require PIN or Biometric to open app"
+                        checked={appLock}
+                        onCheckedChange={handleAppLockChange}
+                        disabled={isUpdating}
                     />
-                 </Link>
-                <Separator className="my-0" />
+                    <Separator className="my-0" />
 
-                {/* App Lock Switch */}
-                 <SettingsSwitchItem
-                    icon={Lock}
-                    title="App Lock"
-                    description="Require PIN or Biometric to open app"
-                    checked={appLock}
-                    onCheckedChange={handleAppLockChange}
-                />
-                <Separator className="my-0" />
+                    {/* Biometric Lock Switch */}
+                     <SettingsSwitchItem
+                        icon={Fingerprint} // Represents fingerprint/face
+                        title="Biometric Unlock"
+                        description="Use fingerprint/face instead of PIN"
+                        checked={biometric}
+                        onCheckedChange={handleBiometricChange}
+                        disabled={!appLock || isUpdating} // Disable if app lock is off or updating
+                    />
+                </CardContent>
+            </Card>
+        )}
 
-                {/* Biometric Lock Switch */}
-                 <SettingsSwitchItem
-                    icon={Fingerprint} // Represents fingerprint/face
-                    title="Biometric Unlock"
-                    description="Use fingerprint/face instead of PIN"
-                    checked={biometric}
-                    onCheckedChange={handleBiometricChange}
-                    disabled={!appLock} // Disable if app lock is off
-                />
-            </CardContent>
-        </Card>
+
+          {/* Smart Wallet Bridge Section */}
+          {isLoading ? (
+              <Card className="shadow-md"><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+          ) : (
+            <Card className="shadow-md">
+                 <CardHeader>
+                    <CardTitle>Smart Wallet Bridge</CardTitle>
+                    <CardDescription>Auto-pay via Wallet if UPI limit exceeded.</CardDescription>
+                 </CardHeader>
+                 <CardContent className="p-0">
+                     <SettingsSwitchItem
+                        icon={Wallet}
+                        title="Enable Smart Wallet Bridge"
+                        description="Allows fallback to wallet for UPI limit issues (KYC required)"
+                        checked={smartWalletBridgeEnabled}
+                        onCheckedChange={handleSmartWalletBridgeChange}
+                        disabled={isUpdating} // Disable while any update is processing
+                    />
+                     <div className="p-4 text-xs text-muted-foreground flex items-start gap-2">
+                         <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                         <span>If your daily UPI limit (₹1 Lakh) is reached, payments will automatically use your Zet Pay Wallet balance (up to ₹5,000 fallback limit, requires KYC). The amount will be auto-recovered from your bank account after midnight.</span>
+                     </div>
+                     {/* TODO: Add UI to configure the fallback limit (smartWalletBridgeLimit) */}
+                 </CardContent>
+            </Card>
+         )}
+
 
          {/* Add other security sections if needed, e.g., */}
         {/* <Card className="shadow-md">
@@ -165,13 +250,16 @@ function SettingsSwitchItem({ icon: Icon, title, description, checked, onChecked
                     <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
             </div>
-            <Switch
-                id={id}
-                checked={checked}
-                onCheckedChange={onCheckedChange}
-                aria-label={title}
-                disabled={disabled}
-            />
+            <div className="flex items-center">
+                {disabled && isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
+                <Switch
+                    id={id}
+                    checked={checked}
+                    onCheckedChange={onCheckedChange}
+                    aria-label={title}
+                    disabled={disabled}
+                />
+            </div>
         </div>
     );
 }

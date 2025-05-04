@@ -2,6 +2,11 @@
 /**
  * Represents a bank account.
  */
+import { Transaction, addTransaction } from './transactions'; // Import Transaction interface and addTransaction
+import { getUserProfileById, UserProfile } from './user'; // To check KYC and feature status
+import { getWalletBalance, payViaWallet, WalletTransactionResult } from './wallet'; // Import wallet functions
+import { scheduleRecovery } from './recovery'; // Import recovery scheduling function
+
 export interface BankAccount {
   /**
    * The name of the bank.
@@ -27,12 +32,13 @@ export interface BankAccount {
 
 /**
  * Represents a UPI transaction result.
+ * Adding a flag to indicate if fallback was used.
  */
-export interface UpiTransaction {
+export interface UpiTransactionResult {
   /**
    * The transaction ID.
    */
-  transactionId: string;
+  transactionId?: string; // Optional if failed before getting ID
   /**
    * The amount transferred.
    */
@@ -44,11 +50,19 @@ export interface UpiTransaction {
   /**
    * The status of the transaction (e.g., Pending, Completed, Failed).
    */
-  status: 'Pending' | 'Completed' | 'Failed';
+  status: 'Pending' | 'Completed' | 'Failed' | 'FallbackSuccess'; // Added FallbackSuccess
    /**
     * Optional message associated with the transaction status.
     */
    message?: string;
+   /**
+    * Flag indicating if the payment succeeded via wallet fallback.
+    */
+   usedWalletFallback?: boolean;
+   /**
+    * ID of the wallet transaction if fallback was used.
+    */
+   walletTransactionId?: string;
 }
 
 /**
@@ -136,61 +150,6 @@ export async function checkBalance(upiId: string, pin?: string): Promise<number>
 }
 
 /**
- * Asynchronously processes a UPI payment. Requires secure PIN entry in real implementation.
- *
- * @param recipientUpiId The UPI ID of the recipient.
- * @param amount The amount to transfer.
- * @param pin The UPI PIN for authentication.
- * @param note An optional transaction note/description.
- * @returns A promise that resolves to a UpiTransaction object representing the transaction details.
- * @throws Error if payment fails.
- */
-export async function processUpiPayment(
-  recipientUpiId: string,
-  amount: number,
-  pin: string,
-  note?: string
-): Promise<UpiTransaction> {
-  console.log(`Processing UPI payment to ${recipientUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ${pin})`);
-  // TODO: Implement actual secure UPI payment flow via SDK/API.
-   await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-
-   // Simulate various outcomes for demo
-   if (pin !== '1234' && pin !== '123456') { // Example PIN check
-      throw new Error("Incorrect UPI PIN entered.");
-   }
-   if (amount > 5000) { // Simulate insufficient balance
-      return {
-        transactionId: `TXN${Date.now()}`,
-        amount: amount,
-        recipientUpiId: recipientUpiId,
-        status: 'Failed',
-        message: 'Insufficient balance',
-      };
-   }
-    if (recipientUpiId.includes('invalid')) { // Simulate invalid UPI ID scenario
-       return {
-           transactionId: `TXN${Date.now()}`,
-           amount: amount,
-           recipientUpiId: recipientUpiId,
-           status: 'Failed',
-           message: 'Invalid recipient UPI ID',
-       };
-   }
-
-
-  // Simulate successful transaction
-  return {
-    transactionId: `TXN${Date.now()}`,
-    amount: amount,
-    recipientUpiId: recipientUpiId,
-    status: 'Completed',
-    message: 'Transaction Successful',
-  };
-}
-
-
-/**
  * Asynchronously verifies a UPI ID with the bank/NPCI.
  * @param upiId The UPI ID to verify.
  * @returns A promise that resolves to the registered name of the UPI ID holder.
@@ -206,6 +165,8 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     if (upiId === 'bob.j@okbank') return "Robert Johnson";
     if (upiId === 'charlie@paytm') return "Charles Brown";
     if (upiId === 'david.will@ybl') return "David Williams";
+    // Simulate a specific ID hitting the limit for testing fallback
+    if (upiId === 'limit@payfriend') return "Limit Exceeded User";
     if (upiId.includes('invalid') || !upiId.includes('@')) {
         throw new Error("Invalid UPI ID format or ID not found.");
     }
@@ -219,4 +180,128 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     return verifiedName || "Verified User"; // Fallback name
 }
 
+
+/**
+ * Asynchronously processes a UPI payment. Attempts fallback via wallet if UPI limit is exceeded.
+ * Requires secure PIN entry in real implementation.
+ *
+ * @param recipientUpiId The UPI ID of the recipient.
+ * @param amount The amount to transfer.
+ * @param pin The UPI PIN for authentication.
+ * @param note An optional transaction note/description.
+ * @param userId The ID of the user making the payment.
+ * @returns A promise that resolves to a UpiTransactionResult object representing the transaction details.
+ * @throws Error if payment fails and fallback is not possible or also fails.
+ */
+export async function processUpiPayment(
+  recipientUpiId: string,
+  amount: number,
+  pin: string,
+  note?: string,
+  userId?: string // Make userId optional for now, but needed for fallback checks
+): Promise<UpiTransactionResult> {
+  console.log(`Processing UPI payment to ${recipientUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ${pin})`);
+  // TODO: Implement actual secure UPI payment flow via SDK/API.
+  await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate UPI API delay
+
+  let upiFailedDueToLimit = false;
+  let upiFailureMessage = 'Payment failed.';
+
+  // Simulate various UPI outcomes for demo
+  try {
+    if (pin !== '1234' && pin !== '123456') { // Example PIN check
+      throw new Error("Incorrect UPI PIN entered.");
+    }
+    if (recipientUpiId === 'limit@payfriend') { // Simulate limit exceeded
+      upiFailedDueToLimit = true;
+      upiFailureMessage = 'UPI daily limit exceeded.';
+      throw new Error(upiFailureMessage);
+    }
+    if (amount > 10000) { // Simulate insufficient balance (different from limit)
+        throw new Error('Insufficient bank balance.');
+    }
+    if (recipientUpiId.includes('invalid')) { // Simulate invalid UPI ID scenario
+        throw new Error('Invalid recipient UPI ID.');
+    }
+
+    // Simulate successful UPI transaction if no error thrown above
+    return {
+      transactionId: `TXN_UPI_${Date.now()}`,
+      amount: amount,
+      recipientUpiId: recipientUpiId,
+      status: 'Completed',
+      message: 'Transaction Successful',
+      usedWalletFallback: false,
+    };
+
+  } catch (upiError: any) {
+    console.warn("UPI Payment failed:", upiError.message);
+    upiFailureMessage = upiError.message || upiFailureMessage; // Update failure message
+
+    // --- Smart Wallet Bridge Logic ---
+    if (upiFailedDueToLimit && userId) {
+      console.log("UPI limit exceeded, attempting Wallet Fallback...");
+      try {
+        // 1. Check User Eligibility & Settings
+        const userProfile = await getUserProfileById(userId); // Fetch user profile
+        if (userProfile?.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
+            console.log("Wallet Fallback disabled for user.");
+            throw new Error(upiFailureMessage); // Re-throw original UPI error
+        }
+        if (amount > (userProfile.smartWalletBridgeLimit || 0)) {
+            console.log(`Amount ${amount} exceeds wallet fallback limit ${userProfile.smartWalletBridgeLimit}`);
+            throw new Error(`${upiFailureMessage} Wallet fallback limit exceeded.`); // More specific error
+        }
+
+        // 2. Check Wallet Balance
+        const walletBalance = await getWalletBalance(userId);
+        if (walletBalance < amount) {
+            console.log(`Insufficient wallet balance (${walletBalance}) for fallback amount (${amount}).`);
+             // TODO: Check for auto-debit setup if needed
+            throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
+        }
+
+        // 3. Attempt Payment via Wallet
+        const walletPaymentResult = await payViaWallet(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
+
+        if (walletPaymentResult.success) {
+          console.log("Payment successful via Wallet Fallback!");
+
+          // 4. Schedule Recovery from Bank Account
+          const recoveryScheduled = await scheduleRecovery(userId, amount, recipientUpiId);
+          if (!recoveryScheduled) {
+            console.error("CRITICAL: Failed to schedule wallet recovery!");
+            // Handle this critical error - maybe notify admin, attempt retry later?
+          } else {
+            console.log("Wallet recovery scheduled successfully.");
+          }
+
+          // Return a specific status indicating fallback success
+          return {
+            transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID
+            walletTransactionId: walletPaymentResult.transactionId,
+            amount: amount,
+            recipientUpiId: recipientUpiId,
+            status: 'FallbackSuccess', // Use a distinct status
+            message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
+            usedWalletFallback: true,
+          };
+        } else {
+          // Wallet payment also failed
+          console.error("Wallet Fallback payment failed:", walletPaymentResult.message);
+          throw new Error(`${upiFailureMessage} Wallet fallback also failed: ${walletPaymentResult.message}`);
+        }
+      } catch (fallbackError: any) {
+        console.error("Wallet Fallback process failed:", fallbackError.message);
+        // Ensure the final thrown error includes the original UPI failure reason if possible
+        throw new Error(fallbackError.message || upiFailureMessage);
+      }
+    } else {
+      // UPI failed for reasons other than limit, or fallback not applicable/enabled
+      throw new Error(upiFailureMessage);
+    }
+    // --- End Smart Wallet Bridge Logic ---
+  }
+}
+    
     
