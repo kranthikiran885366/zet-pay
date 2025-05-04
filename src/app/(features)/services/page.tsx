@@ -66,7 +66,17 @@ import {
     Zap, // For EV Charging
     Siren, // For Emergency Assistance
     Store, // For Rest Stop (placeholder)
-    HeartPulse // For Healthcare
+    HeartPulse, // For Healthcare
+    Wrench, // Electrician/Plumber
+    SprayCan, // Home Cleaning/Pest Control
+    WashingMachine, // Laundry
+    Scissors, // Tailoring
+    CarWash, // Car Wash
+    Package, // Courier
+    BriefcaseBusiness, // Coworking
+    Dog, // Pet Grooming/Vet
+    ScissorsLineDashed, // Barber/Salon
+    MoreHorizontal, // Added MoreHorizontal back
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -119,6 +129,20 @@ const healthcareServices = [
      { name: "Healthcare & Wellness", icon: HeartPulse, href: "/healthcare", category: "Healthcare" },
 ];
 
+// New Hyperlocal Services Category
+const hyperlocalServices = [
+    { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services" },
+    { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
+    { name: "Laundry Pickup", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
+    { name: "Tailoring Services", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
+    { name: "Car Wash", icon: CarWash, href: "/hyperlocal/carwash", category: "Hyperlocal Services" },
+    { name: "Courier Service", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
+    { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
+    { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
+    { name: "Salon/Barber", icon: ScissorsLineDashed, href: "/hyperlocal/salon", category: "Hyperlocal Services" },
+];
+
+
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
     { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills" },
@@ -148,7 +172,7 @@ const otherServices = [
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
     // Define order, ensuring all categories are included
-    const categoryOrder = ["Recharge & Bills", "Travel", "Healthcare", "Entertainment", "Temple Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
+    const categoryOrder = ["Recharge & Bills", "Travel", "Healthcare", "Entertainment", "Temple Services", "Hyperlocal Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
@@ -181,6 +205,7 @@ export default function AllServicesPage() {
         ...financialServices,
         ...entertainmentServices,
         ...healthcareServices, // Added healthcare
+        ...hyperlocalServices, // Added hyperlocal
         ...otherServices
     ];
     const groupedServices = groupServicesByCategory(allServices);
