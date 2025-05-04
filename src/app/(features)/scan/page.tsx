@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -53,7 +52,7 @@ export default function ScanPage() {
   const streamRef = useRef<MediaStream | null>(null); // Store the stream reference
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [scannedData, setScannedData] = useState<string | null>(null);
-  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(isProcessingUpload);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const { toast } = useToast();
@@ -268,10 +267,7 @@ export default function ScanPage() {
                                 <Button
                                     variant="secondary"
                                     size="icon"
-                                    className={cn(
-                                        "absolute bottom-4 right-4 rounded-full pointer-events-auto z-10",
-                                        torchOn ? "bg-yellow-400 hover:bg-yellow-500 text-black" : "bg-black/50 hover:bg-black/70 text-white"
-                                    )}
+                                    className="absolute bottom-4 right-4 rounded-full pointer-events-auto z-10"
                                     onClick={toggleTorch}
                                 >
                                     <Zap className="h-5 w-5"/>
@@ -344,41 +340,3 @@ export default function ScanPage() {
     </div>
   );
 }
-
-```
-  </change>
-  <change>
-    <file>next.config.ts</file>
-    <description>Add api.qrserver.com to allowed image domains in next.config.ts to display QR codes.</description>
-    <content><![CDATA[
-import type {NextConfig} from 'next';
-
-const nextConfig: NextConfig = {
-  /* config options here */
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'api.qrserver.com', // Add this entry
-        port: '',
-        pathname: '/**',
-      },
-    ],
-  },
-};
-
-export default nextConfig;
-
-    
