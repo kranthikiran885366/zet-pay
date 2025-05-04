@@ -1,12 +1,12 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet, Mic, MessageSquare } from "lucide-react"; // Added MessageSquare
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions';
 import { useToast } from "@/hooks/use-toast";
 import type { Unsubscribe } from 'firebase/firestore';
@@ -14,6 +14,7 @@ import { auth } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { cn } from '@/lib/utils'; // Ensure cn is imported
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -46,6 +47,14 @@ export default function Home() {
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const { toast } = useToast();
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the hook
+  const router = useRouter();
+
+  useEffect(() => {
+     // Redirect to splash screen if not already there
+     if (router.pathname === '/') {
+         router.replace('/splash');
+     }
+  }, [router]);
 
   // Handle voice command results (placeholder)
   useEffect(() => {
@@ -112,7 +121,7 @@ export default function Home() {
         unsubscribeFromTransactions();
       }
     };
-  }, [toast]); // Added toast as dependency
+  }, [toast, router]); // Added router to dependency array
 
 
   const handleVoiceButtonClick = () => {
