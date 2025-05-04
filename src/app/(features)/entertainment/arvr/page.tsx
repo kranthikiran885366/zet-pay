@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,9 @@ export default function ArVrEventsPage() {
           <CardContent>
              <Sparkles className="h-20 w-20 text-primary mx-auto mb-4" />
             <p className="text-muted-foreground mb-4">
-              Integrate with AR/VR platforms to watch select events in an immersive format. Coming Soon!
+              Integrate with AR/VR platforms to view select events in an immersive format. 
+
+              Imagine exploring a 3D model of a hotel room before booking, viewing a virtual temple queue, or even previewing a dish in AR before ordering!  Coming Soon!
             </p>
              <Button disabled>Explore AR/VR Events (Coming Soon)</Button>
           </CardContent>
@@ -40,3 +41,4 @@ export default function ArVrEventsPage() {
     </div>
   );
 }
+
