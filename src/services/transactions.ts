@@ -31,15 +31,20 @@ export interface Transaction {
   name: string; // Payee/Payer/Service name
   description: string; // e.g., Mobile Number, Bill type, reason
   amount: number; // Positive for received/refunds/cashback, negative for sent/payments
-  date: Date; // Stored as Timestamp in Firestore, converted to Date here
+  date: Date; // Stored as Timestamp in Firestore, converted to Date here for client
   status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled'; // Added Processing Activation & Cancelled
   avatarSeed: string; // Kept for client-side generation
-  upiId?: string;
+  upiId?: string; // Recipient/Source UPI ID or identifier for recharges
   billerId?: string;
   // Add other relevant fields like reference numbers, etc.
   loanId?: string; // Added optional loan ID
   ticketId?: string; // Added for failed payment tracking
   refundEta?: string; // Added for failed payment tracking
+}
+
+// Interface for data stored in Firestore (uses Timestamp)
+interface TransactionFirestore extends Omit<Transaction, 'id' | 'date'> {
+    date: Timestamp;
 }
 
 export interface TransactionFilters {
@@ -111,8 +116,9 @@ export function subscribeToTransactionHistory(
 ): Unsubscribe | null {
     const currentUser = auth.currentUser;
     if (!currentUser) {
+        // This case should be handled by the calling component (e.g., useEffect dependency on user login status)
+        // Avoid calling onError directly here if the component will handle the null return value.
         console.log("User not logged in. Cannot subscribe to transaction history.");
-        // Avoid calling onError here, let the component handle the null return
         return null;
     }
     const userId = currentUser.uid;
@@ -126,11 +132,11 @@ export function subscribeToTransactionHistory(
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             let transactions = querySnapshot.docs.map(doc => {
-                const data = doc.data();
+                const data = doc.data() as TransactionFirestore;
                 return {
                     id: doc.id,
                     ...data,
-                    date: (data.date as Timestamp).toDate(),
+                    date: data.date.toDate(), // Convert Timestamp to Date
                     avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id,
                 } as Transaction;
             });
@@ -222,6 +228,7 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
     if (!currentUser) {
         throw new Error("User must be logged in to cancel a recharge.");
     }
+    const userId = currentUser.uid; // Get userId for permission check
     console.log(`Attempting to cancel recharge transaction: ${transactionId}`);
 
     try {
@@ -232,11 +239,13 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
             throw new Error("Transaction not found.");
         }
 
-        const tx = transactionSnap.data() as Omit<Transaction, 'id' | 'date'> & { date: Timestamp };
+        const tx = transactionSnap.data() as TransactionFirestore; // Use Firestore type
 
-        if (tx.userId !== currentUser.uid) {
-            throw new Error("Permission denied.");
+        // **PERMISSION CHECK**: Ensure the transaction belongs to the current user
+        if (tx.userId !== userId) {
+            throw new Error("Permission denied. Cannot cancel another user's transaction.");
         }
+
         if (tx.type !== 'Recharge') {
             throw new Error("Only recharge transactions can be cancelled.");
         }
@@ -244,28 +253,35 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
              throw new Error(`Cannot cancel a transaction with status: ${tx.status}.`);
         }
 
-        const transactionDate = tx.date.toDate();
+        const transactionDate = tx.date.toDate(); // Convert timestamp to Date
         const now = new Date();
         const minutesPassed = differenceInMinutes(now, transactionDate);
 
-        if (minutesPassed > 30) {
-            throw new Error("Cancellation window (30 minutes) has passed.");
+        // **Cancellation Window Check**
+        const CANCELLATION_WINDOW_MINUTES = 30;
+        if (minutesPassed > CANCELLATION_WINDOW_MINUTES) {
+            throw new Error(`Cancellation window (${CANCELLATION_WINDOW_MINUTES} minutes) has passed.`);
         }
 
-        // Simulate external cancellation API call
+        // **Simulate external cancellation API call**
+        // TODO: Replace with actual API call to the recharge aggregator/provider
         console.log(`Simulating cancellation API call for ${transactionId}...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const cancellationSuccess = Math.random() > 0.2;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
+        const cancellationSuccess = Math.random() > 0.2; // 80% success rate simulation
 
         if (cancellationSuccess) {
+            // Update the transaction status in Firestore
             await updateDoc(transactionDocRef, {
                 status: 'Cancelled',
                 description: `${tx.description} (Cancelled by User)`,
+                // Add an 'updatedAt' field if you track modifications
+                // updatedAt: serverTimestamp(),
             });
             console.log(`Transaction ${transactionId} cancelled successfully in Firestore.`);
-            // TODO: Initiate refund process if applicable.
+            // TODO: Initiate refund process if applicable via backend/webhook.
             return { success: true, message: "Recharge cancelled. Refund will be processed if applicable." };
         } else {
+            // Cancellation failed at the provider level
             throw new Error("Cancellation failed at operator/aggregator level.");
         }
 
@@ -275,8 +291,8 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
     }
 }
 
-// Note: getTransactionHistory (one-time fetch) can be removed if subscribeToTransactionHistory is always used.
-// Kept here for potential scenarios where a non-realtime fetch might be needed.
+
+// --- Kept for non-realtime fetch scenarios ---
 /**
  * Asynchronously retrieves the transaction history for the current user, optionally filtered.
  * Performs a one-time fetch.
@@ -302,11 +318,11 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
         const querySnapshot = await getDocs(q);
 
         let transactions = querySnapshot.docs.map(doc => {
-            const data = doc.data();
+            const data = doc.data() as TransactionFirestore;
             return {
                 id: doc.id,
                 ...data,
-                date: (data.date as Timestamp).toDate(),
+                date: data.date.toDate(), // Convert Timestamp to Date
                 avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id,
             } as Transaction;
         });
@@ -332,3 +348,68 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
         throw new Error("Could not fetch transaction history.");
     }
 }
+
+// --- Blockchain Integration Placeholder ---
+/**
+ * Logs a transaction hash to a (hypothetical) blockchain ledger.
+ * This is a placeholder and requires a real blockchain integration (e.g., Web3 library, backend service).
+ *
+ * @param transactionId The ID of the transaction in Firestore.
+ * @param transactionData Key details of the transaction.
+ * @returns A promise resolving to the blockchain transaction hash (simulated).
+ */
+export async function logTransactionToBlockchain(
+    transactionId: string,
+    transactionData: Pick<Transaction, 'userId' | 'type' | 'amount' | 'date'> & { recipient?: string }
+): Promise<string> {
+    console.log(`[Blockchain Simulation] Logging transaction ${transactionId} to ledger...`);
+    // TODO: Implement actual blockchain interaction here.
+    // This might involve:
+    // 1. Connecting to a blockchain node/provider.
+    // 2. Creating and signing a blockchain transaction with relevant data.
+    // 3. Sending the transaction and waiting for confirmation.
+    // 4. Returning the blockchain transaction hash.
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+    const mockBlockchainHash = `0x${[...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+    console.log(`[Blockchain Simulation] Transaction ${transactionId} logged with hash: ${mockBlockchainHash}`);
+
+    // Optionally, update the Firestore transaction document with the blockchain hash
+    try {
+        const txDocRef = doc(db, 'transactions', transactionId);
+        await updateDoc(txDocRef, { blockchainHash: mockBlockchainHash });
+    } catch (error) {
+        console.error(`Error updating transaction ${transactionId} with blockchain hash:`, error);
+        // Handle error appropriately (e.g., retry, log) - non-critical for core functionality
+    }
+
+    return mockBlockchainHash;
+}
+
+// --- Example Usage within addTransaction (optional) ---
+// Modify addTransaction to call logTransactionToBlockchain AFTER successfully adding to Firestore:
+/*
+export async function addTransaction(...) {
+    // ... (existing add logic) ...
+    try {
+        const docRef = await addDoc(transactionsColRef, dataToSave);
+        console.log("Transaction added with ID:", docRef.id);
+
+        // Log to blockchain after successful Firestore add (non-blocking)
+        logTransactionToBlockchain(docRef.id, {
+            userId: userId,
+            type: transactionData.type,
+            amount: transactionData.amount,
+            date: new Date(), // Use client date for simulation consistency
+            recipient: transactionData.upiId || transactionData.billerId,
+        }).catch(blockchainError => {
+            console.error(`Failed to log transaction ${docRef.id} to blockchain:`, blockchainError);
+        });
+
+        // Return client-side representation
+        const newTransaction: Transaction = { ... };
+        return newTransaction;
+
+    } catch (error) { ... }
+}
+*/
+

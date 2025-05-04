@@ -17,7 +17,9 @@ import {
     onSnapshot, // Import for real-time updates
     Unsubscribe,
     getDoc,
-    QueryConstraint // Import QueryConstraint
+    QueryConstraint, // Import QueryConstraint
+    serverTimestamp, // Import serverTimestamp
+    Timestamp // Import Timestamp
 } from 'firebase/firestore';
 import { getUserProfileById } from './user'; // To potentially fetch full payee details
 
@@ -29,11 +31,20 @@ export interface Payee {
   identifier: string; // Phone number or UPI ID/Account
   type: 'mobile' | 'bank';
   avatarSeed?: string; // Kept for potential client-side generation consistency
-  upiId?: string;
-  accountNumber?: string;
-  ifsc?: string;
+  upiId?: string; // Store full UPI ID if type is bank/UPI
+  accountNumber?: string; // Store account if type is bank
+  ifsc?: string; // Store IFSC if type is bank
   isFavorite?: boolean; // Example new field
+  createdAt?: Timestamp; // Track creation time
+  updatedAt?: Timestamp; // Track update time
 }
+
+// Client-side interface with Date objects
+export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
 
 /**
  * Subscribes to real-time updates for the current user's contacts/payees.
@@ -45,7 +56,7 @@ export interface Payee {
  * @returns An unsubscribe function to stop listening for updates, or null if user is not logged in.
  */
 export function subscribeToContacts(
-  onUpdate: (contacts: Payee[]) => void,
+  onUpdate: (contacts: PayeeClient[]) => void,
   onError: (error: Error) => void,
   searchTerm?: string // Add searchTerm parameter
 ): Unsubscribe | null {
@@ -64,12 +75,17 @@ export function subscribeToContacts(
     const q = query(contactsColRef, orderBy('name'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      let contacts = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        userId,
-        ...doc.data(),
-        avatarSeed: doc.data().avatarSeed || doc.data().name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
-      } as Payee));
+      let contacts = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            userId,
+            ...data,
+            avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
+            createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : undefined,
+            updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : undefined,
+          } as PayeeClient;
+      });
 
       // Apply client-side filtering if searchTerm is provided
       if (searchTerm) {
@@ -104,9 +120,9 @@ export function subscribeToContacts(
  * (Kept for scenarios where a non-realtime fetch is needed).
  *
  * @param searchTerm Optional search term to filter contacts by name or identifier.
- * @returns A promise that resolves to an array of Payee objects.
+ * @returns A promise that resolves to an array of PayeeClient objects.
  */
-export async function getContacts(searchTerm?: string): Promise<Payee[]> {
+export async function getContacts(searchTerm?: string): Promise<PayeeClient[]> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     console.log("No user logged in to get contacts.");
@@ -124,12 +140,17 @@ export async function getContacts(searchTerm?: string): Promise<Payee[]> {
     const q = query(contactsColRef, ...queryConstraints);
     const querySnapshot = await getDocs(q);
 
-    let contacts = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        userId,
-        ...doc.data(),
-        avatarSeed: doc.data().avatarSeed || doc.data().name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
-    } as Payee));
+    let contacts = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            userId,
+            ...data,
+            avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
+            createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : undefined,
+            updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : undefined,
+        } as PayeeClient;
+    });
 
     // Apply client-side filtering if searchTerm is provided
     if (searchTerm) {
@@ -154,9 +175,9 @@ export async function getContacts(searchTerm?: string): Promise<Payee[]> {
  * Asynchronously retrieves details for a specific payee ID for the current user.
  *
  * @param payeeId The Firestore document ID of the payee to retrieve.
- * @returns A promise that resolves to the Payee object or null if not found or not accessible.
+ * @returns A promise that resolves to the PayeeClient object or null if not found or not accessible.
  */
-export async function getPayeeDetails(payeeId: string): Promise<Payee | null> {
+export async function getPayeeDetails(payeeId: string): Promise<PayeeClient | null> {
      const currentUser = auth.currentUser;
      if (!currentUser) return null;
      const userId = currentUser.uid;
@@ -167,13 +188,15 @@ export async function getPayeeDetails(payeeId: string): Promise<Payee | null> {
         const payeeDocSnap = await getDoc(payeeDocRef);
 
         if (payeeDocSnap.exists()) {
-             const data = payeeDocSnap.data();
+            const data = payeeDocSnap.data();
             return {
                 id: payeeDocSnap.id,
                 userId,
                 ...data,
-                 avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || payeeDocSnap.id, // Ensure avatarSeed
-             } as Payee;
+                avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || payeeDocSnap.id, // Ensure avatarSeed
+                createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : undefined,
+                updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : undefined,
+            } as PayeeClient;
         } else {
             console.log("Payee document not found:", payeeId);
             return null;
@@ -187,10 +210,10 @@ export async function getPayeeDetails(payeeId: string): Promise<Payee | null> {
 /**
  * Asynchronously saves a new payee for the current user in Firestore.
  *
- * @param payeeData The details of the payee to save (excluding id and userId).
- * @returns A promise that resolves to the newly created Payee object (with id).
+ * @param payeeData The details of the payee to save (excluding id, userId, avatarSeed, timestamps).
+ * @returns A promise that resolves to the newly created PayeeClient object (with id).
  */
-export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatarSeed'>): Promise<Payee> {
+export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatarSeed' | 'createdAt' | 'updatedAt'>): Promise<PayeeClient> {
     const currentUser = auth.currentUser;
     if (!currentUser) {
         throw new Error("User must be logged in to save payee.");
@@ -200,18 +223,27 @@ export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatar
     console.log("Saving new payee for user:", userId, payeeData);
     try {
         const contactsColRef = collection(db, 'users', userId, 'contacts');
+        const now = serverTimestamp(); // Get server timestamp
         const dataToSave = {
             ...payeeData,
+            userId: userId, // Ensure userId is saved
             isFavorite: payeeData.isFavorite ?? false, // Default favorite status
-            avatarSeed: payeeData.name.toLowerCase().replace(/\s+/g, '') || Date.now().toString() // Add avatar seed on creation
+            avatarSeed: payeeData.name.toLowerCase().replace(/\s+/g, '') || Date.now().toString(), // Add avatar seed on creation
+            createdAt: now,
+            updatedAt: now,
         };
         const docRef = await addDoc(contactsColRef, dataToSave);
         console.log("Payee added with ID:", docRef.id);
+        // Return client version with JS Date (approximate)
         return {
             id: docRef.id,
             userId: userId,
-            ...dataToSave,
-        } as Payee;
+            ...payeeData,
+            isFavorite: dataToSave.isFavorite,
+            avatarSeed: dataToSave.avatarSeed,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        } as PayeeClient;
     } catch (error) {
         console.error("Error saving payee:", error);
         throw new Error("Could not save payee.");
@@ -221,12 +253,13 @@ export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatar
 
 /**
  * Asynchronously updates an existing payee for the current user.
+ * Automatically updates the 'updatedAt' timestamp.
  *
  * @param payeeId The Firestore document ID of the payee to update.
  * @param updateData The partial data to update.
  * @returns A promise that resolves when the update is complete.
  */
-export async function updatePayee(payeeId: string, updateData: Partial<Omit<Payee, 'id' | 'userId'>>): Promise<void> {
+export async function updatePayee(payeeId: string, updateData: Partial<Omit<Payee, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void> {
      const currentUser = auth.currentUser;
      if (!currentUser) {
         throw new Error("User must be logged in to update payee.");
@@ -235,7 +268,15 @@ export async function updatePayee(payeeId: string, updateData: Partial<Omit<Paye
     console.log(`Updating payee ${payeeId} for user ${userId}`);
     try {
         const payeeDocRef = doc(db, 'users', userId, 'contacts', payeeId);
-        await updateDoc(payeeDocRef, updateData);
+        // Ensure the document exists before updating
+        const docSnap = await getDoc(payeeDocRef);
+        if (!docSnap.exists()) {
+            throw new Error("Payee not found.");
+        }
+        await updateDoc(payeeDocRef, {
+            ...updateData,
+            updatedAt: serverTimestamp() // Automatically update timestamp
+        });
         console.log("Payee updated successfully.");
     } catch (error) {
         console.error("Error updating payee:", error);
@@ -258,6 +299,12 @@ export async function deletePayee(payeeId: string): Promise<void> {
     console.log(`Deleting payee ID: ${payeeId} for user ${userId}`);
      try {
         const payeeDocRef = doc(db, 'users', userId, 'contacts', payeeId);
+        // Ensure the document exists before attempting deletion
+        const docSnap = await getDoc(payeeDocRef);
+        if (!docSnap.exists()) {
+            console.warn("Attempted to delete non-existent payee:", payeeId);
+            return; // Or throw error? Decide based on desired behavior.
+        }
         await deleteDoc(payeeDocRef);
         console.log("Payee deleted successfully.");
     } catch (error) {

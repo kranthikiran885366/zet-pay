@@ -4,9 +4,9 @@
  * Includes fetching billers, plans, history, and processing/scheduling/cancelling recharges.
  */
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
-import { addTransaction, Transaction } from './transactions'; // Use the centralized transaction service
-import { format, differenceInMinutes } from 'date-fns'; // Keep for history/cancellation
+import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, doc, updateDoc, getDoc, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
+import { addTransaction, Transaction, cancelRecharge as cancelTransaction } from './transactions'; // Use the centralized transaction service, import cancelRecharge from transactions
+import { format, differenceInMinutes, addDays } from 'date-fns'; // Keep date-fns imports
 
 /**
  * Represents a biller for recharge and bill payments.
@@ -34,25 +34,23 @@ export interface RechargePlan {
     channels?: string | number;
 }
 
-/**
- * Represents a recharge or bill payment transaction LOGGED in history.
- * Replaced RechargeTransaction with the standard Transaction interface.
- */
-export interface RechargeHistoryEntry extends Omit<Transaction, 'userId' | 'avatarSeed'> {
-    identifier: string; // Keep identifier specific to recharge context if needed
-    planDescription?: string; // Specific to recharge context
-}
-
 
 /**
  * Asynchronously retrieves a list of available billers (operators).
- * SIMULATED: Uses mock data.
+ * SIMULATED: Uses mock data. Actual implementation would fetch from Firestore or an API.
  *
  * @param billerType The type of biller to retrieve (e.g., Mobile, DTH, Electricity, Fastag).
  * @returns A promise that resolves to an array of Biller objects.
  */
 export async function getBillers(billerType: string): Promise<Biller[]> {
   console.log(`Fetching billers for type: ${billerType}`);
+  // TODO: Replace mock data with Firestore fetch or API call
+  // Example Firestore fetch (assuming 'billers' collection exists):
+  // const billersColRef = collection(db, 'billers');
+  // const q = query(billersColRef, where('billerType', '==', billerType), orderBy('billerName'));
+  // const querySnapshot = await getDocs(q);
+  // return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Biller));
+
   await new Promise(resolve => setTimeout(resolve, 300)); // Simulate delay
 
   // Keep Mock Data for billers as it's often static or fetched from specific APIs
@@ -155,6 +153,11 @@ export async function processRecharge(
 ): Promise<Transaction> { // Return the standard Transaction object
     console.log('Processing recharge (Simulated):', { type, identifier, amount, billerId, planId, couponCode });
     // TODO: Integrate with actual payment gateway & recharge APIs.
+    // This would involve:
+    // 1. Selecting payment method (Wallet/UPI/Card)
+    // 2. Initiating payment via the chosen method (e.g., calling processUpiPayment)
+    // 3. If payment successful, calling the recharge aggregator API
+    // 4. Handling potential failures at each step
     await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing delay
 
     const randomStatus = Math.random();
@@ -195,6 +198,16 @@ export async function processRecharge(
             // Add planId if needed: planId: planId,
         });
         console.log(`Recharge transaction logged with ID: ${transaction.id} and status: ${status}`);
+        // Log to blockchain (optional, non-blocking)
+        logTransactionToBlockchain(transaction.id, {
+            userId: transaction.userId,
+            type: transaction.type,
+            amount: transaction.amount,
+            date: transaction.date,
+            recipient: billerName, // Or billerId
+        }).catch(blockchainError => {
+            console.error(`Failed to log recharge ${transaction.id} to blockchain:`, blockchainError);
+        });
         return transaction; // Return the logged transaction
     } catch (error) {
          console.error("Error logging recharge transaction:", error);
@@ -242,12 +255,12 @@ export async function getRechargeHistory(identifier: string, type: string): Prom
 
         const querySnapshot = await getDocs(q);
         const history = querySnapshot.docs.map(doc => {
-            const data = doc.data();
+            const data = doc.data() as TransactionFirestore; // Use Firestore type
             return {
                 id: doc.id,
                 ...data,
-                date: (data.date as Timestamp).toDate(),
-                 avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
+                date: data.date.toDate(), // Convert Timestamp to Date
+                avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
             } as Transaction;
         });
         console.log(`Fetched ${history.length} history entries.`);
@@ -267,15 +280,31 @@ export async function getRechargeHistory(identifier: string, type: string): Prom
  */
 export async function checkActivationStatus(transactionId: string): Promise<Transaction['status']> {
     console.log(`Checking activation status for: ${transactionId}`);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const random = Math.random();
-    if (random < 0.7) return 'Completed';
-    if (random < 0.9) return 'Processing Activation';
-    return 'Failed';
+    // TODO: Implement API call to check status with provider/aggregator using transactionId
+
+    // Simulation based on Firestore status (assuming status might update)
+    try {
+        const txDocRef = doc(db, 'transactions', transactionId);
+        const txSnap = await getDoc(txDocRef);
+        if (txSnap.exists()) {
+             return txSnap.data().status as Transaction['status'];
+        } else {
+            return 'Failed'; // If transaction doc doesn't exist, assume failed
+        }
+    } catch (e) {
+         console.error("Error checking status from Firestore:", e);
+         // Fallback simulation if Firestore check fails
+         await new Promise(resolve => setTimeout(resolve, 1000));
+         const random = Math.random();
+         if (random < 0.7) return 'Completed';
+         if (random < 0.9) return 'Processing Activation';
+         return 'Failed';
+    }
+
 }
 
 /**
- * Simulates scheduling a future recharge. Adds a record to a 'scheduledRecharges' collection.
+ * Schedules a future recharge. Adds a record to a 'scheduledRecharges' collection in Firestore.
  * @param identifier The number/ID to recharge.
  * @param amount The amount to recharge.
  * @param frequency How often to recharge ('monthly', 'weekly').
@@ -298,16 +327,22 @@ export async function scheduleRecharge(
 
      console.log('Scheduling recharge:', { userId, identifier, amount, frequency, startDate, billerId, planId });
 
+     // Basic validation for start date
+     if (startDate < new Date(new Date().setHours(0,0,0,0))) {
+         throw new Error("Schedule start date cannot be in the past.");
+     }
+
      const scheduleData = {
         userId,
         identifier,
         amount,
         frequency,
-        nextRunDate: Timestamp.fromDate(startDate),
+        nextRunDate: Timestamp.fromDate(startDate), // Store as Timestamp
         billerId: billerId || null,
         planId: planId || null,
-        isActive: true,
-        createdAt: serverTimestamp(),
+        isActive: true, // Active by default
+        createdAt: serverTimestamp(), // Use server timestamp
+        updatedAt: serverTimestamp(),
      };
 
      try {
@@ -326,11 +361,23 @@ export async function scheduleRecharge(
  * @param scheduleId The Firestore document ID of the schedule to cancel.
  */
 export async function cancelScheduledRecharge(scheduleId: string): Promise<void> {
-     // TODO: Add user check if needed
+     const currentUser = auth.currentUser;
+     if (!currentUser) throw new Error("User must be logged in.");
+     const userId = currentUser.uid;
      console.log("Cancelling scheduled recharge:", scheduleId);
+
      try {
         const scheduleDocRef = doc(db, 'scheduledRecharges', scheduleId);
-        await updateDoc(scheduleDocRef, { isActive: false });
+        // Optional: Check if the document exists and belongs to the user before updating
+        const scheduleDoc = await getDoc(scheduleDocRef);
+        if (!scheduleDoc.exists() || scheduleDoc.data()?.userId !== userId) {
+            throw new Error("Schedule not found or permission denied.");
+        }
+
+        await updateDoc(scheduleDocRef, {
+            isActive: false,
+            updatedAt: serverTimestamp()
+        });
         console.log("Scheduled recharge cancelled.");
      } catch (error) {
          console.error("Error cancelling scheduled recharge:", error);
@@ -341,54 +388,22 @@ export async function cancelScheduledRecharge(scheduleId: string): Promise<void>
 /**
  * Asynchronously attempts to cancel a recently submitted recharge transaction.
  * Updates the corresponding transaction document in Firestore.
+ * Uses the central `cancelRecharge` function from transactions service.
  *
  * @param transactionId The Firestore document ID of the transaction to cancel.
  * @returns A promise resolving to an object indicating success and a message.
  */
 export async function cancelRechargeService(transactionId: string): Promise<{ success: boolean; message: string }> {
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error("User must be logged in.");
-    const userId = currentUser.uid;
-    console.log(`Attempting to cancel recharge transaction: ${transactionId} for user ${userId}`);
+    // This now just wraps the function from transactions.ts
+    return cancelTransaction(transactionId);
+}
 
-    try {
-        const transactionDocRef = doc(db, 'transactions', transactionId);
-        const transactionSnap = await getDoc(transactionDocRef);
+// Placeholder - requires actual implementation
+async function logTransactionToBlockchain(transactionId: string, data: any): Promise<void> {
+    console.log(`[Blockchain Simulation] Logging ${transactionId}:`, data);
+    await new Promise(resolve => setTimeout(resolve, 100));
+}
 
-        if (!transactionSnap.exists()) throw new Error("Transaction not found.");
-
-        const tx = transactionSnap.data() as Omit<Transaction, 'id' | 'date'> & { date: Timestamp };
-
-        if (tx.userId !== userId) throw new Error("Permission denied.");
-        if (tx.type !== 'Recharge') throw new Error("Only recharge transactions can be cancelled.");
-        if (tx.status === 'Cancelled' || tx.status === 'Failed') {
-             throw new Error(`Cannot cancel a transaction with status: ${tx.status}.`);
-        }
-
-        const transactionDate = tx.date.toDate();
-        const now = new Date();
-        const minutesPassed = differenceInMinutes(now, transactionDate);
-
-        if (minutesPassed > 30) throw new Error("Cancellation window (30 minutes) has passed.");
-
-        // Simulate external cancellation API call
-        console.log(`Simulating cancellation API call for ${transactionId}...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const cancellationSuccess = Math.random() > 0.2; // 80% success rate
-
-        if (cancellationSuccess) {
-            await updateDoc(transactionDocRef, {
-                status: 'Cancelled',
-                description: `${tx.description} (Cancelled by User)`,
-            });
-            console.log(`Transaction ${transactionId} cancelled successfully in Firestore.`);
-            return { success: true, message: "Recharge cancelled. Refund will be processed if applicable." };
-        } else {
-            throw new Error("Cancellation failed at operator/aggregator level.");
-        }
-
-    } catch (error: any) {
-        console.error("Error cancelling recharge:", error);
-        throw new Error(error.message || "Could not cancel recharge.");
-    }
+function capitalize(s: string) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 }

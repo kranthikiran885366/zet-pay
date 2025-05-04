@@ -79,7 +79,9 @@ export async function signup(name: string, email: string, password: string): Pro
         console.log("Firebase signup successful for:", user.uid);
 
         // Create initial user profile in Firestore
-        await upsertUserProfile({ name, email }); // Use the imported function
+        // Ensure upsertUserProfile handles both creation and update safely
+        await upsertUserProfile({ name, email }); // Pass required fields
+        console.log(`Initial user profile created/updated for ${user.uid}`);
 
         return user;
     } catch (error: any) {
@@ -132,8 +134,8 @@ export async function logout(): Promise<void> {
     try {
         await signOut(auth);
         console.log("Firebase logout successful.");
-        // Additional client-side cleanup (e.g., clearing user state) might be needed here
-        // Redirection should happen in the component calling this service.
+        // Additional client-side cleanup (e.g., clearing user state in context/zustand)
+        // should be handled by the component initiating the logout.
     } catch (error) {
         console.error("Firebase logout error:", error);
         // Re-throw the error so the calling component can handle it (e.g., show toast)

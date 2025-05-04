@@ -13,8 +13,8 @@ export interface UserProfile {
     phone?: string;
     avatarUrl?: string;
     kycStatus?: 'Verified' | 'Not Verified' | 'Pending';
-    createdAt: Date | Timestamp; // Allow both for reading and writing
-    updatedAt: Date | Timestamp; // Allow both for reading and writing
+    createdAt: Timestamp; // Use Firestore Timestamp for storage
+    updatedAt: Timestamp; // Use Firestore Timestamp for storage
     notificationsEnabled?: boolean; // For app notifications
     biometricEnabled?: boolean; // For app lock preference
     appLockEnabled?: boolean; // General app lock setting
@@ -25,13 +25,19 @@ export interface UserProfile {
 
      // Add other profile fields as needed
      defaultPaymentMethod?: 'upi' | 'wallet' | string; // Store default card ID?
-     // Add fields for family travel, senior citizen mode, etc.
      isSeniorCitizenMode?: boolean;
      familyGroupIds?: string[];
 }
 
+// Interface for profile data returned to the client (with JS Dates)
+export interface UserProfileClient extends Omit<UserProfile, 'createdAt' | 'updatedAt'> {
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+
 /**
- * Converts Firestore Timestamps in profile data to JS Date objects.
+ * Converts Firestore Timestamps in profile data to JS Date objects for client-side use.
  */
 function convertTimestampsToDates(data: any): any {
     const convertedData = { ...data };
@@ -47,10 +53,11 @@ function convertTimestampsToDates(data: any): any {
 
 /**
  * Retrieves the user profile data for the currently logged-in user from Firestore.
+ * Returns data with JS Date objects.
  *
- * @returns A promise that resolves to the UserProfile object or null if not found or not logged in.
+ * @returns A promise that resolves to the UserProfileClient object or null if not found or not logged in.
  */
-export async function getCurrentUserProfile(): Promise<UserProfile | null> {
+export async function getCurrentUserProfile(): Promise<UserProfileClient | null> {
     const currentUser = auth.currentUser;
     if (!currentUser) {
         console.log("No user logged in to get profile.");
@@ -78,10 +85,10 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
                 smartWalletBridgeLimit: data.smartWalletBridgeLimit ?? 5000,
                 isSeniorCitizenMode: data.isSeniorCitizenMode ?? false,
                 familyGroupIds: data.familyGroupIds ?? [],
-            } as UserProfile;
+            } as UserProfileClient;
         } else {
             console.log("No profile document found for user:", userId);
-            return null;
+            return null; // Or potentially create a default profile here upon first login attempt
         }
     } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -92,6 +99,7 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
 /**
  * Creates or updates a user profile document in Firestore.
  * Uses the currently authenticated user's ID. Ensures required fields are present.
+ * Automatically handles `createdAt` and `updatedAt` timestamps.
  *
  * @param profileData Partial profile data. For creation, `name` and `email` are needed.
  * @returns A promise that resolves when the operation is complete.
@@ -107,42 +115,45 @@ export async function upsertUserProfile(profileData: Partial<Omit<UserProfile, '
 
     try {
         const userDocSnap = await getDoc(userDocRef);
+        const now = serverTimestamp();
+
+        // Prepare data, removing any undefined fields explicitly
+        const cleanedProfileData: any = {};
+        for (const key in profileData) {
+            if (profileData[key as keyof typeof profileData] !== undefined) {
+                cleanedProfileData[key] = profileData[key as keyof typeof profileData];
+            }
+        }
 
         if (userDocSnap.exists()) {
             // Update existing profile
-            const updateData = {
-                ...profileData,
-                updatedAt: serverTimestamp(), // Use server timestamp for updates
-            };
-            // Remove undefined fields to avoid overwriting with null
-            Object.keys(updateData).forEach(key => updateData[key as keyof typeof updateData] === undefined && delete updateData[key as keyof typeof updateData]);
-
-            await updateDoc(userDocRef, updateData);
+            await updateDoc(userDocRef, {
+                ...cleanedProfileData,
+                updatedAt: now, // Update the timestamp
+            });
             console.log(`User profile updated for ${userId}`);
         } else {
             // Create new profile - Ensure required fields are present
-            if (!profileData.name || !profileData.email) {
+            if (!cleanedProfileData.name || !cleanedProfileData.email) {
                  throw new Error("Name and email are required to create a new profile.");
             }
             const createData = {
-                name: profileData.name,
-                email: profileData.email,
-                phone: profileData.phone,
-                avatarUrl: profileData.avatarUrl,
-                kycStatus: profileData.kycStatus ?? 'Not Verified',
-                notificationsEnabled: profileData.notificationsEnabled ?? true,
-                biometricEnabled: profileData.biometricEnabled ?? false,
-                appLockEnabled: profileData.appLockEnabled ?? false,
-                isSmartWalletBridgeEnabled: profileData.isSmartWalletBridgeEnabled ?? false,
-                smartWalletBridgeLimit: profileData.smartWalletBridgeLimit ?? 5000,
-                isSeniorCitizenMode: profileData.isSeniorCitizenMode ?? false,
-                familyGroupIds: profileData.familyGroupIds ?? [],
-                createdAt: serverTimestamp(), // Use server timestamp for creation
-                updatedAt: serverTimestamp(),
+                // Include all required fields and defaults
+                name: cleanedProfileData.name,
+                email: cleanedProfileData.email,
+                phone: cleanedProfileData.phone ?? null,
+                avatarUrl: cleanedProfileData.avatarUrl ?? null,
+                kycStatus: cleanedProfileData.kycStatus ?? 'Not Verified',
+                notificationsEnabled: cleanedProfileData.notificationsEnabled ?? true,
+                biometricEnabled: cleanedProfileData.biometricEnabled ?? false,
+                appLockEnabled: cleanedProfileData.appLockEnabled ?? false,
+                isSmartWalletBridgeEnabled: cleanedProfileData.isSmartWalletBridgeEnabled ?? false,
+                smartWalletBridgeLimit: cleanedProfileData.smartWalletBridgeLimit ?? 5000,
+                isSeniorCitizenMode: cleanedProfileData.isSeniorCitizenMode ?? false,
+                familyGroupIds: cleanedProfileData.familyGroupIds ?? [],
+                createdAt: now, // Use server timestamp for creation
+                updatedAt: now,
             };
-             // Remove undefined fields before setting
-             Object.keys(createData).forEach(key => createData[key as keyof typeof createData] === undefined && delete createData[key as keyof typeof createData]);
-
             await setDoc(userDocRef, createData);
             console.log(`User profile created for ${userId}`);
         }
@@ -152,14 +163,18 @@ export async function upsertUserProfile(profileData: Partial<Omit<UserProfile, '
     }
 }
 
+
 /**
  * Fetches a specific user's profile by their ID from Firestore.
+ * Returns data with JS Date objects.
  *
  * @param userId The ID of the user whose profile is needed.
- * @returns A promise that resolves to the UserProfile object or null if not found.
+ * @returns A promise that resolves to the UserProfileClient object or null if not found.
  */
-export async function getUserProfileById(userId: string): Promise<UserProfile | null> {
+export async function getUserProfileById(userId: string): Promise<UserProfileClient | null> {
      console.log(`Fetching profile for specific user ID: ${userId}`);
+     if (!userId) return null;
+
      try {
         const userDocRef = doc(db, 'users', userId);
         const userDocSnap = await getDoc(userDocRef);
@@ -174,7 +189,7 @@ export async function getUserProfileById(userId: string): Promise<UserProfile | 
                 kycStatus: data.kycStatus ?? 'Not Verified',
                 isSmartWalletBridgeEnabled: data.isSmartWalletBridgeEnabled ?? false,
                 smartWalletBridgeLimit: data.smartWalletBridgeLimit ?? 5000,
-            } as UserProfile;
+            } as UserProfileClient;
         } else {
             console.log("No profile document found for user:", userId);
             return null;
@@ -205,6 +220,7 @@ export async function updateSmartWalletBridgeSettings(settings: Partial<Pick<Use
         updateData.isSmartWalletBridgeEnabled = settings.isSmartWalletBridgeEnabled;
     }
     if (settings.smartWalletBridgeLimit !== undefined) {
+        // Add validation for limit if needed (e.g., positive number)
         updateData.smartWalletBridgeLimit = settings.smartWalletBridgeLimit;
     }
 
@@ -219,10 +235,9 @@ export async function updateSmartWalletBridgeSettings(settings: Partial<Pick<Use
          // Check if document exists before updating, or use set with merge:true if creation is desired
         const userDocSnap = await getDoc(userDocRef);
         if (!userDocSnap.exists()) {
-            console.warn(`User profile ${userId} does not exist. Cannot update settings.`);
-            // Optionally create profile here if needed
-            // await setDoc(userDocRef, { ...updateData, updatedAt: serverTimestamp(), createdAt: serverTimestamp() });
-             throw new Error("User profile not found."); // Or handle as needed
+            // Profile should have been created on signup, so this is an error state
+             console.error(`User profile ${userId} does not exist. Cannot update settings.`);
+             throw new Error("User profile not found. Cannot update settings.");
         } else {
             await updateDoc(userDocRef, {
                 ...updateData,

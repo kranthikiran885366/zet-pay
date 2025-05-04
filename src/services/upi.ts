@@ -18,9 +18,11 @@ import {
     limit,
     runTransaction,
     orderBy,
-    Timestamp // Import Timestamp
+    Timestamp, // Import Timestamp
+    setDoc, // Import setDoc
+    getDoc // Import getDoc
 } from 'firebase/firestore';
-import { Transaction, addTransaction } from './transactions'; // Import Transaction interface and addTransaction
+import { Transaction, addTransaction, logTransactionToBlockchain } from './transactions'; // Import Transaction interface and addTransaction, blockchain logger
 import { getUserProfileById, UserProfile } from './user'; // To check KYC and feature status
 import { getWalletBalance, payViaWallet, WalletTransactionResult } from './wallet'; // Import wallet functions
 import { scheduleRecovery } from './recovery'; // Import recovery scheduling function
@@ -45,8 +47,8 @@ export interface UpiTransactionResult {
   message?: string;
   usedWalletFallback?: boolean;
   walletTransactionId?: string;
-  ticketId?: string;
-  refundEta?: string;
+  ticketId?: string; // For failed transactions
+  refundEta?: string; // ETA for refund on failure
 }
 
 /**
@@ -274,6 +276,7 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     if (upiId.includes('invalid') || !upiId.includes('@')) {
         throw new Error("Invalid UPI ID format or ID not found.");
     }
+    // Simple mock name generation
     const namePart = upiId.split('@')[0].replace(/[._]/g, ' ');
     const verifiedName = namePart
         .split(' ')
@@ -308,7 +311,6 @@ export async function processUpiPayment(
     const finalUserId = userId || currentUser?.uid; // Ensure we have a user ID
 
     if (!finalUserId) {
-         // This should ideally not happen if called from UI where user is logged in
          console.error("UPI Payment attempted without User ID!");
          return {
              amount, recipientUpiId, status: 'Failed', message: 'User session error.', usedWalletFallback: false
@@ -325,10 +327,18 @@ export async function processUpiPayment(
     let upiFailedDueToBankDown = false;
     let upiFailureMessage = 'Payment failed.';
     let mightBeDebited = false;
+    let recipientName = 'Recipient'; // Default name
 
-    // Fetch source account details for PIN check (simulation)
-    const accounts = await getLinkedAccounts(); // Ideally fetch only the source account
-    const sourceAccount = accounts.find(acc => acc.upiId === sourceAccountUpiId);
+    // Fetch source account details for PIN check (simulation) and recipient name
+    let sourceAccount: BankAccount | undefined;
+    try {
+        recipientName = await verifyUpiId(recipientUpiId); // Verify recipient first
+        const accounts = await getLinkedAccounts(); // Ideally fetch only the source account
+        sourceAccount = accounts.find(acc => acc.upiId === sourceAccountUpiId);
+        if (!sourceAccount) throw new Error("Source account details not found.");
+    } catch (fetchError: any) {
+        return { amount, recipientUpiId, status: 'Failed', message: fetchError.message, usedWalletFallback: false };
+    }
     const expectedPinLength = sourceAccount?.pinLength;
 
     // Simulate various UPI outcomes
@@ -354,6 +364,7 @@ export async function processUpiPayment(
             throw new Error("Incorrect UPI PIN entered.");
         }
 
+        // --- Simulation Logic ---
         if (recipientUpiId === 'limit@payfriend') {
             upiFailedDueToLimit = true;
             upiFailureMessage = 'UPI daily limit exceeded.';
@@ -364,35 +375,45 @@ export async function processUpiPayment(
             upiFailureMessage = 'Payment failed due to network error at bank. Money may be debited.';
             throw new Error(upiFailureMessage);
         }
-        if (amount > 10000) { // Simulate insufficient balance
+        if (amount > 50000 && !sourceAccount.isDefault) { // Simulate insufficient balance on non-default for demo
             throw new Error('Insufficient bank balance.');
         }
-        if (recipientUpiId.includes('invalid')) {
+        if (recipientUpiId.includes('invalid-sim')) {
             throw new Error('Invalid recipient UPI ID.');
         }
+        // --- End Simulation Logic ---
 
         // --- UPI Success Case ---
-        const transactionId = `TXN_UPI_${Date.now()}`;
-        await addTransaction({
+        const loggedTx = await addTransaction({
             type: 'Sent',
-            name: await verifyUpiId(recipientUpiId), // Get name for history
+            name: recipientName, // Use verified name
             description: `Paid via UPI ${note ? `- ${note}` : ''}`,
             amount: -amount,
             status: 'Completed',
-            userId: finalUserId,
+            userId: finalUserId, // Ensure userId is passed
             upiId: recipientUpiId,
         });
-        return { transactionId, amount, recipientUpiId, status: 'Completed', message: 'Transaction Successful', usedWalletFallback: false };
+        // Log to blockchain (optional, non-blocking)
+        logTransactionToBlockchain(loggedTx.id, {
+             userId: loggedTx.userId,
+             type: loggedTx.type,
+             amount: loggedTx.amount,
+             date: loggedTx.date,
+             recipient: recipientUpiId,
+         }).catch(blockchainError => {
+             console.error(`Failed to log UPI payment ${loggedTx.id} to blockchain:`, blockchainError);
+         });
+        return { transactionId: loggedTx.id, amount, recipientUpiId, status: 'Completed', message: 'Transaction Successful', usedWalletFallback: false };
 
     } catch (upiError: any) {
         console.warn("UPI Payment failed:", upiError.message);
         upiFailureMessage = upiError.message || upiFailureMessage;
 
         // --- Smart Wallet Bridge Logic ---
-        if (upiFailedDueToLimit) {
-            console.log("UPI limit exceeded, attempting Wallet Fallback...");
+        if (upiFailedDueToLimit || upiFailedDueToBankDown) { // Trigger fallback on limit or bank down
+            console.log(`UPI failed (${upiFailureMessage}), attempting Wallet Fallback...`);
             try {
-                const userProfile = await getUserProfileById(finalUserId);
+                const userProfile = await getUserProfileById(finalUserId); // Fetch user profile again
                 if (!userProfile || userProfile.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
                     console.log("Wallet Fallback disabled or unavailable for user.");
                     throw new Error(upiFailureMessage); // Re-throw original UPI error
@@ -409,9 +430,10 @@ export async function processUpiPayment(
                     throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
                 }
 
+                // Use payViaWallet which now internally calls addTransaction
                 const walletPaymentResult = await payViaWallet(finalUserId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
 
-                if (walletPaymentResult.success) {
+                if (walletPaymentResult.success && walletPaymentResult.transactionId) {
                     console.log("Payment successful via Wallet Fallback!");
                     const recoveryScheduled = await scheduleRecovery(finalUserId, amount, recipientUpiId, sourceAccountUpiId);
                     if (!recoveryScheduled) console.error("CRITICAL: Failed to schedule wallet recovery!");
@@ -419,7 +441,7 @@ export async function processUpiPayment(
                     return {
                         walletTransactionId: walletPaymentResult.transactionId,
                         amount, recipientUpiId, status: 'FallbackSuccess',
-                        message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
+                        message: `Paid via Wallet (${upiFailedDueToBankDown ? 'Bank Down' : 'UPI Limit Exceeded'}). Recovery scheduled.`,
                         usedWalletFallback: true,
                     };
                 } else {
@@ -433,7 +455,6 @@ export async function processUpiPayment(
         } // --- End Smart Wallet Bridge Logic ---
 
         // --- Final Failure Handling ---
-        const failedTxnId = `TXN_UPI_FAILED_${Date.now()}`;
         let ticketDetails: { ticketId?: string; refundEta?: string } = {};
 
         if (mightBeDebited) {
@@ -442,21 +463,31 @@ export async function processUpiPayment(
             console.log(`Generating ticket ${ticketDetails.ticketId} for potentially debited failed transaction.`);
         }
 
-        // Log failed transaction regardless of reason
-        await addTransaction({
+        // Log failed transaction regardless of reason, include ticket info
+        const failedTx = await addTransaction({
             type: 'Failed',
-            name: await verifyUpiId(recipientUpiId).catch(() => recipientUpiId), // Get name if possible
+            name: recipientName, // Use verified name
             description: `UPI Payment Failed - ${upiFailureMessage}`,
             amount: -amount,
             status: 'Failed',
-            userId: finalUserId,
+            userId: finalUserId, // Ensure userId is passed
             upiId: recipientUpiId,
-            ticketId: ticketDetails.ticketId, // Add ticket info if generated
+            ticketId: ticketDetails.ticketId,
             refundEta: ticketDetails.refundEta,
         });
+         // Log to blockchain (optional, non-blocking)
+         logTransactionToBlockchain(failedTx.id, {
+             userId: failedTx.userId,
+             type: failedTx.type,
+             amount: failedTx.amount,
+             date: failedTx.date,
+             recipient: recipientUpiId,
+         }).catch(blockchainError => {
+             console.error(`Failed to log failed UPI payment ${failedTx.id} to blockchain:`, blockchainError);
+         });
 
         return {
-            transactionId: failedTxnId,
+            transactionId: failedTx.id, // Use the ID from the logged failed transaction
             amount, recipientUpiId, status: 'Failed',
             message: upiFailureMessage,
             usedWalletFallback: false,
@@ -473,7 +504,16 @@ export async function processUpiPayment(
 export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
     console.log(`Checking server status for bank: ${bankIdentifier}`);
     await new Promise(resolve => setTimeout(resolve, 200)); // Simulate short delay
-    if (bankIdentifier === 'okicici') return 'Down';
-    if (bankIdentifier === 'okhdfcbank') return 'Slow';
-    return 'Active';
+
+    // Mock specific bank statuses
+    const bankHandle = bankIdentifier?.toLowerCase();
+    if (bankHandle?.includes('icici')) return 'Down';
+    if (bankHandle?.includes('hdfc')) return 'Slow';
+
+    // Default/Random for others
+    const random = Math.random();
+    if (random < 0.05) return 'Down'; // 5% chance down
+    if (random < 0.2) return 'Slow'; // 15% chance slow
+    return 'Active'; // 80% chance active
 }
+
