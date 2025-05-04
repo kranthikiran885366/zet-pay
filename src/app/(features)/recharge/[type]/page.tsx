@@ -8,19 +8,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2 } from 'lucide-react'; // Added Tv2
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban } from 'lucide-react'; // Added Lock, AlarmClockOff, Ban
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus, mockDthPlans } from '@/services/recharge'; // Use service functions and Plan interface
+import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus, mockDthPlans, cancelRecharge as cancelRechargeService } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { recommendRechargePlans, RecommendRechargePlansInput } from '@/ai/flows/recharge-plan-recommendation';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Added DialogTrigger, DialogClose
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"; // Added AlertDialog components
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, addDays } from "date-fns";
+import { format, addDays, isBefore } from "date-fns"; // Added isBefore
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"; // For horizontal scroll
 import Image from 'next/image'; // For operator logos
@@ -28,6 +29,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator'; // Import Separator
+import { getWalletBalance } from '@/services/wallet'; // Import wallet balance service
+import { getBankStatus } from '@/services/upi'; // Import bank status service
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
@@ -52,7 +55,6 @@ const mockCurrentPlan = { // Simulate fetching current plan details
     expiryDate: addDays(new Date(), 10), // Expires in 10 days
     planName: "Active Plan: 2GB/Day",
 };
-const mockAccountBalance = 1500.75; // Simulate fetching user wallet/linked account balance
 const mockSavedNumbers: Payee[] = [ // Use Payee interface for consistency
   { id: 'family1', name: 'Mom', identifier: '9876543210', type: 'mobile', avatarSeed: 'mom'},
   { id: 'family2', name: 'Dad', identifier: '9988776655', type: 'mobile', avatarSeed: 'dad'},
@@ -114,11 +116,33 @@ export default function RechargePage() {
   const [scheduleFrequency, setScheduleFrequency] = useState<'monthly' | 'weekly' | undefined>();
   const [isScheduling, setIsScheduling] = useState(false);
   const [checkingActivationTxnId, setCheckingActivationTxnId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState<string | null>(null); // State for cancellation loading
+  const [accountBalance, setAccountBalance] = useState<number | null>(null); // State for wallet balance
+  const [isBalanceLoading, setIsBalanceLoading] = useState(false); // State for balance loading
+  const [bankStatus, setBankStatus] = useState<'Active' | 'Slow' | 'Down' | null>(null); // Bank status
 
   const { toast } = useToast();
 
   const details = rechargeTypeDetails[type] || rechargeTypeDetails.mobile; // Fallback to mobile details
   const inputRef = useRef<HTMLInputElement>(null);
+
+   // Fetch Wallet Balance
+  useEffect(() => {
+    const fetchBalance = async () => {
+      setIsBalanceLoading(true);
+      try {
+        const balance = await getWalletBalance("user123"); // Replace with actual user ID
+        setAccountBalance(balance);
+      } catch (err) {
+        console.error("Failed to fetch wallet balance:", err);
+        // Optionally show a toast, but balance might not be critical for all flows
+      } finally {
+        setIsBalanceLoading(false);
+      }
+    };
+    fetchBalance();
+  }, []);
+
 
   // Fetch Billers (Operators)
   useEffect(() => {
@@ -175,7 +199,7 @@ export default function RechargePage() {
      // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [identifier, type, isManualOperatorSelect]); // Re-run detection if manual select is turned off
 
-  // Handle Biller Selection Change -> Fetch Plans
+  // Handle Biller Selection Change -> Fetch Plans & Bank Status
   useEffect(() => {
     if (selectedBiller) {
       const biller = billers.find(b => b.billerId === selectedBiller) || detectedOperator;
@@ -185,13 +209,30 @@ export default function RechargePage() {
       } else {
         setRechargePlans([]); // Clear plans for non-plan types like electricity
       }
+       // Fetch bank status for the selected operator (assuming billerId relates to a bank for payment)
+       fetchBankStatus(selectedBiller); // You might need a mapping from billerId to bank identifier
     } else {
       setRechargePlans([]);
       setRecommendedPlanIds([]);
       setSelectedBillerName('');
+      setBankStatus(null); // Clear bank status
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBiller, type]);
+
+    // Function to fetch bank status
+    const fetchBankStatus = async (billerId: string) => {
+      // TODO: Map billerId to a relevant bank identifier if needed
+      // Example: const bankIdentifier = mapBillerToBank[billerId] || 'defaultBank';
+      const bankIdentifier = 'mockBank'; // Placeholder
+      try {
+        const status = await getBankStatus(bankIdentifier);
+        setBankStatus(status);
+      } catch (error) {
+        console.error("Failed to fetch bank status:", error);
+        setBankStatus(null); // Reset on error
+      }
+    };
 
   const handlePlanSelect = (plan: RechargePlan) => {
       setAmount(plan.price.toString());
@@ -221,10 +262,11 @@ export default function RechargePage() {
       toast({ variant: "destructive", title: "Invalid Amount" });
       return;
     }
-    if (Number(amount) > mockAccountBalance) {
-      setError(`Insufficient balance (₹${mockAccountBalance.toFixed(2)}). Please add funds.`);
-      toast({ variant: "destructive", title: "Insufficient Balance" });
-      return;
+     // Check balance before proceeding (ensure accountBalance is not null)
+     if (accountBalance !== null && Number(amount) > accountBalance) {
+        setError(`Insufficient balance (₹${accountBalance.toFixed(2)}). Please add funds.`);
+        toast({ variant: "destructive", title: "Insufficient Balance" });
+        return;
     }
 
     setError(null);
@@ -250,7 +292,14 @@ export default function RechargePage() {
              }
              // Optionally redirect after success
              // router.push('/history');
-        } else {
+        } else if (result.status === 'Pending') {
+             toast({
+                title: "Recharge Pending",
+                description: `Recharge of ₹${amount} for ${identifier} is pending confirmation. Transaction ID: ${result.transactionId}`,
+                duration: 5000,
+             });
+             // Keep form state, maybe show pending status near the button
+        } else { // Failed status
              throw new Error(`Recharge ${result.status || 'Failed'}`);
         }
 
@@ -556,6 +605,11 @@ export default function RechargePage() {
 
   const handleManualEditOperator = () => {
      setIsManualOperatorSelect(true);
+     // Clear detected operator when switching to manual
+      setDetectedOperator(null);
+      setDetectedRegion(null);
+      // Keep selectedBiller if user already selected manually, otherwise clear it
+      // setSelectedBiller(''); // Decide if you want to clear manual selection too
   }
 
    const handleScheduleRecharge = async () => {
@@ -590,6 +644,25 @@ export default function RechargePage() {
        }
    };
 
+    const handleCancelRecharge = async (transactionId: string) => {
+        setIsCancelling(transactionId);
+        try {
+            const result = await cancelRechargeService(transactionId);
+            if (result.success) {
+                 toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
+                 // Refresh history to show potential status change
+                 fetchHistory(identifier);
+            } else {
+                 throw new Error(result.message || "Cancellation not possible.");
+            }
+        } catch (error: any) {
+             console.error("Cancellation failed:", error);
+             toast({ variant: "destructive", title: "Cancellation Failed", description: error.message });
+        } finally {
+            setIsCancelling(null);
+        }
+    }
+
 
   // Determine operator logo URL
   const operatorLogoUrl = useMemo(() => {
@@ -604,6 +677,10 @@ export default function RechargePage() {
     if (type === 'mobile' && mockCurrentPlan?.expiryDate) {
         const today = new Date();
         const expiry = new Date(mockCurrentPlan.expiryDate);
+        // Reset time part for accurate day difference calculation
+        today.setHours(0, 0, 0, 0);
+        expiry.setHours(0, 0, 0, 0);
+
         const diffTime = expiry.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return diffDays > 0 ? diffDays : 0;
@@ -630,6 +707,7 @@ export default function RechargePage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
+        <details.icon className="h-6 w-6" />
         <h1 className="text-lg font-semibold">{details.title}</h1>
         <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={() => alert('Help Clicked!')}>
           <HelpCircle className="h-5 w-5" />
@@ -700,20 +778,47 @@ export default function RechargePage() {
                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowHistory(false)}><X className="h-4 w-4"/></Button>
                 </CardHeader>
                  <CardContent className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {rechargeHistory.map((entry) => (
-                        <div key={entry.transactionId} className="flex justify-between items-center p-2 border-b last:border-b-0">
-                            <div>
-                                <p className="text-sm font-medium">₹{entry.amount}{entry.planDescription ? ` (${entry.planDescription})` : ''}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {format(entry.date, 'PPp')} - Status: {entry.status}
-                                    {checkingActivationTxnId === entry.transactionId && <Loader2 className="inline ml-1 h-3 w-3 animate-spin"/>}
-                                </p>
-                             </div>
-                            <Button size="xs" variant="outline" onClick={() => handleQuickRecharge(entry)} disabled={checkingActivationTxnId === entry.transactionId}>
-                                Recharge Again
-                            </Button>
-                        </div>
-                    ))}
+                    {rechargeHistory.map((entry) => {
+                         const canCancelEntry = entry.status === 'Completed' || entry.status === 'Processing Activation'; // Add other cancellable statuses if needed
+                        return (
+                            <div key={entry.transactionId} className="flex justify-between items-center p-2 border-b last:border-b-0">
+                                <div>
+                                    <p className="text-sm font-medium">₹{entry.amount}{entry.planDescription ? ` (${entry.planDescription})` : ''}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {format(entry.date, 'PPp')} - Status: {entry.status}
+                                        {checkingActivationTxnId === entry.transactionId && <Loader2 className="inline ml-1 h-3 w-3 animate-spin"/>}
+                                    </p>
+                                </div>
+                                <div className="flex gap-1">
+                                    <Button size="xs" variant="outline" onClick={() => handleQuickRecharge(entry)} disabled={checkingActivationTxnId === entry.transactionId}>
+                                        Recharge Again
+                                    </Button>
+                                     {/* Cancel Button */}
+                                     {canCancelEntry && (
+                                        <AlertDialog>
+                                             <AlertDialogTrigger asChild>
+                                                <Button size="xs" variant="destructive" disabled={isCancelling === entry.transactionId}>
+                                                     {isCancelling === entry.transactionId ? <Loader2 className="h-3 w-3 animate-spin"/> : <Ban className="h-3 w-3"/>}
+                                                 </Button>
+                                             </AlertDialogTrigger>
+                                             <AlertDialogContent>
+                                                 <AlertDialogHeader>
+                                                     <AlertDialogTitle>Cancel Recharge?</AlertDialogTitle>
+                                                     <AlertDialogDescription>
+                                                         Attempt to cancel recharge of ₹{entry.amount} from {format(entry.date, 'PPp')}? Cancellation is not guaranteed.
+                                                     </AlertDialogDescription>
+                                                 </AlertDialogHeader>
+                                                 <AlertDialogFooter>
+                                                     <AlertDialogCancel>Close</AlertDialogCancel>
+                                                     <AlertDialogAction onClick={() => handleCancelRecharge(entry.transactionId)} className="bg-destructive hover:bg-destructive/90">Request Cancellation</AlertDialogAction>
+                                                 </AlertDialogFooter>
+                                             </AlertDialogContent>
+                                         </AlertDialog>
+                                     )}
+                                </div>
+                            </div>
+                         );
+                    })}
                 </CardContent>
             </Card>
         )}
@@ -750,7 +855,7 @@ export default function RechargePage() {
                                  <SelectContent>
                                      {billers.map((biller) => (
                                         <SelectItem key={biller.billerId} value={biller.billerId}>
-                                             {biller.logoUrl && <Image src={biller.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" />}
+                                             {biller.logoUrl && <Image src={biller.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="operator logo small"/>}
                                              {biller.billerName}
                                          </SelectItem>
                                      ))}
@@ -839,7 +944,7 @@ export default function RechargePage() {
                                           <div className="text-xs mt-2 text-muted-foreground flex items-start justify-between flex-wrap gap-x-4 gap-y-1">
                                                <div>
                                                     <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
-                                                     {type === 'mobile' && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
+                                                     {type === 'mobile' && plan.data && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
                                                      {type === 'dth' && plan.channels && <div className="flex items-center gap-1"><Tv2 className="h-3 w-3"/> Channels: {plan.channels}</div>}
                                                </div>
                                                 <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
@@ -949,7 +1054,7 @@ export default function RechargePage() {
                                 variant="secondary"
                                 className="w-full h-9 text-sm"
                                 onClick={handleScheduleRecharge}
-                                disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || !selectedBiller}
+                                disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)}
                             >
                                 {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
                                 Schedule Recharge
@@ -970,8 +1075,19 @@ export default function RechargePage() {
                  </div>
                   <div className="flex justify-between items-center text-sm">
                      <span className="text-muted-foreground">Available Balance:</span>
-                     <span className="font-medium text-primary">₹{mockAccountBalance.toFixed(2)}</span>
+                      {isBalanceLoading ? (
+                         <Skeleton className="h-5 w-20" />
+                     ) : (
+                        <span className="font-medium text-primary">₹{accountBalance !== null ? accountBalance.toFixed(2) : 'N/A'}</span>
+                     )}
                  </div>
+                  {/* Bank Status Info */}
+                  {bankStatus && bankStatus !== 'Active' && (
+                      <Alert variant={bankStatus === 'Down' ? "destructive" : "default"} className={`${bankStatus === 'Slow' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
+                          <AlertTitle className="text-xs">{bankStatus === 'Down' ? 'Bank Server Down' : 'Bank Server Slow'}</AlertTitle>
+                          <AlertDescription className="text-xs">Payments via this bank may fail or be delayed.</AlertDescription>
+                      </Alert>
+                  )}
                   <Separator />
                   <div className="relative">
                      <Input
@@ -984,14 +1100,19 @@ export default function RechargePage() {
                      <Button variant="link" size="sm" className="absolute right-1 top-1/2 transform -translate-y-1/2 h-auto px-2 text-xs" onClick={handleApplyCoupon}>Apply</Button>
                   </div>
                   <Button
-                    type="submit"
+                    type="button" // Changed to type="button" as form submit is handled separately
                     className="w-full bg-purple-600 hover:bg-purple-700 text-white h-11 text-base" // PhonePe-style purple button
-                    disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)}
-                    onClick={handleRecharge} // Trigger form submission
+                    disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator) || bankStatus === 'Down'}
+                    onClick={handleRecharge} // Trigger recharge handler
                   >
                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                     Proceed to Pay ₹{amount || '0'}
+                     {bankStatus === 'Down' ? 'Bank Unavailable' : `Proceed to Pay ₹${amount || '0'}`}
                   </Button>
+                  {/* Temporary Freeze Button - Example */}
+                  <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => alert("Temporary Freeze: Coming Soon!")}>
+                       <AlarmClockOff className="mr-2 h-4 w-4"/> Freeze Payments (e.g., 1 hour)
+                   </Button>
+
              </CardContent>
          </Card>
 
@@ -1034,7 +1155,9 @@ export default function RechargePage() {
                 </div>
                 <DialogFooter className="sm:justify-between">
                     <Button variant="ghost" size="sm" onClick={() => { setPlansToCompare([]); setIsCompareModalOpen(false);}}>Clear Selection</Button>
-                    <Button size="sm" onClick={() => setIsCompareModalOpen(false)}>Close</Button>
+                    <DialogClose asChild>
+                     <Button size="sm">Close</Button>
+                     </DialogClose>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -1061,7 +1184,9 @@ export default function RechargePage() {
                  </div>
                 <DialogFooter>
                      <Button variant="secondary" onClick={() => { if (showTariffModal) handlePlanSelect(showTariffModal);}}>Select Plan</Button>
-                     <Button onClick={() => setShowTariffModal(null)}>Close</Button>
+                     <DialogClose asChild>
+                        <Button>Close</Button>
+                     </DialogClose>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
