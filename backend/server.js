@@ -22,8 +22,9 @@ const upiRoutes = require('./routes/upiRoutes');
 const rechargeRoutes = require('./routes/rechargeRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const offerRoutes = require('./routes/offerRoutes');
+const passesRoutes = require('./routes/passesRoutes'); // Import Passes routes
+const templeRoutes = require('./routes/templeRoutes'); // Import Temple routes
 // Add other route imports here as needed
-// const templeRoutes = require('./routes/templeRoutes');
 // const travelRoutes = require('./routes/travelRoutes');
 // const etc...
 
@@ -114,10 +115,11 @@ app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/upi', authMiddleware, upiRoutes);
 app.use('/api/recharge', authMiddleware, rechargeRoutes);
 app.use('/api/wallet', authMiddleware, walletRoutes);
-app.use('/api/offers', authMiddleware, offerRoutes); // Offers might need auth for user-specific stuff
+app.use('/api/offers', authMiddleware, offerRoutes);
+app.use('/api/passes', authMiddleware, passesRoutes); // Add Passes routes
+app.use('/api/temple', authMiddleware, templeRoutes); // Add Temple routes
 
 // Mount other routes (add authMiddleware if they need protection)
-// app.use('/api/temple', authMiddleware, templeRoutes);
 // app.use('/api/travel', authMiddleware, travelRoutes);
 
 // --- Error Handling ---
@@ -131,3 +133,5 @@ server.listen(PORT, () => {
 
 // Export broadcast function if needed elsewhere (e.g., after a DB update)
 module.exports = { broadcast, sendToUser };
+
+    
