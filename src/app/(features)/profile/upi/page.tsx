@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Repeat, Wallet } from 'lucide-react'; // Added Repeat, Wallet
+import { ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Repeat, Wallet, Lock } from 'lucide-react'; // Added Lock
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { BankAccount, getLinkedAccounts, removeUpiId, setDefaultAccount /*, linkBankAccount */ } from '@/services/upi'; // Assuming these functions exist
