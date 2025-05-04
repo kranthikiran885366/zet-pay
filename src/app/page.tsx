@@ -1,11 +1,10 @@
-
 'use client';
 
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet, Mic } from "lucide-react"; // Added Mic
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet, Mic, MessageSquare } from "lucide-react"; // Added MessageSquare
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions';
@@ -13,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import type { Unsubscribe } from 'firebase/firestore';
 import { auth } from '@/lib/firebase';
 import { format } from 'date-fns';
-import { useVoiceCommands } from '@/hooks/useVoiceCommands'; // Import the new hook
+import { useVoiceCommands } from '@/hooks/useVoiceCommands';
+import { cn } from '@/lib/utils'; // Ensure cn is imported
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -65,13 +65,14 @@ export default function Home() {
 
   // Subscribe to recent transactions on component mount
   useEffect(() => {
+    let unsubscribeFromTransactions: Unsubscribe | null = null;
     setIsLoadingTransactions(true);
-    console.log("Subscribing to recent transactions...");
+    console.log("Setting up auth listener...");
 
     // Check if user is logged in before subscribing
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
-      let unsubscribeFromTransactions: Unsubscribe | null = null;
       if (user) {
+        console.log("User logged in, subscribing to transactions...");
         unsubscribeFromTransactions = subscribeToTransactionHistory(
           (transactions) => {
             console.log("Received recent transactions update:", transactions);
@@ -80,7 +81,9 @@ export default function Home() {
           },
           (error) => {
             console.error("Failed to subscribe to recent transactions:", error);
-             // No toast here if handled by useRealtimeData hook or parent
+             if (error.message !== "User not logged in.") { // Avoid duplicate toast if already handled
+                toast({ variant: "destructive", title: "Error Loading Transactions", description: error.message });
+             }
             setIsLoadingTransactions(false);
             setRecentTransactions([]); // Clear on error
           },
@@ -89,24 +92,27 @@ export default function Home() {
         );
 
       } else {
-        console.log("User is not logged in. Not subscribing to transactions.");
+        console.log("User is not logged in. Clearing transactions.");
+        if (unsubscribeFromTransactions) {
+             console.log("Unsubscribing from transactions due to logout.");
+             unsubscribeFromTransactions();
+             unsubscribeFromTransactions = null;
+        }
         setRecentTransactions([]);
         setIsLoadingTransactions(false);
       }
-      // Cleanup subscription on unmount or when user changes
-      return () => {
-          if (unsubscribeFromTransactions) {
-            console.log("Unsubscribing from recent transactions.");
-            unsubscribeFromTransactions();
-          }
-      };
     });
 
-    // Cleanup auth state listener on unmount
+    // Cleanup both listeners on unmount
     return () => {
+      console.log("Cleaning up auth and transaction listeners.");
       unsubscribeAuth();
+      if (unsubscribeFromTransactions) {
+        console.log("Unsubscribing from recent transactions on unmount.");
+        unsubscribeFromTransactions();
+      }
     };
-  }, []); // Removed toast dependency as errors should be handled centrally if possible
+  }, [toast]); // Added toast as dependency
 
 
   const handleVoiceButtonClick = () => {
@@ -144,7 +150,7 @@ export default function Home() {
           </Link>
           {/* Voice Command Button */}
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9" onClick={handleVoiceButtonClick}>
-             <Mic className={`h-5 w-5 ${isListening ? 'text-red-400 animate-pulse' : ''}`} />
+             <Mic className={cn("h-5 w-5", isListening ? "text-red-400 animate-pulse" : "")} />
           </Button>
         </div>
       </header>
@@ -191,6 +197,22 @@ export default function Home() {
             </Link>
           </CardContent>
         </Card>
+
+        {/* Conversational Action Link */}
+        <Link href="/conversation" passHref>
+            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
+                <CardContent className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <MessageSquare className="h-6 w-6"/>
+                        <div>
+                            <p className="font-semibold text-sm">Ask PayFriend</p>
+                            <p className="text-xs opacity-90">Try: "Recharge my Jio number"</p>
+                        </div>
+                    </div>
+                    <Mic className="h-5 w-5"/>
+                </CardContent>
+            </Card>
+        </Link>
 
         {/* Quick Links: Recharge, Bills, Tickets Section */}
         <Card className="shadow-md">
