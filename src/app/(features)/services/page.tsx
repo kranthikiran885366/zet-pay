@@ -1,6 +1,7 @@
+
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Correct import for Button
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -37,19 +38,19 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter,
-  Fuel,
-  CarTaxiFront as TaxiIcon,
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
+  CarTaxiFront as TaxiIcon, // Corrected icon
   PhoneCall,
-  Plane,
-  ShoppingBag,
-  Gift as GiftIcon, //Alias Gift to avoid conflict
-  Home, // Used as placeholder for Temple
-  Car,
-  Bike as Motorbike, // Use Bike icon
-  CalendarCheck,
-  Video,
-    Sparkles,
+    Plane,
+    ShoppingBag,
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home, // Added Temple icon (using Home as placeholder)
+    Car,
+    Bike as Motorbike, // Corrected icon name
+    CalendarCheck,
+    Video,
+    Sparkles, // Keep for Temple & Entertainment
   ShoppingBasket,
   HeartHandshake,
   Music,
@@ -58,15 +59,14 @@ import {
     Users,
     QrCode,
     Clock,
-  MoreHorizontal,
-  Briefcase, // For Mutual Funds
-  Database, // For Deposits
-  Gauge, // For Credit Score
-  Coins, // For Gold
-  Building2, // For Zet Bank
-  Zap, // For EV Charging
-  Siren, // For Emergency Assistance
-  Store // For Rest Stop (placeholder)
+    Briefcase, // For Mutual Funds
+    Database, // For Deposits
+    Gauge, // For Credit Score
+    Coins, // For Gold
+    Building2, // For Zet Bank
+    Zap, // For EV Charging
+    Siren, // For Emergency Assistance
+    Store // For Rest Stop (placeholder)
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -109,6 +109,17 @@ const financialServices = [
      { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" }, // Added SIP Reminders
 ];
 
+// Added Entertainment Services Category
+const entertainmentServices = [
+     { name: "Movies & Events", icon: Ticket, href: "/entertainment", category: "Entertainment" },
+    // { name: "Event Tickets", icon: Ticket, href: "/entertainment/events", category: "Entertainment" },
+    // { name: "Sports Matches", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment" },
+    // { name: "Comedy Shows", icon: Sparkles, href: "/entertainment/comedy", category: "Entertainment" }, // Using Sparkles as placeholder
+    // { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment" }, // Link to existing
+    // { name: "Game Zones", icon: Gamepad2, href: "/entertainment/gamezone", category: "Entertainment" },
+];
+
+
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
     { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills" },
@@ -118,10 +129,6 @@ const otherServices = [
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
     { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
     { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills" }, // Added
-
-    // Tickets
-    { name: "Movie Tickets", icon: Clapperboard, href: "/movies", category: "Tickets" },
-    // Bus, Train, Flight moved to Travel
 
     // Vouchers & More
     { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
@@ -141,8 +148,8 @@ const otherServices = [
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
-    // Define order, ensuring 'Financial Services' is included
-    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
+    // Define order, ensuring 'Financial Services' and 'Entertainment' are included
+    const categoryOrder = ["Recharge & Bills", "Travel", "Entertainment", "Temple Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
@@ -175,7 +182,7 @@ const groupServicesByCategory = (services: any[]) => {
 }
 
 export default function AllServicesPage() {
-    const allServices = [...templeServices, ...travelServices, ...financialServices, ...otherServices];
+    const allServices = [...templeServices, ...travelServices, ...financialServices, ...entertainmentServices, ...otherServices]; // Added entertainment
     const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
 
