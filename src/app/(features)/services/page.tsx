@@ -1,6 +1,7 @@
+
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Import Button
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -45,7 +46,7 @@ import {
     ShoppingBag,
     Gift as GiftIcon, //Alias Gift to avoid conflict
     Home, // Added Temple icon (using Home as placeholder)
-    Car, // Use Car icon for Rentals and Car Wash
+    Car, // Use Car icon
     Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
@@ -71,7 +72,6 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    // Removed CarWash
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -83,17 +83,17 @@ import Image from 'next/image';
 import { useState } from 'react'; // Import useState
 
 const templeServices = [
-  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Temple Services" },
-  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Temple Services" },
-  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services" },
-  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Temple Services" },
-  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
-  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services" },
-  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services" },
-  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services" },
-  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Temple Services" },
-  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Temple Services" },
-  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services" },
+  { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Booking" },
+  { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Experience" },
+  { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Experience" },
+  { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Booking" },
+  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Support" },
+  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Info" },
+  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Experience" },
+  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Booking" },
+  { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Info" },
+  { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Booking" },
+  { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Booking" },
 ];
 
 const travelServices = [
