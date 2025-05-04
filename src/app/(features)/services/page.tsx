@@ -37,8 +37,8 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter,
-  Fuel,
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
   CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
@@ -71,7 +71,7 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    // CarWash, // lucide-react doesn't have CarWash
+    // CarWash icon replaced with Car
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -79,6 +79,7 @@ import {
     MoreHorizontal, // Added MoreHorizontal back
     FolderLock, // For Secure Vault
     GraduationCap, // Added for Education Fees
+    PiggyBank, // Added for Pocket Money
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -118,6 +119,7 @@ const financialServices = [
     { name: "Digital Gold", icon: Coins, href: "/gold", category: "Financial Services" },
     { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" },
     { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" },
+    { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Financial Services" }, // Added Pocket Money
 ];
 
 const entertainmentServices = [
