@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -11,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase'; // Import auth to get user ID
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
 
 interface Message {
   id: string;
