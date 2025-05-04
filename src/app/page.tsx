@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2 } from "lucide-react"; // Added Loader2
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet } from "lucide-react"; // Added Wallet
 import Image from 'next/image';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service with subscription
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
 import { auth } from '@/lib/firebase';
+import { format } from 'date-fns'; // Import date-fns for formatting
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -20,7 +21,7 @@ const offers = [
 ];
 
 const switchApps = [
-  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/" }, // Placeholder href
+  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/flight" }, // Updated href
   { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Placeholder href
   { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"},
   { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Placeholder href
@@ -31,10 +32,10 @@ const quickLinks = [
   { name: "Mobile", icon: Smartphone, href: "/recharge/mobile" },
   { name: "DTH", icon: Tv, href: "/recharge/dth" },
   { name: "Electricity", icon: Bolt, href: "/bills/electricity" },
-  { name: "Credit Card", icon: CreditCard, href: "/bills/credit-card" },
+  { name: "Credit Card", icon: CreditCard, href: "/bills/credit-card" }, // Added Credit Card
   { name: "FASTag", icon: RadioTower, href: "/recharge/fastag" },
   { name: "Broadband", icon: Wifi, href: "/bills/broadband" },
-  { name: "Data Card", icon: HardDrive, href: "/recharge/datacard" },
+  { name: "Pay Later", icon: Wallet, href: "/bnpl" }, // Added Pay Later link
   { name: "See All", icon: MoreHorizontal, href: "/services" },
 ];
 
@@ -49,7 +50,7 @@ export default function Home() {
     console.log("Subscribing to recent transactions...");
 
     // Check if user is logged in before subscribing
-    const unsubscribe = auth.onAuthStateChanged(user => {
+    const unsubscribeAuth = auth.onAuthStateChanged(user => {
       if (user) {
         const unsubscribeFromTransactions = subscribeToTransactionHistory(
           (transactions) => {
@@ -59,11 +60,13 @@ export default function Home() {
           },
           (error) => {
             console.error("Failed to subscribe to recent transactions:", error);
-            toast({
-              variant: "destructive",
-              title: "Error",
-              description: "Could not load recent transactions.",
-            });
+             if (error.message !== "User not logged in.") { // Avoid duplicate toast if already handled
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Could not load recent transactions.",
+                });
+             }
             setIsLoadingTransactions(false);
             setRecentTransactions([]); // Clear on error
           },
@@ -88,7 +91,7 @@ export default function Home() {
 
     // Cleanup auth state listener on unmount
     return () => {
-      unsubscribe();
+      unsubscribeAuth();
     };
   }, [toast]); // Dependency array includes toast for error handling
 
@@ -165,7 +168,7 @@ export default function Home() {
         {/* Quick Links: Recharge, Bills, Tickets Section */}
         <Card className="shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Recharge, Bills & Tickets</CardTitle>
+            <CardTitle className="text-lg font-semibold text-primary">Recharge, Bills & More</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-4 gap-x-4 gap-y-6 text-center">
             {quickLinks.map((link) => (
@@ -258,7 +261,7 @@ export default function Home() {
                      </Avatar>
                      <div>
                        <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                       <p className="text-xs text-muted-foreground">{tx.date.toLocaleDateString()}</p>
+                       <p className="text-xs text-muted-foreground">{format(tx.date, "PPp")}</p> {/* Use formatted date */}
                      </div>
                    </div>
                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
@@ -283,25 +286,26 @@ export default function Home() {
           <Link href="/services" passHref>
              <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
                  <Bolt className="h-5 w-5 mb-1" />
-                 <span className="text-xs">Bills</span>
+                 <span className="text-xs">Services</span>
              </Button>
           </Link>
-          <Link href="/live/bus" passHref>
+          {/* Removed Live Tracking from bottom nav - Keep it simple */}
+          {/* <Link href="/live/bus" passHref>
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
             <MapPinned className="h-5 w-5 mb-1" />
             <span className="text-xs">Live Tracking</span>
             </Button>
-         </Link>
+         </Link> */}
          <Link href="/history" passHref>
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
                 <History className="h-5 w-5 mb-1" />
                 <span className="text-xs">History</span>
             </Button>
          </Link>
-         <Link href="/profile" passHref>
+          <Link href="/profile" passHref>
              <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                <Settings className="h-5 w-5 mb-1" />
-                <span className="text-xs">Settings</span>
+                <User className="h-5 w-5 mb-1" /> {/* Changed Settings to User for clarity */}
+                <span className="text-xs">Profile</span>
              </Button>
          </Link>
       </nav>
