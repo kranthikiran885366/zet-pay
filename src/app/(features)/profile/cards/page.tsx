@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CreditCard, PlusCircle, Trash2, Star, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CreditCard, PlusCircle, Trash2, Star, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getSavedCards, deleteCard, setPrimaryCard, CardDetails } from '@/services/cards'; // Import card service
+import { getSavedCards, deleteCard, setPrimaryCard, CardDetails, payWithSavedCard } from '@/services/cards'; // Import card service, including payWithSavedCard
 import { Badge } from '@/components/ui/badge';
+import { isBefore, addMonths, parse } from 'date-fns'; // Import date-fns functions
 
 export default function SavedCardsPage() {
     const [cards, setCards] = useState<CardDetails[]>([]);
@@ -23,6 +24,8 @@ export default function SavedCardsPage() {
             try {
                 const fetchedCards = await getSavedCards();
                 setCards(fetchedCards);
+                // Check for expiring cards after fetching
+                checkCardExpiry(fetchedCards);
             } catch (error) {
                 console.error("Failed to fetch saved cards:", error);
                 toast({ variant: "destructive", title: "Error", description: "Could not load saved cards." });
@@ -32,6 +35,36 @@ export default function SavedCardsPage() {
         };
         fetchCards();
     }, [toast]);
+
+     // Function to check and notify about expiring cards
+    const checkCardExpiry = (savedCards: CardDetails[]) => {
+        const now = new Date();
+        const twoMonthsFromNow = addMonths(now, 2); // Check cards expiring within 2 months
+
+        savedCards.forEach(card => {
+             try {
+                // Parse expiry date (assuming YYYY format for year)
+                 // Use 1st day of the month *after* expiry month for comparison
+                 const expiryDate = parse(`${card.expiryMonth}/${card.expiryYear}`, 'MM/yyyy', new Date());
+                 const expiryCheckDate = addMonths(expiryDate, 1); // Compare against the start of the month *after* expiry
+                 expiryCheckDate.setDate(1);
+                 expiryCheckDate.setHours(0,0,0,0);
+
+
+                if (isBefore(expiryCheckDate, twoMonthsFromNow)) { // If expiry is within the next 2 months (or already past)
+                    toast({
+                        variant: "default", // Use default variant for warnings
+                         title: `Card Expiring Soon: ...${card.last4}`,
+                         description: `Your ${card.bankName || card.cardIssuer} ${card.cardType} card expires on ${card.expiryMonth}/${card.expiryYear}. Please update or add a new card.`,
+                         duration: 10000, // Longer duration for warning
+                    });
+                }
+            } catch(e){
+                 console.error(`Error parsing expiry date for card ...${card.last4}: ${card.expiryMonth}/${card.expiryYear}`, e)
+            }
+        });
+    };
+
 
     const handleDelete = async (cardId: string) => {
         const cardToDelete = cards.find(c => c.id === cardId);
@@ -51,9 +84,9 @@ export default function SavedCardsPage() {
             } else {
                 throw new Error("Deletion failed via service.");
             }
-        } catch (error) {
+        } catch (error: any) { // Added 'any' type for error
             console.error("Failed to delete card:", error);
-            toast({ variant: "destructive", title: "Deletion Failed", description: "Could not delete the card." });
+            toast({ variant: "destructive", title: "Deletion Failed", description: error.message || "Could not delete the card." });
         } finally {
             setIsProcessing(null);
         }
@@ -72,9 +105,9 @@ export default function SavedCardsPage() {
             } else {
                  throw new Error("Setting primary failed via service.");
             }
-        } catch (error) {
+        } catch (error: any) { // Added 'any' type for error
             console.error("Failed to set primary card:", error);
-            toast({ variant: "destructive", title: "Update Failed", description: "Could not set the primary card." });
+            toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not set the primary card." });
         } finally {
             setIsProcessing(null);
         }
@@ -83,6 +116,36 @@ export default function SavedCardsPage() {
     const handleAddNewCard = () => {
         // TODO: Navigate to or open a secure card adding flow (e.g., using a payment gateway SDK)
         alert("Add New Card flow not implemented. This should use a secure method.");
+    };
+
+    // Simulate payment attempt to trigger retry flow
+     const simulateFailedPaymentAndRetry = async (card: CardDetails) => {
+        const amount = 1500; // Example amount that might fail
+        const cvv = '123'; // Example CVV
+        const purpose = "Simulated Bill Payment";
+
+        toast({ title: "Simulating Payment...", description: `Trying card ...${card.last4}` });
+        setIsProcessing(card.id);
+        try {
+             const result = await payWithSavedCard(card.id, amount, cvv, purpose);
+             if (result.success) {
+                 toast({ title: "Payment Successful", description: result.message });
+             } else {
+                 toast({ variant: "destructive", title: "Payment Failed", description: `${result.message}` });
+                 if (result.retryWithDifferentMethod) {
+                     // **Trigger Retry Flow Here**
+                     // In a real UI, you'd show a modal or prompt allowing the user to select another card or wallet.
+                     // For this simulation, we'll just log it.
+                     console.log("Payment failed, suggesting retry with another method.");
+                     alert(`Payment with card ...${card.last4} failed (${result.message}). You would normally be prompted to retry with another card or wallet here.`);
+                     // Example: retryWithWallet() or showCardSelectionModal()
+                 }
+             }
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Payment Error", description: error.message });
+        } finally {
+            setIsProcessing(null);
+        }
     };
 
     return (
@@ -116,16 +179,32 @@ export default function SavedCardsPage() {
                             <p className="text-sm text-muted-foreground text-center py-6">You haven't saved any cards yet.</p>
                         )}
 
-                        {!isLoading && cards.map(card => (
+                        {!isLoading && cards.map(card => {
+                            // Check if card is expiring soon (within 2 months)
+                            let isExpiringSoon = false;
+                            try {
+                                 const expiryDate = parse(`${card.expiryMonth}/${card.expiryYear}`, 'MM/yyyy', new Date());
+                                 const expiryCheckDate = addMonths(expiryDate, 1);
+                                 expiryCheckDate.setDate(1);
+                                 expiryCheckDate.setHours(0,0,0,0);
+                                 isExpiringSoon = isBefore(expiryCheckDate, addMonths(new Date(), 2));
+                            } catch(e){
+                                console.error("Date parse error in render", e)
+                            }
+
+                            return (
                             <Card key={card.id} className="p-4 border shadow-sm relative overflow-hidden flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <CreditCard className={`h-8 w-8 ${card.cardType === 'Credit' ? 'text-blue-600' : 'text-green-600'}`} />
                                     <div>
-                                        <p className="font-semibold flex items-center">
-                                            {card.bankName || card.cardIssuer || 'Card'} ending in {card.last4}
-                                            {card.isPrimary && <Badge variant="outline" className="ml-2 text-xs bg-primary/10 text-primary border-primary"><Star className="h-3 w-3 mr-1"/> Primary</Badge>}
+                                        <p className="font-semibold flex items-center flex-wrap gap-x-2">
+                                            <span>{card.bankName || card.cardIssuer || 'Card'} ending in {card.last4}</span>
+                                            {card.isPrimary && <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary"><Star className="h-3 w-3 mr-1"/> Primary</Badge>}
+                                            {isExpiringSoon && <Badge variant="destructive" className="text-xs"><AlertTriangle className="h-3 w-3 mr-1"/> Expires Soon</Badge>}
                                         </p>
                                         <p className="text-xs text-muted-foreground">Expires: {card.expiryMonth}/{card.expiryYear} • {card.cardType}</p>
+                                        {/* Button to simulate payment failure */}
+                                        {/* <Button size="xs" variant="outline" className='mt-1' onClick={() => simulateFailedPaymentAndRetry(card)}>Simulate Payment</Button> */}
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
@@ -173,7 +252,8 @@ export default function SavedCardsPage() {
                                     </div>
                                  )}
                             </Card>
-                        ))}
+                            );
+                        })}
                     </CardContent>
                 </Card>
 

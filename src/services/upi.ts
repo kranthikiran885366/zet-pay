@@ -7,6 +7,7 @@ import { getUserProfileById, UserProfile } from './user'; // To check KYC and fe
 import { getWalletBalance, payViaWallet, WalletTransactionResult } from './wallet'; // Import wallet functions
 import { scheduleRecovery } from './recovery'; // Import recovery scheduling function
 import { format, addBusinessDays } from 'date-fns'; // Added addBusinessDays
+import { runTransaction } from 'firebase/firestore'; // Import runTransaction
 
 export interface BankAccount {
   /**
@@ -201,6 +202,7 @@ export async function verifyUpiId(upiId: string): Promise<string> {
  * @param pin The UPI PIN for authentication.
  * @param note An optional transaction note/description.
  * @param userId The ID of the user making the payment.
+ * @param sourceAccountUpiId The specific UPI ID to use for payment.
  * @returns A promise that resolves to a UpiTransactionResult object representing the transaction details.
  * @throws Error if payment fails and fallback is not possible or also fails.
  */
@@ -209,18 +211,27 @@ export async function processUpiPayment(
   amount: number,
   pin: string,
   note?: string,
-  userId?: string // Make userId optional for now, but needed for fallback checks
+  userId?: string, // Make userId optional for now, but needed for fallback checks
+  sourceAccountUpiId?: string // Added source account UPI ID
 ): Promise<UpiTransactionResult> {
-  console.log(`Processing UPI payment to ${recipientUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ${pin})`);
+  console.log(`Processing UPI payment to ${recipientUpiId} from ${sourceAccountUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ${pin})`);
   // TODO: Implement actual secure UPI payment flow via SDK/API.
   await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate UPI API delay
 
   let upiFailedDueToLimit = false;
+  let upiFailedDueToBankDown = false; // New flag for bank server issues
   let upiFailureMessage = 'Payment failed.';
   let mightBeDebited = false; // Flag for simulation
 
   // Simulate various UPI outcomes for demo
   try {
+    // Simulate bank server down based on source UPI ID
+    if (sourceAccountUpiId === 'user@okicici') { // Simulate ICICI down
+        upiFailedDueToBankDown = true;
+        upiFailureMessage = 'Bank server is currently down. Please try later.';
+        throw new Error(upiFailureMessage);
+    }
+
     if (pin !== '1234' && pin !== '123456') { // Example PIN check
       throw new Error("Incorrect UPI PIN entered.");
     }
@@ -255,65 +266,65 @@ export async function processUpiPayment(
     console.warn("UPI Payment failed:", upiError.message);
     upiFailureMessage = upiError.message || upiFailureMessage; // Update failure message
 
-    // --- Smart Wallet Bridge Logic ---
+     // --- Smart Wallet Bridge Logic ---
     if (upiFailedDueToLimit && userId) {
-      console.log("UPI limit exceeded, attempting Wallet Fallback...");
-      try {
-        // 1. Check User Eligibility & Settings
-        const userProfile = await getUserProfileById(userId); // Fetch user profile
-        if (userProfile?.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
-            console.log("Wallet Fallback disabled for user.");
-            throw new Error(upiFailureMessage); // Re-throw original UPI error
+        console.log("UPI limit exceeded, attempting Wallet Fallback...");
+        try {
+            // 1. Check User Eligibility & Settings
+            const userProfile = await getUserProfileById(userId); // Fetch user profile
+            if (userProfile?.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
+                console.log("Wallet Fallback disabled for user.");
+                throw new Error(upiFailureMessage); // Re-throw original UPI error
+            }
+            if (amount > (userProfile.smartWalletBridgeLimit || 0)) {
+                console.log(`Amount ${amount} exceeds wallet fallback limit ${userProfile.smartWalletBridgeLimit}`);
+                throw new Error(`${upiFailureMessage} Wallet fallback limit exceeded.`); // More specific error
+            }
+
+            // 2. Check Wallet Balance
+            const walletBalance = await getWalletBalance(userId);
+            if (walletBalance < amount) {
+                console.log(`Insufficient wallet balance (${walletBalance}) for fallback amount (${amount}).`);
+                // TODO: Check for auto-debit setup if needed
+                throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
+            }
+
+            // 3. Attempt Payment via Wallet
+            const walletPaymentResult = await payViaWallet(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
+
+            if (walletPaymentResult.success) {
+              console.log("Payment successful via Wallet Fallback!");
+
+              // 4. Schedule Recovery from Bank Account
+              const recoveryScheduled = await scheduleRecovery(userId, amount, recipientUpiId);
+              if (!recoveryScheduled) {
+                console.error("CRITICAL: Failed to schedule wallet recovery!");
+                // Handle this critical error - maybe notify admin, attempt retry later?
+              } else {
+                console.log("Wallet recovery scheduled successfully.");
+              }
+
+              // Return a specific status indicating fallback success
+              return {
+                // transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID // Error: upiPaymentResult is not defined here
+                walletTransactionId: walletPaymentResult.transactionId,
+                amount: amount,
+                recipientUpiId: recipientUpiId,
+                status: 'FallbackSuccess', // Use a distinct status
+                message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
+                usedWalletFallback: true,
+              };
+            } else {
+              // Wallet payment also failed
+              console.error("Wallet Fallback payment failed:", walletPaymentResult.message);
+              throw new Error(`${upiFailureMessage} Wallet fallback also failed: ${walletPaymentResult.message}`);
+            }
+        } catch (fallbackError: any) {
+            console.error("Wallet Fallback process failed:", fallbackError.message);
+            // Ensure the final thrown error includes the original UPI failure reason if possible
+            throw new Error(fallbackError.message || upiFailureMessage);
         }
-        if (amount > (userProfile.smartWalletBridgeLimit || 0)) {
-            console.log(`Amount ${amount} exceeds wallet fallback limit ${userProfile.smartWalletBridgeLimit}`);
-            throw new Error(`${upiFailureMessage} Wallet fallback limit exceeded.`); // More specific error
-        }
-
-        // 2. Check Wallet Balance
-        const walletBalance = await getWalletBalance(userId);
-        if (walletBalance < amount) {
-            console.log(`Insufficient wallet balance (${walletBalance}) for fallback amount (${amount}).`);
-             // TODO: Check for auto-debit setup if needed
-            throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
-        }
-
-        // 3. Attempt Payment via Wallet
-        const walletPaymentResult = await payViaWallet(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
-
-        if (walletPaymentResult.success) {
-          console.log("Payment successful via Wallet Fallback!");
-
-          // 4. Schedule Recovery from Bank Account
-          const recoveryScheduled = await scheduleRecovery(userId, amount, recipientUpiId);
-          if (!recoveryScheduled) {
-            console.error("CRITICAL: Failed to schedule wallet recovery!");
-            // Handle this critical error - maybe notify admin, attempt retry later?
-          } else {
-            console.log("Wallet recovery scheduled successfully.");
-          }
-
-          // Return a specific status indicating fallback success
-          return {
-            // transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID // Error: upiPaymentResult is not defined here
-            walletTransactionId: walletPaymentResult.transactionId,
-            amount: amount,
-            recipientUpiId: recipientUpiId,
-            status: 'FallbackSuccess', // Use a distinct status
-            message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
-            usedWalletFallback: true,
-          };
-        } else {
-          // Wallet payment also failed
-          console.error("Wallet Fallback payment failed:", walletPaymentResult.message);
-          throw new Error(`${upiFailureMessage} Wallet fallback also failed: ${walletPaymentResult.message}`);
-        }
-      } catch (fallbackError: any) {
-        console.error("Wallet Fallback process failed:", fallbackError.message);
-        // Ensure the final thrown error includes the original UPI failure reason if possible
-        throw new Error(fallbackError.message || upiFailureMessage);
-      }
-    } else {
+    } else { // --- End Smart Wallet Bridge Logic ---
        // Handle non-limit related UPI failures
        // If it *might* be debited, generate ticket ID and ETA
        if (mightBeDebited) {
@@ -332,7 +343,7 @@ export async function processUpiPayment(
                refundEta: refundEtaString,
            };
        } else {
-            // Normal failure without potential debit
+            // Normal failure without potential debit (or bank server down)
              return {
                  transactionId: `TXN_UPI_FAILED_${Date.now()}`,
                  amount: amount,
@@ -343,6 +354,23 @@ export async function processUpiPayment(
              };
        }
     }
-    // --- End Smart Wallet Bridge Logic ---
+
   }
+}
+
+
+/**
+ * Simulates fetching the status of a bank's UPI server.
+ * @param bankIdentifier A unique identifier for the bank (e.g., the handle like 'oksbi', 'okhdfcbank').
+ * @returns A promise resolving to the status: 'Active', 'Slow', or 'Down'.
+ */
+export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
+    console.log(`Checking server status for bank: ${bankIdentifier}`);
+    // TODO: Implement actual API call to a status monitoring service (e.g., NPCI feed, third-party provider)
+    await new Promise(resolve => setTimeout(resolve, 200)); // Simulate short delay
+
+    // Mock status based on identifier for demo
+    if (bankIdentifier === 'okicici') return 'Down'; // Simulate ICICI down
+    if (bankIdentifier === 'okhdfcbank') return 'Slow'; // Simulate HDFC slow
+    return 'Active'; // Default to active
 }
