@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -14,8 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert components
 
 interface SpendingCategory {
   category: string;
@@ -60,9 +60,15 @@ export default function SpendingAnalysisPage() {
 
      // Load budgets from local storage on mount
     useEffect(() => {
-        const storedBudgets = localStorage.getItem('payfriend-budgets');
-        if (storedBudgets) {
-            setBudgets(JSON.parse(storedBudgets));
+        try {
+            const storedBudgets = localStorage.getItem('payfriend-budgets');
+            if (storedBudgets) {
+                setBudgets(JSON.parse(storedBudgets));
+            }
+        } catch (error) {
+             console.error("Error loading budgets from localStorage:", error);
+             // Handle error appropriately, maybe clear corrupted data
+             localStorage.removeItem('payfriend-budgets');
         }
     }, []);
 
@@ -72,18 +78,21 @@ export default function SpendingAnalysisPage() {
             setIsLoadingAnalysis(true);
             try {
                  const input: AnalyzeSpendingInput = {
+                    // Map only essential fields, keep it concise
                     transactionHistory: JSON.stringify(currentTransactions.map(tx => ({
                         name: tx.name,
                         description: tx.description,
                         amount: tx.amount,
-                        date: tx.date.toISOString(),
+                        date: tx.date.toISOString().split('T')[0], // Just date YYYY-MM-DD
                         type: tx.type,
                         status: tx.status,
                     }))),
-                    // Add user preferences if available
+                    // TODO: Add user preferences if available from profile/settings
+                    // userPreferences: JSON.stringify({ spendingGoals: ['Reduce Dining Out'], preferredCategories: ['Travel', 'Groceries'] })
                  };
                  const analysisResult = await analyzeSpending(input);
                  setAnalysis(analysisResult);
+                 toast({ title: "Spending Analysis Updated", description: "AI insights generated based on latest transactions." });
              } catch(error) {
                  console.error("Error analyzing spending:", error);
                  toast({ variant: "destructive", title: "Analysis Error", description: "Could not generate spending analysis." });
@@ -101,21 +110,41 @@ export default function SpendingAnalysisPage() {
      // Fetch transactions using real-time subscription and trigger analysis
     useEffect(() => {
         setIsLoading(true); // Set loading true when starting subscription
-        const unsubscribe = subscribeToTransactionHistory(
-             (fetchedTransactions) => {
-                 setTransactions(fetchedTransactions);
-                 triggerAnalysis(fetchedTransactions); // Trigger analysis whenever transactions update
-                 setIsLoading(false); // Set loading false after first fetch completes
-             },
-             (error) => {
-                 console.error("Error fetching transactions:", error);
-                 toast({ variant: "destructive", title: "Error", description: "Could not load transaction data." });
-                 setIsLoading(false); // Also stop loading on error
-             }
-        );
+        let unsubscribe: Unsubscribe | null = null;
+
+        const setupSubscription = () => {
+             unsubscribe = subscribeToTransactionHistory(
+                 (fetchedTransactions) => {
+                     setTransactions(fetchedTransactions);
+                     triggerAnalysis(fetchedTransactions); // Trigger analysis whenever transactions update
+                     setIsLoading(false); // Set loading false after first fetch completes
+                 },
+                 (error) => {
+                     console.error("Error fetching transactions:", error);
+                      if (error.message !== "User not logged in.") {
+                        toast({ variant: "destructive", title: "Error", description: "Could not load transaction data." });
+                      }
+                     setIsLoading(false); // Also stop loading on error
+                 }
+             );
+        }
+
+        // Wait for auth state before subscribing
+        const unsubscribeAuth = auth.onAuthStateChanged(user => {
+            if (user) {
+                setupSubscription();
+            } else {
+                setIsLoading(false);
+                setTransactions([]); // Clear data if logged out
+                setAnalysis(null);
+                 if (unsubscribe) unsubscribe(); // Clean up previous subscription if user logs out
+            }
+        });
+
 
         // Cleanup subscription on unmount
         return () => {
+            unsubscribeAuth(); // Cleanup auth listener
             if (unsubscribe) {
                 unsubscribe();
             }
@@ -174,7 +203,13 @@ export default function SpendingAnalysisPage() {
         }
 
         setBudgets(updatedBudgets);
-        localStorage.setItem('payfriend-budgets', JSON.stringify(updatedBudgets));
+         try {
+             localStorage.setItem('payfriend-budgets', JSON.stringify(updatedBudgets));
+         } catch (error) {
+             console.error("Error saving budgets to localStorage:", error);
+             toast({ variant: "destructive", title: "Save Error", description: "Could not save budget." });
+             // Optionally revert state change if saving failed
+         }
         setIsBudgetDialogOpen(false);
         setCurrentBudget({});
         setEditingBudgetId(null);
@@ -190,7 +225,13 @@ export default function SpendingAnalysisPage() {
     const deleteBudget = (id: string) => {
         const updatedBudgets = budgets.filter(b => b.id !== id);
         setBudgets(updatedBudgets);
-        localStorage.setItem('payfriend-budgets', JSON.stringify(updatedBudgets));
+         try {
+             localStorage.setItem('payfriend-budgets', JSON.stringify(updatedBudgets));
+         } catch (error) {
+             console.error("Error deleting budget from localStorage:", error);
+             toast({ variant: "destructive", title: "Delete Error", description: "Could not delete budget." });
+              // Optionally revert state change if deleting failed
+         }
         toast({ title: "Budget Deleted" });
     };
 
@@ -222,6 +263,7 @@ export default function SpendingAnalysisPage() {
                          <CardContent className="p-6">
                             <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
                             <p className="text-muted-foreground">No transaction data available for analysis.</p>
+                            <p className="text-xs text-muted-foreground mt-1">Make some payments or recharges to see insights.</p>
                          </CardContent>
                      </Card>
                 )}
@@ -234,32 +276,38 @@ export default function SpendingAnalysisPage() {
                                 <CardTitle className="flex items-center gap-2">
                                     <DollarSign className="h-5 w-5 text-primary"/> Spending Overview
                                 </CardTitle>
-                                <CardDescription>Your spending distribution.</CardDescription>
+                                <CardDescription>Your spending distribution for completed transactions.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="h-60 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={spendingData}
-                                                cx="50%"
-                                                cy="50%"
-                                                labelLine={false}
-                                                outerRadius={80}
-                                                fill="#8884d8"
-                                                dataKey="amount"
-                                                nameKey="category"
-                                                label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}
-                                            >
-                                                {spendingData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                                ))}
-                                            </Pie>
-                                             <RechartsTooltip formatter={(value: number) => `₹${value.toFixed(2)}`} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <p className="text-center text-lg font-semibold mt-4">Total Spending: ₹{totalSpending.toFixed(2)}</p>
+                                {spendingData.length > 0 ? (
+                                    <>
+                                        <div className="h-60 w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={spendingData}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        labelLine={false}
+                                                        outerRadius={80}
+                                                        fill="#8884d8"
+                                                        dataKey="amount"
+                                                        nameKey="category"
+                                                        // label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`} // Label might clutter small charts
+                                                    >
+                                                        {spendingData.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                                        ))}
+                                                    </Pie>
+                                                    <RechartsTooltip formatter={(value: number, name: string) => [`₹${value.toFixed(2)}`, name]} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <p className="text-center text-lg font-semibold mt-4">Total Spending: ₹{totalSpending.toFixed(2)}</p>
+                                    </>
+                                ) : (
+                                     <p className="text-center text-muted-foreground py-4">No spending data to display (check transaction status).</p>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -271,19 +319,31 @@ export default function SpendingAnalysisPage() {
                                 </CardTitle>
                                 <CardDescription>Powered by AI to help you manage your finances.</CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-2 text-sm">
-                                {isLoadingAnalysis && <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                            <CardContent className="space-y-3 text-sm">
+                                {isLoadingAnalysis && <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2 text-muted-foreground">Generating insights...</span></div>}
                                 {!isLoadingAnalysis && analysis ? (
                                     <>
-                                        <div><strong>Summary:</strong> {analysis.summary || 'No summary generated.'}</div>
-                                        <div><strong>Insights:</strong> {analysis.insights || 'No insights generated.'}</div>
-                                         <div><strong>Recommendations:</strong> {analysis.recommendations || 'No recommendations generated.'}</div>
+                                         <Alert variant="default" className="bg-blue-50 border-blue-200">
+                                             <AlertTitle className="font-semibold text-blue-800">Summary</AlertTitle>
+                                             <AlertDescription className="text-blue-700">{analysis.summary || 'No summary generated.'}</AlertDescription>
+                                         </Alert>
+                                          <Alert variant="default" className="bg-yellow-50 border-yellow-200">
+                                             <AlertTitle className="font-semibold text-yellow-800">Key Insights</AlertTitle>
+                                             <AlertDescription className="text-yellow-700">{analysis.insights || 'No insights generated.'}</AlertDescription>
+                                         </Alert>
+                                         <Alert variant="default" className="bg-green-50 border-green-200">
+                                             <AlertTitle className="font-semibold text-green-800">Recommendations</AlertTitle>
+                                             <AlertDescription className="text-green-700">{analysis.recommendations || 'No recommendations generated.'}</AlertDescription>
+                                         </Alert>
                                     </>
                                 ) : !isLoadingAnalysis && transactions.length > 0 ? (
-                                    <p className="text-muted-foreground">Could not generate AI insights.</p>
+                                    <p className="text-muted-foreground text-center py-4">Could not generate AI insights at this time.</p>
                                 ) : !isLoadingAnalysis && transactions.length === 0 ? (
-                                     <p className="text-muted-foreground">No transactions yet to generate insights.</p>
+                                     <p className="text-muted-foreground text-center py-4">No transactions yet to generate insights.</p>
                                 ) : null }
+                                <Button variant="link" size="sm" className="w-full text-xs" onClick={() => triggerAnalysis(transactions)} disabled={isLoadingAnalysis || transactions.length === 0}>
+                                    <RefreshCw className="h-3 w-3 mr-1"/> Regenerate Analysis
+                                </Button>
                             </CardContent>
                         </Card>
 
@@ -319,11 +379,12 @@ export default function SpendingAnalysisPage() {
                                                      </SelectTrigger>
                                                      <SelectContent>
                                                          {availableCategories
+                                                             .filter(cat => cat !== 'Income/Credits') // Exclude income from budget categories
                                                              .filter(cat => !budgets.some(b => b.category === cat && b.id !== editingBudgetId)) // Filter out categories already budgeted (except the one being edited)
                                                              .map(cat => (
                                                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                                          ))}
-                                                        {availableCategories.length === budgets.length && !editingBudgetId && <p className="p-2 text-xs text-muted-foreground">All categories budgeted.</p>}
+                                                        {availableCategories.filter(cat => cat !== 'Income/Credits').length === budgets.length && !editingBudgetId && <p className="p-2 text-xs text-muted-foreground">All spending categories budgeted.</p>}
                                                      </SelectContent>
                                                  </Select>
                                              </div>
@@ -352,6 +413,7 @@ export default function SpendingAnalysisPage() {
                                      const spent = spendingData.find(s => s.category === budget.category)?.amount || 0;
                                      const progress = getBudgetProgress(budget.category, budget.limit);
                                      const isOverBudget = spent > budget.limit;
+                                     const remaining = budget.limit - spent;
                                      return (
                                          <div key={budget.id} className="space-y-1 border-b pb-3 last:border-none last:pb-0">
                                              <div className="flex justify-between items-center">
@@ -365,10 +427,17 @@ export default function SpendingAnalysisPage() {
                                                      </Button>
                                                   </div>
                                              </div>
-                                             <Progress value={progress} className={isOverBudget ? '[&>div]:bg-destructive' : ''} />
+                                             <Progress value={progress} aria-label={`${budget.category} budget progress ${progress.toFixed(0)}%`} className={isOverBudget ? '[&>div]:bg-destructive' : ''} />
                                              <div className="flex justify-between text-xs text-muted-foreground">
                                                  <span>Spent: ₹{spent.toFixed(2)}</span>
-                                                 <span>Limit: ₹{budget.limit.toFixed(2)} {isOverBudget ? `(Over by ₹${(spent - budget.limit).toFixed(2)})` : `(Remaining: ₹${(budget.limit - spent).toFixed(2)})`}</span>
+                                                 {isOverBudget ? (
+                                                     <span className="text-destructive">Over by ₹{(spent - budget.limit).toFixed(2)}</span>
+                                                 ) : (
+                                                    <span className={remaining < budget.limit * 0.1 ? "text-orange-600" : ""}>
+                                                         Remaining: ₹{remaining.toFixed(2)}
+                                                     </span>
+                                                 )}
+                                                 <span>Limit: ₹{budget.limit.toFixed(2)}</span>
                                              </div>
                                          </div>
                                      );
@@ -381,5 +450,4 @@ export default function SpendingAnalysisPage() {
 
             </main>
         </div>
-    );
-}
+    );}
