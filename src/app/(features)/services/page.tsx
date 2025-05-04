@@ -71,7 +71,7 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    // CarWash icon replaced with Car
+    CarIcon as CarWashIcon, // Use CarIcon for Car Wash, alias
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -80,6 +80,7 @@ import {
     FolderLock, // For Secure Vault
     GraduationCap, // Added for Education Fees
     PiggyBank, // Added for Pocket Money
+    IndianRupee, // Added for Cash Withdrawal
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -135,7 +136,7 @@ const hyperlocalServices = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry Pickup", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring Services", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Use Car icon
+    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Use Car icon
     { name: "Courier Service", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
@@ -173,6 +174,7 @@ const otherServices = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Payments" }, // Smart Parking
     { name: "Cab/Taxi Bill Payments", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
+    { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments" }, // Added Cardless Cash
 
 ];
 
