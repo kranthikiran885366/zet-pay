@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, CarWash } from 'lucide-react'; // Use CarWash icon
+import { ArrowLeft, Car } from 'lucide-react'; // Use Car icon
 import Link from 'next/link';
 
 export default function CarWashPage() {
@@ -16,7 +16,7 @@ export default function CarWashPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        <CarWash className="h-6 w-6" />
+        <Car className="h-6 w-6" /> {/* Use Car icon */}
         <h1 className="text-lg font-semibold">Car Wash at Home</h1>
       </header>
 
@@ -28,7 +28,7 @@ export default function CarWashPage() {
             <CardDescription>Get your car cleaned at your doorstep.</CardDescription>
           </CardHeader>
           <CardContent>
-             <CarWash className="h-20 w-20 text-primary mx-auto mb-4" />
+             <Car className="h-20 w-20 text-primary mx-auto mb-4" /> {/* Use Car icon */}
             <p className="text-muted-foreground mb-4">
               Schedule a professional car wash service at your preferred location and time. Coming Soon!
             </p>

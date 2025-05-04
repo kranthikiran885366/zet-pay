@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from "@/components/ui/button"; // Correct import for Button
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -45,7 +45,7 @@ import {
     ShoppingBag,
     Gift as GiftIcon, //Alias Gift to avoid conflict
     Home, // Added Temple icon (using Home as placeholder)
-    Car,
+    Car, // Use Car icon for Rentals and Car Wash
     Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
@@ -71,12 +71,13 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    CarWash, // Car Wash
+    // Removed CarWash
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
     ScissorsLineDashed, // Barber/Salon
     MoreHorizontal, // Added MoreHorizontal back
+    FolderLock, // For Secure Vault
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -106,7 +107,6 @@ const travelServices = [
     { name: "Emergency Assistance", icon: Siren, href: "/travels/assistance", category: "Travel" },
 ];
 
-// Combine existing "Financial Services" and add new ones
 const financialServices = [
     { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Financial Services"},
     { name: "Insurance Premium", icon: ShieldCheck, href: "/bills/insurance", category: "Financial Services"},
@@ -119,29 +119,31 @@ const financialServices = [
     { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" },
 ];
 
-// Added Entertainment Services Category
 const entertainmentServices = [
      { name: "Movies & Events", icon: Ticket, href: "/entertainment", category: "Entertainment" },
 ];
 
-// Added Healthcare Services Category
 const healthcareServices = [
      { name: "Healthcare & Wellness", icon: HeartPulse, href: "/healthcare", category: "Healthcare" },
 ];
 
-// New Hyperlocal Services Category
 const hyperlocalServices = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services" },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry Pickup", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring Services", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
-    { name: "Car Wash", icon: CarWash, href: "/hyperlocal/carwash", category: "Hyperlocal Services" },
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Updated icon
     { name: "Courier Service", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
     { name: "Salon/Barber", icon: ScissorsLineDashed, href: "/hyperlocal/salon", category: "Hyperlocal Services" },
 ];
 
+// Utility & Tools Category
+const utilityServices = [
+   { name: "Secure Vault", icon: FolderLock, href: "/vault", category: "Utilities & Tools" },
+   // Add other tools here later if needed
+];
 
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
@@ -152,6 +154,10 @@ const otherServices = [
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
     { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
     { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills" },
+    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills" },
+    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills" }, // Note: Duplicate href, maybe differentiate later
+    { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Recharge & Bills" },
+    { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Recharge & Bills" },
 
     // Vouchers & More
     { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
@@ -163,28 +169,24 @@ const otherServices = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Payments" }, // Smart Parking
     { name: "Cab/Taxi Bill Payments", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
-    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Payments" },
-    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Payments" },
-    { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Payments" },
-    { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Payments" },
+
 ];
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
     // Define order, ensuring all categories are included
-    const categoryOrder = ["Recharge & Bills", "Travel", "Healthcare", "Entertainment", "Temple Services", "Hyperlocal Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
+    const categoryOrder = ["Recharge & Bills", "Travel", "Temple Services", "Healthcare", "Entertainment", "Hyperlocal Services", "Financial Services", "Utilities & Tools", "Vouchers & More", "Payments"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
 
     services.forEach((service) => {
         const category = service.category;
-        if (grouped[category]) {
-            grouped[category].push(service);
-        } else {
-             console.warn(`Service category "${category}" not found in defined order. Skipping or add to 'Other'.`);
-             // Optionally add to Other if needed, but ensure all expected categories are in categoryOrder
-        }
+         if (!grouped[category]) {
+             console.warn(`Service category "${category}" not found in defined order. Add it to categoryOrder.`);
+             grouped[category] = []; // Create if missing (helps catch errors)
+         }
+         grouped[category].push(service);
     });
 
      // Filter out empty categories
@@ -204,8 +206,9 @@ export default function AllServicesPage() {
         ...travelServices,
         ...financialServices,
         ...entertainmentServices,
-        ...healthcareServices, // Added healthcare
-        ...hyperlocalServices, // Added hyperlocal
+        ...healthcareServices,
+        ...hyperlocalServices,
+        ...utilityServices, // Added utility services
         ...otherServices
     ];
     const groupedServices = groupServicesByCategory(allServices);
