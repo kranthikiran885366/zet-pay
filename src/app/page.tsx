@@ -1,17 +1,19 @@
+
 'use client';
 
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet } from "lucide-react"; // Added Wallet
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPinned, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet, Mic } from "lucide-react"; // Added Mic
 import Image from 'next/image';
-import { useEffect, useState } from 'react'; // Import useEffect and useState
-import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Import transaction service with subscription
-import { useToast } from "@/hooks/use-toast"; // Import useToast
-import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
+import { useEffect, useState } from 'react';
+import { subscribeToTransactionHistory, Transaction } from '@/services/transactions';
+import { useToast } from "@/hooks/use-toast";
+import type { Unsubscribe } from 'firebase/firestore';
 import { auth } from '@/lib/firebase';
-import { format } from 'date-fns'; // Import date-fns for formatting
+import { format } from 'date-fns';
+import { useVoiceCommands } from '@/hooks/useVoiceCommands'; // Import the new hook
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -21,7 +23,7 @@ const offers = [
 ];
 
 const switchApps = [
-  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/flight" }, // Updated href
+  { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/flight" },
   { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Placeholder href
   { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"},
   { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Placeholder href
@@ -43,6 +45,23 @@ export default function Home() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const { toast } = useToast();
+  const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the hook
+
+  // Handle voice command results (placeholder)
+  useEffect(() => {
+    if (transcript) {
+      toast({ title: "Voice Command (Simulated)", description: `Recognized: "${transcript}". Processing... (Not Implemented)` });
+      // TODO: Add NLP processing and action dispatching here
+    }
+  }, [transcript, toast]);
+
+  // Handle voice command errors (placeholder)
+  useEffect(() => {
+    if (voiceError) {
+      toast({ variant: "destructive", title: "Voice Command Error", description: voiceError });
+    }
+  }, [voiceError, toast]);
+
 
   // Subscribe to recent transactions on component mount
   useEffect(() => {
@@ -51,8 +70,9 @@ export default function Home() {
 
     // Check if user is logged in before subscribing
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
+      let unsubscribeFromTransactions: Unsubscribe | null = null;
       if (user) {
-        const unsubscribeFromTransactions = subscribeToTransactionHistory(
+        unsubscribeFromTransactions = subscribeToTransactionHistory(
           (transactions) => {
             console.log("Received recent transactions update:", transactions);
             setRecentTransactions(transactions);
@@ -60,13 +80,7 @@ export default function Home() {
           },
           (error) => {
             console.error("Failed to subscribe to recent transactions:", error);
-             if (error.message !== "User not logged in.") { // Avoid duplicate toast if already handled
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Could not load recent transactions.",
-                });
-             }
+             // No toast here if handled by useRealtimeData hook or parent
             setIsLoadingTransactions(false);
             setRecentTransactions([]); // Clear on error
           },
@@ -74,26 +88,35 @@ export default function Home() {
           3 // Limit to latest 3 transactions
         );
 
-        // Cleanup subscription on unmount
-        return () => {
-          if (unsubscribeFromTransactions) {
-            console.log("Unsubscribing from recent transactions.");
-            unsubscribeFromTransactions();
-          }
-        };
       } else {
         console.log("User is not logged in. Not subscribing to transactions.");
         setRecentTransactions([]);
         setIsLoadingTransactions(false);
-        return () => {}; // No subscription to unsubscribe from
       }
+      // Cleanup subscription on unmount or when user changes
+      return () => {
+          if (unsubscribeFromTransactions) {
+            console.log("Unsubscribing from recent transactions.");
+            unsubscribeFromTransactions();
+          }
+      };
     });
 
     // Cleanup auth state listener on unmount
     return () => {
       unsubscribeAuth();
     };
-  }, [toast]); // Dependency array includes toast for error handling
+  }, []); // Removed toast dependency as errors should be handled centrally if possible
+
+
+  const handleVoiceButtonClick = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -108,17 +131,21 @@ export default function Home() {
           </Link>
           {/* Location can be dynamic later */}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1"> {/* Reduced gap */}
           <Link href="/scan" passHref>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9">
               <ScanLine className="h-5 w-5" />
             </Button>
           </Link>
           <Link href="/scan?showMyQR=true" passHref>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9">
               <QrCode className="h-5 w-5" />
             </Button>
           </Link>
+          {/* Voice Command Button */}
+          <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9" onClick={handleVoiceButtonClick}>
+             <Mic className={`h-5 w-5 ${isListening ? 'text-red-400 animate-pulse' : ''}`} />
+          </Button>
         </div>
       </header>
 
@@ -223,13 +250,13 @@ export default function Home() {
            </CardHeader>
            <CardContent className="grid grid-cols-4 gap-4 text-center">
              {switchApps.map((app) => (
-                 <Link key={app.id} href={app.href} passHref>
-                    <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+                 <Link key={app.id} href={app.href} passHref legacyBehavior>
+                    <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity" data-testid={`switch-app-${app.id}`}>
                       <div className={`${app.bgColor} ${app.color} p-3 rounded-full`}>
                         <app.icon className="h-6 w-6" />
                       </div>
                       <span className="text-xs font-medium text-foreground">{app.name}</span>
-                    </div>
+                    </a>
                 </Link>
              ))}
            </CardContent>
@@ -289,13 +316,6 @@ export default function Home() {
                  <span className="text-xs">Services</span>
              </Button>
           </Link>
-          {/* Removed Live Tracking from bottom nav - Keep it simple */}
-          {/* <Link href="/live/bus" passHref>
-            <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-            <MapPinned className="h-5 w-5 mb-1" />
-            <span className="text-xs">Live Tracking</span>
-            </Button>
-         </Link> */}
          <Link href="/history" passHref>
             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
                 <History className="h-5 w-5 mb-1" />
