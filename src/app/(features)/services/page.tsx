@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Corrected alias
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
   Plane,
   ShoppingBag,
   Gift as GiftIcon, //Alias Gift to avoid conflict
-  Home, // Added Temple icon (using Home as placeholder)
+  Home, // Used as placeholder for Temple
   Car,
-  Bike as Motorbike, // Corrected icon name
+  Bike as Motorbike,
   CalendarCheck,
   Video,
     Sparkles,
@@ -57,8 +57,13 @@ import {
     Hotel,
     Users,
     QrCode,
-    Clock, // Added Clock import
-    MoreHorizontal
+    Clock,
+    MoreHorizontal,
+    Briefcase, // For Mutual Funds
+    Database, // For Deposits
+    Gauge, // For Credit Score
+    Coins, // For Gold
+    Building2 // For Zet Bank
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -85,6 +90,20 @@ const travelServices = [
     { name: "Book Train Tickets", icon: Train, href: "/travels/train", category: "Travel"},
 ];
 
+// Combine existing "Financial Services" and add new ones
+const financialServices = [
+    { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Financial Services"},
+    { name: "Insurance Premium", icon: ShieldCheck, href: "/bills/insurance", category: "Financial Services"},
+    { name: "Mutual Funds", icon: Briefcase, href: "/mutual-funds", category: "Financial Services" },
+    { name: "Deposits (FD/RD)", icon: Database, href: "/deposits", category: "Financial Services" },
+    { name: "Check Credit Score", icon: Gauge, href: "/credit-score", category: "Financial Services" },
+    { name: "Personal Loans", icon: Banknote, href: "/loans", category: "Financial Services" },
+    { name: "Digital Gold", icon: Coins, href: "/gold", category: "Financial Services" },
+    { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" },
+     { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" }, // Added SIP Reminders
+];
+
+
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
     { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills" },
@@ -104,10 +123,6 @@ const otherServices = [
     { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Vouchers & More" },
     { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" },
 
-    // Financial Services (Placeholder)
-    { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Financial Services"},
-    { name: "Insurance Premium", icon: ShieldCheck, href: "/bills/insurance", category: "Financial Services"},
-
     // Other Payments
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Payments" },
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
@@ -119,47 +134,49 @@ const otherServices = [
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Payments" },
 
     // See All
-    { name: "See All", icon: MoreHorizontal, href: "/services", category: "See All" }, // Dedicated category
+    // { name: "See All", icon: MoreHorizontal, href: "/services", category: "See All" }, // Removed 'See All' icon as it's the page itself
 
 ];
 
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
-    // Define order, ensuring 'Temple Services' and 'Travel' are included
-    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Vouchers & More", "Financial Services", "Payments", "See All"];
+    // Define order, ensuring 'Financial Services' is included
+    const categoryOrder = ["Recharge & Bills", "Travel", "Tickets", "Temple Services", "Financial Services", "Vouchers & More", "Payments", "Other"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
-     grouped["Other"] = []; // Catch-all for unexpected categories
+     // grouped["Other"] = []; // Catch-all for unexpected categories
 
     services.forEach((service) => {
         const category = service.category;
         if (grouped[category]) {
             grouped[category].push(service);
         } else {
-             console.warn(`Service category "${category}" not found in defined order. Adding to "Other".`);
-             grouped["Other"].push(service);
+             console.warn(`Service category "${category}" not found in defined order. Skipping or add to 'Other'.`);
+             // Optionally add to Other:
+             // if (!grouped["Other"]) grouped["Other"] = [];
+             // grouped["Other"].push(service);
         }
     });
 
-     // Filter out empty categories except "Other" if it's also empty and "See All"
+     // Filter out empty categories
      const finalGrouped: { [key: string]: any[] } = {};
      for (const cat of categoryOrder) {
-         if (grouped[cat] && grouped[cat].length > 0) { // Check if category exists in grouped before accessing length
+         if (grouped[cat] && grouped[cat].length > 0) {
              finalGrouped[cat] = grouped[cat];
          }
      }
-      if (grouped["Other"].length > 0) {
-        finalGrouped["Other"] = grouped["Other"];
-      }
+      // if (grouped["Other"] && grouped["Other"].length > 0) {
+      //   finalGrouped["Other"] = grouped["Other"];
+      // }
 
     return finalGrouped;
 }
 
 
 export default function AllServicesPage() {
-    const allServices = [...templeServices, ...travelServices, ...otherServices];
+    const allServices = [...templeServices, ...travelServices, ...financialServices, ...otherServices];
     const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
 
@@ -179,10 +196,7 @@ export default function AllServicesPage() {
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                  {categories.map((category) => {
-                     // Don't render a Card for the 'See All' category if it only contains the 'See All' item itself
-                     if (category === 'See All' && groupedServices[category].length === 1 && groupedServices[category][0].name === 'See All') {
-                         return null;
-                     }
+                     if (groupedServices[category].length === 0) return null; // Skip rendering empty categories
                     return (
                          <Card key={category} className="shadow-md">
                             <CardHeader>
