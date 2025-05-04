@@ -10,7 +10,7 @@ import type { DateRange } from "react-day-picker";
 export interface Transaction {
   id: string; // Firestore document ID
   userId: string; // ID of the user this transaction belongs to
-  type: 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Failed' | 'Refund' | 'Cashback';
+  type: 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Failed' | 'Refund' | 'Cashback' | 'Movie Booking' | 'Bus Booking' | 'Train Booking' | 'Car Booking' | 'Bike Booking' | 'Food Order' | 'Donation' | 'Prasadam Order' | 'Pooja Booking';
   name: string; // Payee/Payer/Service name
   description: string; // e.g., Mobile Number, Bill type, reason
   amount: number; // Positive for received/refunds/cashback, negative for sent/payments
@@ -41,7 +41,7 @@ const buildTransactionQueryConstraints = (
     filters?: TransactionFilters,
     count?: number
 ): QueryConstraint[] => {
-    const constraints: QueryConstraint[] = [orderBy('date', 'desc')]; // Always order by date desc initially
+    const constraints: QueryConstraint[] = [where('userId', '==', userId), orderBy('date', 'desc')]; // Filter by userId and Always order by date desc initially
 
     if (filters?.type && filters.type !== 'all') {
         constraints.push(where('type', '==', filters.type));
@@ -82,7 +82,8 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
     console.log(`Fetching transaction history (one-time) for user ${userId} with filters:`, filters);
 
     try {
-        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        // Use a generic collection reference, filtering will happen with constraints
+        const transactionsColRef = collection(db, 'transactions');
         const queryConstraints = buildTransactionQueryConstraints(userId, filters, count);
         const q = query(transactionsColRef, ...queryConstraints);
 
@@ -128,7 +129,7 @@ export async function getTransactionHistory(filters?: TransactionFilters, count?
  * @param onError Callback function triggered on error.
  * @param filters Optional filters for transaction type, status, date range.
  * @param count Optional limit on the number of transactions to retrieve.
- * @returns An unsubscribe function to stop listening for updates.
+ * @returns An unsubscribe function to stop listening for updates, or null if user is not logged in.
  */
 export function subscribeToTransactionHistory(
     onUpdate: (transactions: Transaction[]) => void,
@@ -138,15 +139,17 @@ export function subscribeToTransactionHistory(
 ): Unsubscribe | null {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-        console.log("No user logged in to subscribe to transaction history.");
-        onError(new Error("User not logged in."));
-        return null;
+        console.log("User not logged in. Cannot subscribe to transaction history.");
+        // Don't call onError here, let the component handle the lack of subscription
+        // onError(new Error("User not logged in."));
+        return null; // Indicate no subscription was set up
     }
     const userId = currentUser.uid;
     console.log(`Subscribing to transaction history for user ${userId} with filters:`, filters);
 
     try {
-        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        // Use a generic collection reference, filtering will happen with constraints
+        const transactionsColRef = collection(db, 'transactions');
         // Note: Real-time search term filtering is best done client-side after receiving updates.
         const queryConstraints = buildTransactionQueryConstraints(userId, { ...filters, searchTerm: undefined }, count);
         const q = query(transactionsColRef, ...queryConstraints);
@@ -195,6 +198,7 @@ export function subscribeToTransactionHistory(
 
 /**
  * Adds a new transaction record to Firestore for the current user.
+ * Stores transactions in a top-level 'transactions' collection with a userId field.
  *
  * @param transactionData The transaction details to add (excluding id, userId, date, avatarSeed).
  * @returns A promise that resolves to the newly created Transaction object (with id, userId, date).
@@ -208,10 +212,11 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id' | '
     console.log("Adding transaction for user:", userId, transactionData);
 
     try {
-        const transactionsColRef = collection(db, 'users', userId, 'transactions');
+        // Use the top-level 'transactions' collection
+        const transactionsColRef = collection(db, 'transactions');
         const dataToSave = {
             ...transactionData,
-            userId: userId,
+            userId: userId, // Store the userId within the transaction document
             date: serverTimestamp(), // Use server timestamp
             // Generate avatarSeed here before saving
             avatarSeed: transactionData.name.toLowerCase().replace(/\s+/g, '') || 'default_seed',

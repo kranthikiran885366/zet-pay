@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -16,6 +17,7 @@ import type { DateRange } from "react-day-picker";
 import { subscribeToTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Use the Firestore service with subscription
 import { useToast } from '@/hooks/use-toast';
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
+import { auth } from '@/lib/firebase'; // Import auth
 
 const statusIcons = {
   Completed: <CheckCircle className="h-4 w-4 text-green-600" />,
@@ -33,60 +35,68 @@ export default function HistoryPage() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const { toast } = useToast();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
 
-  // Subscribe to real-time transaction updates
-  useEffect(() => {
-    setIsLoading(true);
-
-    // Prepare filters (excluding search term for subscription)
-    const filters: TransactionFilters = {
-        type: filterType !== 'all' ? filterType : undefined,
-        status: filterStatus !== 'all' ? filterStatus : undefined,
-        dateRange: dateRange,
-        // Search term will be applied client-side after receiving updates
-    };
-
-    const unsubscribe = subscribeToTransactionHistory(
-      (transactions) => {
-        // Apply client-side search filtering here before setting state
-        let filteredTransactions = transactions;
-        if (searchTerm) {
-            const lowerSearchTerm = searchTerm.toLowerCase();
-            filteredTransactions = transactions.filter(tx =>
-                tx.name.toLowerCase().includes(lowerSearchTerm) ||
-                tx.description.toLowerCase().includes(lowerSearchTerm) ||
-                tx.amount.toString().includes(lowerSearchTerm) ||
-                tx.upiId?.toLowerCase().includes(lowerSearchTerm) ||
-                tx.billerId?.toLowerCase().includes(lowerSearchTerm) ||
-                tx.id.toLowerCase().includes(lowerSearchTerm)
-            );
-        }
-        setAllTransactions(filteredTransactions);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Failed to subscribe to transaction history:", error);
-        toast({
-          variant: "destructive",
-          title: "Error Loading History",
-          description: "Could not load real-time transaction data. Please try again later.",
+  // Check login status
+   useEffect(() => {
+        const unsubscribeAuth = auth.onAuthStateChanged(user => {
+            setIsLoggedIn(!!user);
+            if (!user) {
+                setIsLoading(false); // Stop loading if not logged in
+                setAllTransactions([]); // Clear transactions
+            }
         });
-        setIsLoading(false);
-        setAllTransactions([]); // Clear data on error
-      },
-      filters // Pass filters (without search term) to subscription
-      // Limit is handled by the subscription function if needed, or apply client-side
-    );
+        return () => unsubscribeAuth(); // Cleanup listener
+    }, []);
 
-    // Cleanup subscription on component unmount or when filters change
-    return () => {
-      if (unsubscribe) {
-        console.log("Unsubscribing from transaction history");
-        unsubscribe();
-      }
-    };
-  }, [filterType, filterStatus, dateRange, toast, searchTerm]); // Re-subscribe if filters change (except sortOrder, handled client-side)
+  // Subscribe to real-time transaction updates only if logged in
+  useEffect(() => {
+     let unsubscribe: Unsubscribe | null = null;
 
+      if (isLoggedIn) {
+          setIsLoading(true);
+          // Prepare filters (including search term now for the subscription)
+          const filters: TransactionFilters = {
+              type: filterType !== 'all' ? filterType : undefined,
+              status: filterStatus !== 'all' ? filterStatus : undefined,
+              dateRange: dateRange,
+              searchTerm: searchTerm || undefined, // Pass search term to subscription
+          };
+
+          unsubscribe = subscribeToTransactionHistory(
+              (transactions) => {
+                  // The filtering (including search) is now handled by the subscription service
+                  setAllTransactions(transactions);
+                  setIsLoading(false);
+              },
+              (error) => {
+                  console.error("Failed to subscribe to transaction history:", error);
+                   if (error.message !== "User not logged in.") { // Avoid duplicate toasts if already handled by auth state
+                     toast({
+                         variant: "destructive",
+                         title: "Error Loading History",
+                         description: "Could not load real-time transaction data. Please try again later.",
+                     });
+                   }
+                   setIsLoading(false);
+                   setAllTransactions([]); // Clear data on error
+              },
+              filters // Pass filters (including search term) to subscription
+          );
+     } else if (isLoggedIn === false) {
+         // Explicitly handle the case where user is logged out
+         setIsLoading(false);
+         setAllTransactions([]);
+     }
+
+     // Cleanup subscription on component unmount or when filters/login state change
+     return () => {
+         if (unsubscribe) {
+             console.log("Unsubscribing from transaction history");
+             unsubscribe();
+         }
+     };
+  }, [isLoggedIn, filterType, filterStatus, dateRange, searchTerm, toast]); // Re-subscribe if filters or login state change
 
   // Apply client-side sorting
   const sortedTransactions = useMemo(() => {
@@ -178,6 +188,16 @@ export default function HistoryPage() {
                      <SelectItem value="Refund">Refund</SelectItem>
                      <SelectItem value="Cashback">Cashback</SelectItem>
                     <SelectItem value="Failed">Failed</SelectItem>
+                     {/* Add other types */}
+                      <SelectItem value="Movie Booking">Movie Booking</SelectItem>
+                      <SelectItem value="Bus Booking">Bus Booking</SelectItem>
+                      <SelectItem value="Train Booking">Train Booking</SelectItem>
+                      <SelectItem value="Car Booking">Car Booking</SelectItem>
+                      <SelectItem value="Bike Booking">Bike Booking</SelectItem>
+                      <SelectItem value="Food Order">Food Order</SelectItem>
+                      <SelectItem value="Donation">Donation</SelectItem>
+                      <SelectItem value="Prasadam Order">Prasadam Order</SelectItem>
+                      <SelectItem value="Pooja Booking">Pooja Booking</SelectItem>
                 </SelectContent>
              </Select>
 
@@ -247,13 +267,22 @@ export default function HistoryPage() {
 
       {/* Transaction List */}
       <main className="flex-grow p-4 space-y-4 pb-20"> {/* Added pb-20 */}
-         {isLoading && (
+         {isLoading && isLoggedIn !== false && ( // Only show loader if logged in or status unknown
              <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>
          )}
 
-        {!isLoading && Object.keys(groupedTransactions).length === 0 && (
+          {!isLoading && isLoggedIn === false && ( // Message if logged out
+            <Card className="shadow-md text-center">
+                <CardContent className="p-6">
+                    <p className="text-muted-foreground">Please log in to view your transaction history.</p>
+                    {/* Optional: Link to login page */}
+                </CardContent>
+            </Card>
+          )}
+
+        {!isLoading && isLoggedIn && Object.keys(groupedTransactions).length === 0 && (
             <Card className="shadow-md text-center">
                 <CardContent className="p-6">
                     <p className="text-muted-foreground">No transactions found matching your criteria.</p>
@@ -264,7 +293,7 @@ export default function HistoryPage() {
             </Card>
         )}
 
-         {!isLoading && Object.entries(groupedTransactions).map(([dateKey, txs]) => (
+         {!isLoading && isLoggedIn && Object.entries(groupedTransactions).map(([dateKey, txs]) => (
             <div key={dateKey}>
                  <h2 className="text-sm font-semibold text-muted-foreground mb-2 px-1">{dateKey}</h2>
                  <Card className="shadow-md overflow-hidden">
