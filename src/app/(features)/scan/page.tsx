@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation'; // Added useRouter
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Image from 'next/image'; // Import Image for QR code display
 import { cn } from '@/lib/utils';
+import { apiClient } from '@/lib/apiClient'; // For potential future backend integration
 
 // Placeholder for QR decoding library - in real app, use jsQR, zxing-js, etc.
 async function decodeQrCodeFromImage(file: File): Promise<string | null> {
@@ -17,6 +20,10 @@ async function decodeQrCodeFromImage(file: File): Promise<string | null> {
   if (file.name.toLowerCase().includes("valid")) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing time
       return "upi://pay?pa=image-scan@payfriend&pn=Scanned%20From%20Image&am=50"; // Example result
+  }
+   if (file.name.toLowerCase().includes("nonupi")) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return "This is some plain text data from a QR code."; // Example non-UPI result
   }
   // Simulate failure
   await new Promise(resolve => setTimeout(resolve, 1500));
@@ -50,16 +57,24 @@ export default function ScanPage() {
   const streamRef = useRef<MediaStream | null>(null); // Store the stream reference
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [scannedData, setScannedData] = useState<string | null>(null);
-  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false); // Initialize directly
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const { toast } = useToast();
 
-  // Mock User QR Code Data (replace with actual QR generation/fetching)
-  const userQRCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=user@payfriend&pn=YourName"; // Example QR code
+  // Mock User QR Code Data (replace with actual QR generation/fetching from backend)
+   // TODO: Fetch user's actual UPI ID from profile/backend
+   const userUpiId = "user@payfriend";
+   const userName = "Your Name"; // TODO: Fetch user's name
+  const userQRCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(userUpiId)}&pn=${encodeURIComponent(userName)}`;
 
   // Get Camera Stream and Check Torch Support
   const getCameraStream = useCallback(async () => {
+    // Reset state for new attempt
+    setHasCameraPermission(null);
+    setTorchSupported(false);
+    setTorchOn(false);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream; // Store the stream
@@ -67,16 +82,18 @@ export default function ScanPage() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(playError => console.error("Video play error:", playError)); // Handle play error
       }
 
       // Check for torch support
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack && 'getCapabilities' in videoTrack) {
         const capabilities = videoTrack.getCapabilities();
-        // Use optional chaining for safety
         if (capabilities?.torch) {
           setTorchSupported(true);
           console.log("Torch capability supported.");
+          // Ensure torch starts off
+          videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e => console.warn("Could not ensure torch is off initially:", e));
         } else {
           setTorchSupported(false);
           console.log("Torch capability not supported.");
@@ -105,28 +122,41 @@ export default function ScanPage() {
    // Function to stop the camera stream
     const stopCameraStream = useCallback(() => {
         if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
+             const tracks = streamRef.current.getTracks();
+             console.log(`Stopping ${tracks.length} camera tracks.`);
+             tracks.forEach(track => {
+                  // Turn off torch before stopping track if it's on
+                 if (torchOn && track.kind === 'video' && 'applyConstraints' in track) {
+                    track.applyConstraints({ advanced: [{ torch: false }] }).catch(e => console.warn("Error turning off torch before stopping track:", e));
+                 }
+                 track.stop();
+             });
             streamRef.current = null;
             if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
             setTorchOn(false); // Turn off torch state if camera stops
             console.log("Camera stream stopped.");
+        } else {
+            console.log("No active camera stream to stop.");
         }
-    }, []);
+    }, [torchOn]); // Depend on torchOn state
 
 
   useEffect(() => {
     if (activeTab === 'scan') {
-      getCameraStream();
+        // Request camera only when tab becomes active
+        getCameraStream();
     } else {
-      stopCameraStream(); // Stop camera when switching away from scan tab
+        // Stop camera when switching away
+        stopCameraStream();
     }
     // Cleanup stream on component unmount
     return () => {
         stopCameraStream();
     };
-  }, [activeTab, getCameraStream, stopCameraStream]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]); // Run when activeTab changes, getCameraStream/stopCameraStream are memoized
 
   // Function to toggle torch
   const toggleTorch = async () => {
@@ -136,15 +166,18 @@ export default function ScanPage() {
     };
 
     const videoTrack = streamRef.current.getVideoTracks()[0];
+    const newTorchState = !torchOn;
     try {
       await videoTrack.applyConstraints({
-        advanced: [{ torch: !torchOn }],
+        advanced: [{ torch: newTorchState }],
       });
-      setTorchOn(!torchOn);
-      console.log(`Torch turned ${!torchOn ? 'ON' : 'OFF'}`);
+      setTorchOn(newTorchState);
+      console.log(`Torch turned ${newTorchState ? 'ON' : 'OFF'}`);
     } catch (err) {
       console.error('Error applying torch constraints:', err);
        toast({ variant: "destructive", title: "Could not control torch"});
+       // If failed, reset state to match reality (torch is likely off)
+        setTorchOn(false);
     }
   };
 
@@ -158,12 +191,10 @@ export default function ScanPage() {
       try {
         const decodedData = await decodeQrCodeFromImage(file); // Use the decoding function
         if (decodedData) {
-            setScannedData(decodedData);
-            toast({ title: "QR Code Detected", description: "Data extracted from image." });
-            // Proceed to payment confirmation page
+            // Don't toast immediately, let processScannedData handle it
             processScannedData(decodedData);
         } else {
-            toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a QR code in the uploaded image." });
+            toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a valid QR code in the uploaded image." });
         }
       } catch(error) {
         console.error("Error processing uploaded QR:", error);
@@ -171,7 +202,7 @@ export default function ScanPage() {
       } finally {
          setIsProcessingUpload(false);
           // Reset file input value so the same file can be selected again
-         event.target.value = '';
+         if (event.target) event.target.value = '';
       }
     }
   };
@@ -181,6 +212,8 @@ export default function ScanPage() {
       if (!data) return;
 
       console.log("Processing Scanned Data:", data);
+      setScannedData(data); // Store data for potential display
+
       // Basic check if it looks like a UPI URL
       if (data.startsWith('upi://pay')) {
          const params = parseUpiUrl(data);
@@ -192,15 +225,17 @@ export default function ScanPage() {
           if (params.note) query.set('tn', params.note);
 
           if (params.payeeAddress) {
+             toast({ title: "UPI QR Detected", description: "Redirecting to payment..." });
+             stopCameraStream(); // Stop camera before navigating
              router.push(`/pay?${query.toString()}`);
           } else {
-              toast({ variant: "destructive", title: "Invalid QR", description: "Missing payee address in QR code." });
+              toast({ variant: "destructive", title: "Invalid UPI QR", description: "Missing payee address in QR code." });
               setScannedData(null); // Clear invalid data
           }
       } else {
           // Handle non-UPI QR codes or show raw data if needed
-          toast({ title: "QR Code Scanned", description: "Data does not appear to be a UPI payment QR. Displaying raw data." });
-          setScannedData(data); // Display raw data for non-UPI codes
+          toast({ title: "QR Code Scanned", description: "Data does not appear to be a UPI payment QR. Displaying raw data below." });
+          // Keep scannedData set to display it in the Alert
       }
   }
 
@@ -241,7 +276,7 @@ export default function ScanPage() {
               <CardContent className="space-y-4">
                 <div className="relative aspect-video bg-muted rounded-md overflow-hidden border border-border">
                   {/* Video Feed */}
-                  <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+                  <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
 
                   {/* Overlay and Messages */}
                   {hasCameraPermission === false && (
@@ -249,26 +284,29 @@ export default function ScanPage() {
                          <AlertTriangle className="w-12 h-12 text-yellow-400 mb-2" />
                          <p className="font-semibold">Camera Access Required</p>
                          <p className="text-sm">Please grant camera permission to scan QR codes.</p>
+                         <Button variant="secondary" size="sm" className="mt-4" onClick={getCameraStream}>Retry Permissions</Button>
                       </div>
                   )}
                    {hasCameraPermission === null && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                         <Loader2 className="h-6 w-6 animate-spin mr-2" />
                          <p>Requesting camera access...</p>
                       </div>
                    )}
                    {hasCameraPermission === true && (
                        <div className="absolute inset-0 border-[10vw] border-black/30 pointer-events-none">
                            {/* Simple square guide */}
-                           <div className="absolute top-1/2 left-1/2 w-1/2 h-1/2 transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-75"></div>
+                           <div className="absolute top-1/2 left-1/2 w-3/5 aspect-square transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-75 rounded-md"></div>
                            {/* Torch Button Overlay (conditionally rendered) */}
                              {torchSupported && (
                                 <Button
-                                    variant="secondary"
+                                    variant={torchOn ? "default" : "secondary"} // Change variant when on
                                     size="icon"
-                                    className="absolute bottom-4 right-4 rounded-full pointer-events-auto z-10"
+                                    className="absolute bottom-4 right-4 rounded-full pointer-events-auto z-10 shadow-lg"
                                     onClick={toggleTorch}
+                                    aria-pressed={torchOn}
                                 >
-                                    <Zap className="h-5 w-5"/>
+                                    <Zap className={cn("h-5 w-5", torchOn ? "text-yellow-300" : "")}/>
                                     <span className="sr-only">{torchOn ? 'Turn Torch Off' : 'Turn Torch On'}</span>
                                 </Button>
                             )}
@@ -297,8 +335,8 @@ export default function ScanPage() {
 
                 {/* Display raw scanned data if not UPI (for debugging/info) */}
                 {scannedData && !scannedData.startsWith('upi://pay') && (
-                    <Alert variant="default">
-                        <AlertTitle>Scanned Data</AlertTitle>
+                    <Alert variant="default" className="mt-4">
+                        <AlertTitle>Scanned Data (Non-UPI)</AlertTitle>
                         <AlertDescription className="break-all text-xs">
                            {scannedData}
                         </AlertDescription>
@@ -325,6 +363,9 @@ export default function ScanPage() {
                       priority // Prioritize loading user's QR
                     />
                  </div>
+                 {/* Display User UPI ID */}
+                 <p className="text-sm font-medium">{userName}</p>
+                 <p className="text-sm text-muted-foreground">{userUpiId}</p>
                 <p className="text-center text-muted-foreground text-sm">
                   Show this code to receive payments via UPI.
                 </p>
@@ -338,69 +379,3 @@ export default function ScanPage() {
     </div>
   );
 }
-```
-
-```xml
-<changes>
-  <change>
-    <file>src/components/ui/button.tsx</file>
-    <description>Reverted change to Button and updated component</description>
-    <content><![CDATA["use client"
-
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-        xs: "h-6 rounded-md px-2 text-xs", // Added xs size
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
-}
-
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Button.displayName = "Button"
-
-export { Button, buttonVariants }
