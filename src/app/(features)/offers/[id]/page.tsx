@@ -1,46 +1,34 @@
-
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation'; // Added useRouter
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Tag, Gift, Sparkles, Info, CalendarDays, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Tag, Gift, Sparkles, Info, CalendarDays, Check, Loader2, Building } from 'lucide-react'; // Added Building
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { getOffers, Offer } from '@/services/offers'; // Use actual service
+import { getOfferDetails, Offer } from '@/services/offers'; // Use actual service
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { format } from 'date-fns'; // To format dates
 
-// Mock Offer Details (replace with actual data fetching)
-const mockOfferDetails = (id: string): Offer & { terms: string, validity: string, claimed?: boolean } | null => {
-    // Find base offer
-    const baseOffer = mockOffersData.find(o => o.offerId === id);
-    if (!baseOffer) return null;
+// Extend Offer interface for details page
+interface OfferDetails extends Offer {
+  terms: string;
+  validity: string; // Keep as string for display, maybe store Date object too
+  category?: 'Cashback' | 'Coupon' | 'Partner'; // Use category from list page
+  claimed?: boolean;
+}
 
-    // Add specific details
-    return {
-        ...baseOffer,
-        terms: `1. Offer applicable on minimum spend of ₹500.\n2. Valid only for payments made via PayFriend UPI.\n3. Cashback will be credited within 24 hours.\n4. Offer cannot be clubbed with other promotions.`,
-        validity: `Valid until ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}`, // Expires in 7 days
-        claimed: id === '1', // Simulate offer '1' being claimed
-    };
-};
-
-// Mock data used by the details function
-const mockOffersData: Offer[] = [
-    { offerId: '1', description: 'Flat ₹100 Cashback on Electricity Bill Payment over ₹1000', imageUrl: 'https://picsum.photos/seed/electricity_lg/600/300', offerType: 'Cashback' },
-    { offerId: '2', description: 'Get 20% off up to ₹150 on Movie Tickets', imageUrl: 'https://picsum.photos/seed/movie_lg/600/300', offerType: 'Coupon' },
-    { offerId: '3', description: 'Upto ₹50 Cashback on Mobile Recharge', imageUrl: 'https://picsum.photos/seed/recharge_lg/600/300', offerType: 'Cashback' },
-     // Add other offers matching those on the main offers page
-];
-
+// Keep using mock data source from service
+// const mockOfferDetails = (id: string): OfferDetails | null => { ... };
 
 export default function OfferDetailsPage() {
   const params = useParams();
+  const router = useRouter(); // Initialize router
   const offerId = typeof params.id === 'string' ? params.id : '';
-  const [offer, setOffer] = useState<Offer & { terms: string, validity: string, claimed?: boolean } | null>(null);
+  const [offer, setOffer] = useState<OfferDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isClaiming, setIsClaiming] = useState(false);
   const { toast } = useToast();
@@ -54,13 +42,22 @@ export default function OfferDetailsPage() {
       };
       setIsLoading(true);
       try {
-        // Simulate fetching details - replace with actual API call
-        // const fetchedOffer = await getOfferDetails(offerId);
-        const fetchedOffer = mockOfferDetails(offerId); // Use mock function
+        // Replace with actual API call
+        const fetchedOffer = await getOfferDetails(offerId);
         if (!fetchedOffer) {
              throw new Error("Offer not found");
         }
-        setOffer(fetchedOffer);
+        // Map the fetched data to OfferDetails interface
+        const details: OfferDetails = {
+            ...fetchedOffer,
+            terms: fetchedOffer.terms || "1. Standard T&Cs apply.\n2. Offer valid once per user.\n3. Cannot be clubbed with other offers.", // Default T&Cs
+            validity: fetchedOffer.validUntil ? `Valid until ${format(new Date(fetchedOffer.validUntil), 'PPP')}` : "Validity not specified", // Format date
+            category: fetchedOffer.offerType === 'Cashback' ? 'Cashback' :
+                      fetchedOffer.offerType === 'Coupon' ? 'Coupon' :
+                      'Partner', // Assign category
+            claimed: false // Check actual claimed status from user data
+        };
+        setOffer(details);
       } catch (error: any) {
         console.error("Failed to fetch offer details:", error);
         toast({ variant: "destructive", title: "Could not load offer details", description: error.message });
@@ -82,6 +79,8 @@ export default function OfferDetailsPage() {
         await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
         setOffer(prev => prev ? {...prev, claimed: true} : null);
         toast({title: "Offer Claimed Successfully!"});
+        // Optionally redirect or update UI further
+        // router.push('/profile/rewards');
      } catch (error) {
         console.error("Failed to claim offer:", error);
         toast({variant: "destructive", title: "Failed to claim offer"});
@@ -90,8 +89,13 @@ export default function OfferDetailsPage() {
      }
    }
 
-  const Icon = offer?.offerType === 'Cashback' ? Sparkles : Tag;
-  const accentColor = offer?.offerType === 'Cashback' ? 'text-yellow-700' : 'text-blue-700';
+  const Icon = offer?.category === 'Cashback' ? Sparkles : offer?.category === 'Coupon' ? Tag : Building;
+  const accentColor = offer?.category === 'Cashback' ? 'text-yellow-700' :
+                      offer?.category === 'Coupon' ? 'text-blue-700' :
+                      'text-purple-700'; // Example color for Partner
+  const accentBgColor = offer?.category === 'Cashback' ? 'bg-yellow-100' :
+                        offer?.category === 'Coupon' ? 'bg-blue-100' :
+                        'bg-purple-100'; // Example bg color
 
 
   return (
@@ -108,7 +112,7 @@ export default function OfferDetailsPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4">
+      <main className="flex-grow p-4 pb-20">
          {isLoading && (
              <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -128,9 +132,9 @@ export default function OfferDetailsPage() {
 
          {!isLoading && offer && (
              <Card className="shadow-md overflow-hidden">
-                 <div className="relative w-full h-48 md:h-64">
+                 <div className="relative w-full h-48 md:h-64 bg-muted">
                      <Image
-                        src={offer.imageUrl}
+                        src={offer.imageUrl || `https://picsum.photos/seed/${offer.offerId}_lg/600/300`}
                         alt={offer.description}
                         layout="fill"
                         objectFit="cover"
@@ -141,9 +145,9 @@ export default function OfferDetailsPage() {
                     <div className="flex justify-between items-start gap-2">
                         <div>
                             <CardTitle className="text-xl mb-1">{offer.description}</CardTitle>
-                            <Badge variant={offer.offerType === 'Cashback' ? 'default' : 'secondary'} className={`flex items-center w-fit ${accentColor.replace('text-', 'bg-').replace('-700', '-100')}`}>
+                            <Badge variant={'secondary'} className={`flex items-center w-fit ${accentBgColor} ${accentColor}`}>
                                 <Icon className={`h-4 w-4 mr-1 ${accentColor}`} />
-                                {offer.offerType}
+                                {offer.category} Offer
                             </Badge>
                         </div>
                         {offer.claimed && (
@@ -163,12 +167,14 @@ export default function OfferDetailsPage() {
 
                      <div>
                         <h3 className="text-sm font-semibold mb-1 flex items-center"><Info className="h-4 w-4 mr-1 text-muted-foreground" /> Terms & Conditions</h3>
-                        <p className="text-sm text-muted-foreground whitespace-pre-line">{offer.terms}</p>
+                         <div className="text-sm text-muted-foreground whitespace-pre-line space-y-1 text-xs max-h-40 overflow-y-auto border rounded p-2 bg-muted/50">
+                            {offer.terms.split('\n').map((line, index) => <p key={index}>{line}</p>)}
+                         </div>
                     </div>
 
                     {!offer.claimed && (
                         <Button
-                            className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
+                            className="w-full bg-green-600 hover:bg-green-700 text-white"
                             onClick={handleClaimOffer}
                             disabled={isClaiming}
                         >
@@ -178,7 +184,7 @@ export default function OfferDetailsPage() {
                     )}
                      {offer.claimed && (
                          <Button className="w-full" variant="outline" disabled>
-                            Offer Already Claimed
+                            <Check className="mr-2 h-4 w-4" /> Offer Already Claimed
                         </Button>
                     )}
                 </CardContent>
