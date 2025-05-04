@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, getIdToken as getFirebaseIdToken, User } from 'firebase/auth'; // Import User type and getIdToken
 import { getFirestore, Firestore } from 'firebase/firestore';
 // Add other Firebase services like Storage, Functions as needed
 
@@ -29,4 +29,26 @@ if (!getApps().length) {
 auth = getAuth(app);
 db = getFirestore(app);
 
-export { app, auth, db };
+/**
+ * Retrieves the Firebase Auth ID token for the current user.
+ * @param forceRefresh Force refresh the token. Defaults to false.
+ * @returns A promise that resolves with the ID token string, or null if no user is logged in.
+ */
+async function getIdToken(forceRefresh: boolean = false): Promise<string | null> {
+    const user = auth.currentUser;
+    if (!user) {
+        return null;
+    }
+    try {
+        const token = await getFirebaseIdToken(user, forceRefresh);
+        return token;
+    } catch (error) {
+        console.error("Error getting Firebase ID token:", error);
+        // Handle error appropriately, maybe sign the user out
+        // await auth.signOut();
+        return null;
+    }
+}
+
+
+export { app, auth, db, getIdToken }; // Export getIdToken
