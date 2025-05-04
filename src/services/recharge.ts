@@ -1,25 +1,21 @@
 
+/**
+ * @fileOverview Service functions for processing recharges and bill payments.
+ * Includes fetching billers, plans, history, and processing/scheduling/cancelling recharges.
+ */
+import { db, auth } from '@/lib/firebase';
+import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { addTransaction, Transaction } from './transactions'; // Use the centralized transaction service
+import { format, differenceInMinutes } from 'date-fns'; // Keep for history/cancellation
 
 /**
  * Represents a biller for recharge and bill payments.
  */
 export interface Biller {
-  /**
-   * The ID of the biller.
-   */
   billerId: string;
-  /**
-   * The name of the biller.
-   */
   billerName: string;
-  /**
-   * The type of biller (e.g., Mobile, DTH, Electricity).
-   */
   billerType: string;
-   /**
-    * Optional URL for the biller's logo.
-    */
-   logoUrl?: string;
+  logoUrl?: string;
 }
 
 /**
@@ -30,168 +26,124 @@ export interface RechargePlan {
     description: string;
     price: number;
     validity: string;
-    data?: string; // Optional for DTH
-    talktime?: number | -1; // -1 for Unlimited, Optional for DTH
-    sms?: number | -1; // -1 for Unlimited, Optional for DTH
+    data?: string;
+    talktime?: number | -1; // -1 for Unlimited
+    sms?: number | -1; // -1 for Unlimited
     isOffer?: boolean;
-    category?: string; // e.g., Popular, Data, Unlimited, Talktime, SMS, Roaming, Annual, Offers, Recommended, Basic Packs, HD Packs, etc.
-    channels?: string | number; // Added for DTH plans (e.g., "200+ Channels", 210)
+    category?: string;
+    channels?: string | number;
 }
-
 
 /**
- * Represents a recharge or bill payment transaction.
+ * Represents a recharge or bill payment transaction LOGGED in history.
+ * Replaced RechargeTransaction with the standard Transaction interface.
  */
-export interface RechargeTransaction {
-  transactionId: string;
-  identifier: string;
-  billerId?: string;
-  billerName?: string;
-  amount: number;
-  planDescription?: string;
-  date: Date;
-  status: 'Pending' | 'Completed' | 'Failed' | 'Processing Activation';
+export interface RechargeHistoryEntry extends Omit<Transaction, 'userId' | 'avatarSeed'> {
+    identifier: string; // Keep identifier specific to recharge context if needed
+    planDescription?: string; // Specific to recharge context
 }
-
-export interface RechargeHistoryEntry extends RechargeTransaction {}
 
 
 /**
  * Asynchronously retrieves a list of available billers (operators).
+ * SIMULATED: Uses mock data.
  *
  * @param billerType The type of biller to retrieve (e.g., Mobile, DTH, Electricity, Fastag).
  * @returns A promise that resolves to an array of Biller objects.
  */
 export async function getBillers(billerType: string): Promise<Biller[]> {
   console.log(`Fetching billers for type: ${billerType}`);
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await new Promise(resolve => setTimeout(resolve, 300)); // Simulate delay
 
+  // Keep Mock Data for billers as it's often static or fetched from specific APIs
   const mockData: { [key: string]: Biller[] } = {
-    Mobile: [
-      { billerId: 'airtel-prepaid', billerName: 'Airtel Prepaid', billerType: 'Mobile', logoUrl: '/logos/airtel.png' },
-      { billerId: 'jio-prepaid', billerName: 'Jio Prepaid', billerType: 'Mobile', logoUrl: '/logos/jio.png' },
-      { billerId: 'vi-prepaid', billerName: 'Vodafone Idea (Vi)', billerType: 'Mobile', logoUrl: '/logos/vi.png' },
-      { billerId: 'bsnl-prepaid', billerName: 'BSNL Prepaid', billerType: 'Mobile', logoUrl: '/logos/bsnl.png' },
-    ],
-    DTH: [
-      { billerId: 'tata-play', billerName: 'Tata Play (Tata Sky)', billerType: 'DTH', logoUrl: '/logos/tataplay.png' },
-      { billerId: 'dish-tv', billerName: 'Dish TV', billerType: 'DTH', logoUrl: '/logos/dishtv.png' },
-      { billerId: 'airtel-dth', billerName: 'Airtel Digital TV', billerType: 'DTH', logoUrl: '/logos/airtel.png' }, // Reuse airtel logo
-      { billerId: 'd2h', billerName: 'd2h (Videocon)', billerType: 'DTH', logoUrl: '/logos/d2h.png' },
-    ],
-    Fastag: [
-        { billerId: 'paytm-fastag', billerName: 'Paytm Payments Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/paytm.png'},
-        { billerId: 'icici-fastag', billerName: 'ICICI Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/icici.png'},
-        { billerId: 'hdfc-fastag', billerName: 'HDFC Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/hdfc.png'},
-    ],
-    Electricity: [
-         { billerId: 'bescom', billerName: 'BESCOM (Bangalore)', billerType: 'Electricity'},
-         { billerId: 'mseb', billerName: 'Mahadiscom (MSEB)', billerType: 'Electricity'},
-    ],
-     Water: [ // Added Water billers
-         { billerId: 'bwssb', billerName: 'BWSSB (Bangalore)', billerType: 'Water' },
-         { billerId: 'djb', billerName: 'Delhi Jal Board', billerType: 'Water' },
-    ],
-     Insurance: [ // Added Insurance billers
-        { billerId: 'lic', billerName: 'Life Insurance Corporation (LIC)', billerType: 'Insurance' },
-        { billerId: 'hdfc-life', billerName: 'HDFC Life Insurance', billerType: 'Insurance' },
-    ],
-    'Credit Card': [ // Added Credit Card billers
-        { billerId: 'hdfc-cc', billerName: 'HDFC Bank Credit Card', billerType: 'Credit Card' },
-        { billerId: 'sbi-cc', billerName: 'SBI Card', billerType: 'Credit Card' },
-    ],
-    Loan: [ // Added Loan billers
-        { billerId: 'bajaj-finance', billerName: 'Bajaj Finance Loan', billerType: 'Loan' },
-    ],
-     Broadband: [ // Added Broadband billers
-        { billerId: 'act-fibernet', billerName: 'ACT Fibernet', billerType: 'Broadband' },
-        { billerId: 'airtel-xstream', billerName: 'Airtel Xstream Fiber', billerType: 'Broadband' },
-    ],
-     Gas: [ // Added Gas billers
-        { billerId: 'igl', billerName: 'Indraprastha Gas Ltd (IGL)', billerType: 'Gas' },
-        { billerId: 'mncl', billerName: 'Mahanagar Gas Ltd (MNGL)', billerType: 'Gas' },
-    ],
+      Mobile: [
+        { billerId: 'airtel-prepaid', billerName: 'Airtel Prepaid', billerType: 'Mobile', logoUrl: '/logos/airtel.png' },
+        { billerId: 'jio-prepaid', billerName: 'Jio Prepaid', billerType: 'Mobile', logoUrl: '/logos/jio.png' },
+        { billerId: 'vi-prepaid', billerName: 'Vodafone Idea (Vi)', billerType: 'Mobile', logoUrl: '/logos/vi.png' },
+        { billerId: 'bsnl-prepaid', billerName: 'BSNL Prepaid', billerType: 'Mobile', logoUrl: '/logos/bsnl.png' },
+      ],
+      DTH: [
+        { billerId: 'tata-play', billerName: 'Tata Play (Tata Sky)', billerType: 'DTH', logoUrl: '/logos/tataplay.png' },
+        { billerId: 'dish-tv', billerName: 'Dish TV', billerType: 'DTH', logoUrl: '/logos/dishtv.png' },
+        { billerId: 'airtel-dth', billerName: 'Airtel Digital TV', billerType: 'DTH', logoUrl: '/logos/airtel.png' },
+        { billerId: 'd2h', billerName: 'd2h (Videocon)', billerType: 'DTH', logoUrl: '/logos/d2h.png' },
+      ],
+      Fastag: [
+          { billerId: 'paytm-fastag', billerName: 'Paytm Payments Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/paytm.png'},
+          { billerId: 'icici-fastag', billerName: 'ICICI Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/icici.png'},
+          { billerId: 'hdfc-fastag', billerName: 'HDFC Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/hdfc.png'},
+      ],
+       Electricity: [
+           { billerId: 'bescom', billerName: 'BESCOM (Bangalore)', billerType: 'Electricity'},
+           { billerId: 'mseb', billerName: 'Mahadiscom (MSEB)', billerType: 'Electricity'},
+           { billerId: 'mock-prepaid-bescom', billerName: 'BESCOM Prepaid (Mock)', billerType: 'Electricity' }, // Keep mock if needed
+           { billerId: 'mock-prepaid-tneb', billerName: 'TNEB Prepaid (Mock)', billerType: 'Electricity' }, // Keep mock if needed
+      ],
+       Datacard: [ // Added Datacard billers
+            { billerId: 'jio-datacard', billerName: 'JioFi', billerType: 'Datacard', logoUrl: '/logos/jio.png' },
+            { billerId: 'airtel-datacard', billerName: 'Airtel Data Card', billerType: 'Datacard', logoUrl: '/logos/airtel.png' },
+            { billerId: 'vi-datacard', billerName: 'Vi Data Card', billerType: 'Datacard', logoUrl: '/logos/vi.png' },
+       ],
+       // Add other biller types as needed
   };
-
   return mockData[billerType] || [];
 }
 
-// Moved mock plans here for better organization
+// Keep Mock Plans data as it's often complex/external
 export const mockRechargePlans: RechargePlan[] = [
-    // Popular
     { planId: 'p1', description: 'UL Calls, 1.5GB/D, 100SMS/D', price: 299, validity: '28 Days', data: '1.5GB/day', sms: 100, talktime: -1, category: 'Popular', isOffer: false },
     { planId: 'p1a', description: 'UL Calls, 1GB/D, 100SMS/D', price: 239, validity: '24 Days', data: '1GB/day', sms: 100, talktime: -1, category: 'Popular', isOffer: false },
-    { planId: 'p4', description: 'UL Calls, 2GB/D + Streaming App', price: 599, validity: '56 Days', data: '2GB/day', sms: 100, talktime: -1, category: 'Popular', isOffer: true }, // Moved to popular/offer
-    // Data
+    { planId: 'p4', description: 'UL Calls, 2GB/D + Streaming App', price: 599, validity: '56 Days', data: '2GB/day', sms: 100, talktime: -1, category: 'Popular', isOffer: true },
     { planId: 'p2', description: '50GB Bulk Data Pack', price: 301, validity: 'Existing Plan', data: '50GB', category: 'Data', isOffer: false },
     { planId: 'p2a', description: '12GB Data Add-on', price: 121, validity: 'Existing Plan', data: '12GB', category: 'Data', isOffer: false },
-    // Unlimited (Often similar to Popular)
     { planId: 'ul1', description: 'Truly Unlimited Calls, 2GB/Day', price: 719, validity: '84 Days', data: '2GB/day', sms: 100, talktime: -1, category: 'Unlimited', isOffer: false },
-    // Talktime (Top-up)
     { planId: 'p3', description: '₹81.75 Talktime', price: 100, validity: 'Unlimited', data: 'N/A', talktime: 81.75, category: 'Talktime', isOffer: false },
     { planId: 'p7', description: '₹190 Talktime + 1GB Offer', price: 200, validity: 'Unlimited', data: '1GB', talktime: 190, category: 'Talktime', isOffer: true },
-    // Roaming
     { planId: 'p5', description: 'Intl Roaming USA 30D', price: 2999, validity: '30 Days', data: '5GB', talktime: 100, category: 'Roaming', isOffer: false },
-    { planId: 'p5a', description: 'Intl Roaming UK 10D', price: 1101, validity: '10 Days', data: '1GB', talktime: 50, category: 'Roaming', isOffer: false },
-    // Annual
     { planId: 'p6', description: 'UL Calls, 24GB/Yr', price: 1799, validity: '365 Days', data: '24GB Total', sms: 3600, talktime: -1, category: 'Annual', isOffer: false },
-    // SMS
     { planId: 'sms1', description: '1000 SMS Pack', price: 49, validity: '28 Days', data: 'N/A', sms: 1000, category: 'SMS', isOffer: false },
 ];
-
-// Mock DTH Plans
 export const mockDthPlans: RechargePlan[] = [
-    // Recommended / Basic
     { planId: 'dth1', description: 'Family Entertainment Pack', price: 350, validity: '1 Month', channels: '200+ Channels', category: 'Recommended' },
     { planId: 'dth2', description: 'Value Sports Pack', price: 280, validity: '1 Month', channels: '150+ Channels + Sports', category: 'Recommended', isOffer: true },
-    // HD Packs
     { planId: 'dth3', description: 'HD Premium Pack', price: 499, validity: '1 Month', channels: '250+ Channels (50 HD)', category: 'HD Packs' },
-    { planId: 'dth4', description: 'South HD Special', price: 420, validity: '1 Month', channels: 'Regional + 40 HD', category: 'HD Packs' },
-    // Add-Ons
-    { planId: 'dth5', description: 'Kids Add-on', price: 75, validity: '1 Month', channels: '10 Kids Channels', category: 'Add-Ons' },
-    { planId: 'dth6', description: 'Sports Mania Add-on', price: 150, validity: '1 Month', channels: 'All Sports Channels', category: 'Add-Ons' },
-    // Top-Up Packs
     { planId: 'dth7', description: 'Flexi Top-Up ₹100', price: 100, validity: 'N/A', channels: 'N/A', category: 'Top-Up Packs' },
-    { planId: 'dth8', description: 'Flexi Top-Up ₹200', price: 200, validity: 'N/A', channels: 'N/A', category: 'Top-Up Packs' },
-     // Premium Packs
-    { planId: 'dth9', description: 'Mega Platinum HD Pack', price: 650, validity: '1 Month', channels: '300+ Channels (80 HD)', category: 'Premium Packs' },
 ];
-
-
+export const mockDataCardPlans: RechargePlan[] = [
+     { planId: 'dc1', description: '10GB High-Speed Data', price: 199, validity: '28 Days', data: '10GB', category: 'Monthly' },
+     { planId: 'dc2', description: '25GB High-Speed Data', price: 349, validity: '28 Days', data: '25GB', category: 'Monthly', isOffer: true },
+];
 
 /**
  * Asynchronously retrieves available recharge plans for a specific biller.
+ * SIMULATED: Uses mock data based on type.
  * @param billerId The ID of the biller (operator).
- * @param type The type of recharge ('mobile', 'dth', etc.) - added for context
+ * @param type The type of recharge ('mobile', 'dth', 'datacard', etc.)
  * @returns A promise that resolves to an array of RechargePlan objects.
  */
 export async function getRechargePlans(billerId: string, type: string): Promise<RechargePlan[]> {
    console.log(`Fetching plans for biller ID: ${billerId}, Type: ${type}`);
-   // TODO: Implement API call to fetch plans for the given operator ID and type.
-   await new Promise(resolve => setTimeout(resolve, 800)); // Simulate delay
-
-   // Return mock plans based on billerId and type
-   if (type === 'mobile') {
-       // You could filter mockRechargePlans based on billerId here if needed for simulation
-       return mockRechargePlans;
-   } else if (type === 'dth') {
-       // You could filter mockDthPlans based on billerId here if needed for simulation
-       return mockDthPlans;
-   }
-   return []; // Return empty for other types or if no mock data
+   await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+   if (type === 'mobile') return mockRechargePlans;
+   if (type === 'dth') return mockDthPlans;
+   if (type === 'datacard') return mockDataCardPlans;
+   return []; // Return empty for other types in mock
 }
 
 
 /**
  * Asynchronously processes a recharge or bill payment.
+ * Logs the transaction to Firestore using the addTransaction service.
+ * SIMULATED: Does not perform actual payment processing.
  *
  * @param type The type of recharge/payment (e.g., 'mobile', 'dth').
  * @param identifier The number/ID to recharge.
  * @param amount The amount to pay.
- * @param billerId The ID of the biller (operator). Optional.
+ * @param billerId The ID of the biller (operator).
  * @param planId The ID of the selected plan. Optional.
  * @param couponCode Optional coupon code.
- * @returns A promise that resolves to a RechargeTransaction object representing the transaction details.
+ * @returns A promise that resolves to the logged Transaction object.
  */
 export async function processRecharge(
   type: string,
@@ -200,77 +152,122 @@ export async function processRecharge(
   billerId?: string,
   planId?: string,
   couponCode?: string,
-): Promise<RechargeTransaction> {
-  console.log('Processing recharge:', { type, identifier, amount, billerId, planId, couponCode });
-  // TODO: Implement this by calling the appropriate backend API.
-  await new Promise(resolve => setTimeout(resolve, 1500));
+): Promise<Transaction> { // Return the standard Transaction object
+    console.log('Processing recharge (Simulated):', { type, identifier, amount, billerId, planId, couponCode });
+    // TODO: Integrate with actual payment gateway & recharge APIs.
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing delay
 
-  const randomStatus = Math.random();
-  let status: RechargeTransaction['status'] = 'Completed';
-  if (randomStatus < 0.1) status = 'Failed';
-  else if (randomStatus < 0.2) status = 'Pending';
-  // Simulate activation status only for mobile for now
-  else if (type === 'mobile' && randomStatus < 0.3) status = 'Processing Activation';
+    const randomStatus = Math.random();
+    let status: Transaction['status'] = 'Completed';
+    let descriptionSuffix = '';
+    if (randomStatus < 0.1) {
+        status = 'Failed';
+        descriptionSuffix = ' - Failed';
+    } else if (randomStatus < 0.2) {
+        status = 'Pending';
+        descriptionSuffix = ' - Pending Confirmation';
+    } else if (type === 'mobile' && randomStatus < 0.3) {
+        status = 'Processing Activation';
+        descriptionSuffix = ' - Activating...';
+    }
 
-  const plans = type === 'mobile' ? mockRechargePlans : mockDthPlans;
-  const plan = plans.find(p => p.planId === planId);
+    // Find Biller Name and Plan Description for logging
+    const billers = await getBillers(capitalize(type)); // Fetch billers to get name
+    const biller = billers.find(b => b.billerId === billerId);
+    const billerName = biller?.billerName || capitalize(type); // Fallback to type name
 
-  return {
-    transactionId: `TXN${Date.now()}`,
-    identifier: identifier,
-    billerId: billerId,
-    amount: amount,
-    planDescription: plan?.description,
-    date: new Date(),
-    status: status,
-  };
+    // Combine mock plans (adjust if plans become type-specific)
+    const allPlans = [...mockRechargePlans, ...mockDthPlans, ...mockDataCardPlans];
+    const plan = allPlans.find(p => p.planId === planId);
+    const description = plan ? `${plan.description}${descriptionSuffix}` : `${billerName} recharge for ${identifier}${descriptionSuffix}`;
+
+
+    // Log transaction using the central service
+    try {
+         const transaction = await addTransaction({
+            type: 'Recharge', // Use a consistent type
+            name: billerName, // Log Biller name
+            description: description,
+            amount: -amount, // Negative for outgoing payment
+            status: status,
+            billerId: billerId,
+            upiId: identifier, // Store identifier here, might rename field later
+            // Add planId if needed: planId: planId,
+        });
+        console.log(`Recharge transaction logged with ID: ${transaction.id} and status: ${status}`);
+        return transaction; // Return the logged transaction
+    } catch (error) {
+         console.error("Error logging recharge transaction:", error);
+         // Create a fallback local object if logging fails, but payment was simulated
+         const fallbackTransaction: Transaction = {
+             id: `local_${Date.now()}`,
+             userId: auth.currentUser?.uid || 'unknown',
+             type: 'Recharge',
+             name: billerName,
+             description: `${description} (Logging Failed)`,
+             amount: -amount,
+             status: status,
+             date: new Date(),
+             avatarSeed: billerName.toLowerCase(),
+             billerId: billerId,
+             upiId: identifier,
+         };
+         return fallbackTransaction;
+    }
 }
 
-
 /**
- * Asynchronously retrieves the recharge history for a specific identifier.
+ * Asynchronously retrieves the recharge history for a specific identifier from Firestore.
  *
  * @param identifier The number/ID to fetch history for.
  * @param type The type of recharge ('mobile', 'dth', etc.) to potentially filter history.
- * @returns A promise that resolves to an array of RechargeHistoryEntry objects.
+ * @returns A promise that resolves to an array of Transaction objects.
  */
-export async function getRechargeHistory(identifier: string, type: string): Promise<RechargeHistoryEntry[]> {
-    console.log(`Fetching ${type} history for: ${identifier}`);
-    // TODO: Implement API call to fetch history, filtering by type if needed.
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+export async function getRechargeHistory(identifier: string, type: string): Promise<Transaction[]> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return [];
+    const userId = currentUser.uid;
 
-    // Mock History Data
-     const mockMobileHistory: RechargeHistoryEntry[] = [
-        { transactionId: 'hist1', identifier: '9876543210', amount: 299, planDescription: 'UL Calls, 1.5GB/D', date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'airtel-prepaid' },
-        { transactionId: 'hist2', identifier: '9876543210', amount: 100, planDescription: 'Talktime Top-up', date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'airtel-prepaid' },
-        { transactionId: 'hist3', identifier: '9876543210', amount: 599, planDescription: 'UL Calls, 2GB/D + Stream', date: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'airtel-prepaid' },
-        { transactionId: 'hist4', identifier: '9988776655', amount: 239, planDescription: 'UL Calls, 1GB/D', date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'jio-prepaid' },
-    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+    console.log(`Fetching ${type} history for: ${identifier} (User: ${userId})`);
+    try {
+        const transColRef = collection(db, 'transactions');
+        const q = query(transColRef,
+            where('userId', '==', userId),
+            where('type', '==', 'Recharge'), // Filter by Recharge type
+            where('upiId', '==', identifier), // Assuming identifier is stored in upiId field for recharges
+            orderBy('date', 'desc'),
+            limit(10) // Limit results
+        );
+        // Note: May need to adjust query if identifier is stored differently for different recharge types.
 
-     const mockDthHistory: RechargeHistoryEntry[] = [
-        { transactionId: 'dthHist1', identifier: '1234567890', amount: 350, planDescription: 'Family Entertainment Pack', date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'tata-play' },
-        { transactionId: 'dthHist2', identifier: '1234567890', amount: 150, planDescription: 'Sports Mania Add-on', date: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'tata-play' },
-         { transactionId: 'dthHist3', identifier: '3456789012', amount: 499, planDescription: 'HD Premium Pack', date: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000), status: 'Completed', billerId: 'airtel-dth' },
-    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+        const querySnapshot = await getDocs(q);
+        const history = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                date: (data.date as Timestamp).toDate(),
+                 avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
+            } as Transaction;
+        });
+        console.log(`Fetched ${history.length} history entries.`);
+        return history;
 
-    if (type === 'mobile') {
-        return mockMobileHistory.filter(h => h.identifier === identifier);
-    } else if (type === 'dth') {
-        return mockDthHistory.filter(h => h.identifier === identifier);
+    } catch (error) {
+        console.error("Error fetching recharge history:", error);
+        throw new Error("Could not fetch recharge history.");
     }
-
-    return []; // No history for other types or numbers in mock
 }
 
 /**
  * Simulates checking the activation status of a recent recharge.
+ * In a real app, this would query the backend or the recharge provider.
  * @param transactionId The ID of the transaction to check.
  * @returns A promise that resolves to the current status.
  */
-export async function checkActivationStatus(transactionId: string): Promise<RechargeTransaction['status']> {
+export async function checkActivationStatus(transactionId: string): Promise<Transaction['status']> {
     console.log(`Checking activation status for: ${transactionId}`);
-    // TODO: Implement API call
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
     const random = Math.random();
     if (random < 0.7) return 'Completed';
     if (random < 0.9) return 'Processing Activation';
@@ -278,11 +275,11 @@ export async function checkActivationStatus(transactionId: string): Promise<Rech
 }
 
 /**
- * Simulates scheduling a future recharge.
+ * Simulates scheduling a future recharge. Adds a record to a 'scheduledRecharges' collection.
  * @param identifier The number/ID to recharge.
  * @param amount The amount to recharge.
- * @param frequency How often to recharge ('monthly', 'weekly', etc.).
- * @param startDate The date to start the schedule.
+ * @param frequency How often to recharge ('monthly', 'weekly').
+ * @param startDate The date for the first scheduled recharge.
  * @param billerId Optional biller ID.
  * @param planId Optional plan ID.
  * @returns A promise resolving to an object indicating success and a schedule ID.
@@ -290,26 +287,108 @@ export async function checkActivationStatus(transactionId: string): Promise<Rech
 export async function scheduleRecharge(
     identifier: string,
     amount: number,
-    frequency: 'monthly' | 'weekly', // Add more frequencies as needed
+    frequency: 'monthly' | 'weekly',
     startDate: Date,
     billerId?: string,
     planId?: string
 ): Promise<{success: boolean; scheduleId: string}> {
-     console.log('Scheduling recharge:', { identifier, amount, frequency, startDate, billerId, planId });
-     // TODO: Implement API call to backend to create schedule
-     await new Promise(resolve => setTimeout(resolve, 500));
-     return { success: true, scheduleId: `SCH${Date.now()}`};
+     const currentUser = auth.currentUser;
+     if (!currentUser) throw new Error("User must be logged in.");
+     const userId = currentUser.uid;
+
+     console.log('Scheduling recharge:', { userId, identifier, amount, frequency, startDate, billerId, planId });
+
+     const scheduleData = {
+        userId,
+        identifier,
+        amount,
+        frequency,
+        nextRunDate: Timestamp.fromDate(startDate),
+        billerId: billerId || null,
+        planId: planId || null,
+        isActive: true,
+        createdAt: serverTimestamp(),
+     };
+
+     try {
+         const scheduleColRef = collection(db, 'scheduledRecharges');
+         const docRef = await addDoc(scheduleColRef, scheduleData);
+         console.log("Recharge scheduled successfully with ID:", docRef.id);
+         return { success: true, scheduleId: docRef.id };
+     } catch (error) {
+         console.error("Error scheduling recharge:", error);
+         throw new Error("Could not schedule recharge.");
+     }
 }
 
+/**
+ * Cancels a scheduled recharge by marking it inactive in Firestore.
+ * @param scheduleId The Firestore document ID of the schedule to cancel.
+ */
+export async function cancelScheduledRecharge(scheduleId: string): Promise<void> {
+     // TODO: Add user check if needed
+     console.log("Cancelling scheduled recharge:", scheduleId);
+     try {
+        const scheduleDocRef = doc(db, 'scheduledRecharges', scheduleId);
+        await updateDoc(scheduleDocRef, { isActive: false });
+        console.log("Scheduled recharge cancelled.");
+     } catch (error) {
+         console.error("Error cancelling scheduled recharge:", error);
+         throw new Error("Could not cancel scheduled recharge.");
+     }
+}
 
 /**
- * Retrieves Top-up voucher plans (potentially filtering from general plans).
- * @param billerId The operator ID.
- * @returns A promise that resolves to an array of Top-up RechargePlan objects.
+ * Asynchronously attempts to cancel a recently submitted recharge transaction.
+ * Updates the corresponding transaction document in Firestore.
+ *
+ * @param transactionId The Firestore document ID of the transaction to cancel.
+ * @returns A promise resolving to an object indicating success and a message.
  */
-export async function getTopupVouchers(billerId: string): Promise<RechargePlan[]> {
-     console.log(`Fetching top-up vouchers for: ${billerId}`);
-     await new Promise(resolve => setTimeout(resolve, 500));
-     const allPlans = await getRechargePlans(billerId, 'mobile'); // Assuming Top-up is mobile specific
-     return allPlans.filter(p => p.category === 'Talktime'); // Filter for Talktime/Top-up category
+export async function cancelRechargeService(transactionId: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in.");
+    const userId = currentUser.uid;
+    console.log(`Attempting to cancel recharge transaction: ${transactionId} for user ${userId}`);
+
+    try {
+        const transactionDocRef = doc(db, 'transactions', transactionId);
+        const transactionSnap = await getDoc(transactionDocRef);
+
+        if (!transactionSnap.exists()) throw new Error("Transaction not found.");
+
+        const tx = transactionSnap.data() as Omit<Transaction, 'id' | 'date'> & { date: Timestamp };
+
+        if (tx.userId !== userId) throw new Error("Permission denied.");
+        if (tx.type !== 'Recharge') throw new Error("Only recharge transactions can be cancelled.");
+        if (tx.status === 'Cancelled' || tx.status === 'Failed') {
+             throw new Error(`Cannot cancel a transaction with status: ${tx.status}.`);
+        }
+
+        const transactionDate = tx.date.toDate();
+        const now = new Date();
+        const minutesPassed = differenceInMinutes(now, transactionDate);
+
+        if (minutesPassed > 30) throw new Error("Cancellation window (30 minutes) has passed.");
+
+        // Simulate external cancellation API call
+        console.log(`Simulating cancellation API call for ${transactionId}...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const cancellationSuccess = Math.random() > 0.2; // 80% success rate
+
+        if (cancellationSuccess) {
+            await updateDoc(transactionDocRef, {
+                status: 'Cancelled',
+                description: `${tx.description} (Cancelled by User)`,
+            });
+            console.log(`Transaction ${transactionId} cancelled successfully in Firestore.`);
+            return { success: true, message: "Recharge cancelled. Refund will be processed if applicable." };
+        } else {
+            throw new Error("Cancellation failed at operator/aggregator level.");
+        }
+
+    } catch (error: any) {
+        console.error("Error cancelling recharge:", error);
+        throw new Error(error.message || "Could not cancel recharge.");
+    }
 }

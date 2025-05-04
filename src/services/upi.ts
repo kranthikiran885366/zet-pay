@@ -1,141 +1,229 @@
 
 /**
- * Represents a bank account.
+ * @fileOverview Service functions for managing UPI linked accounts and processing payments.
+ * Note: Actual UPI functionality (linking, balance check, payments) requires integration
+ * with NPCI libraries and a licensed PSP partner. This service simulates these interactions.
  */
+import { db, auth } from '@/lib/firebase';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    doc,
+    updateDoc,
+    deleteDoc,
+    writeBatch,
+    limit,
+    runTransaction,
+    orderBy,
+    Timestamp // Import Timestamp
+} from 'firebase/firestore';
 import { Transaction, addTransaction } from './transactions'; // Import Transaction interface and addTransaction
 import { getUserProfileById, UserProfile } from './user'; // To check KYC and feature status
 import { getWalletBalance, payViaWallet, WalletTransactionResult } from './wallet'; // Import wallet functions
 import { scheduleRecovery } from './recovery'; // Import recovery scheduling function
-import { format, addBusinessDays } from 'date-fns'; // Added addBusinessDays
-import { runTransaction } from 'firebase/firestore'; // Import runTransaction
+import { format, addBusinessDays } from 'date-fns';
 
 export interface BankAccount {
-  /**
-   * The name of the bank.
-   */
+  id?: string; // Firestore document ID
   bankName: string;
-  /**
-   * The account number (masked usually).
-   */
-  accountNumber: string;
-  /**
-   * The UPI ID associated with the bank account.
-   */
-  upiId: string;
-  /**
-   * Flag indicating if this is the primary/default account.
-   */
+  accountNumber: string; // Masked number
+  upiId: string; // Generated/linked UPI ID
+  userId: string; // Link to the user
   isDefault?: boolean;
-   /**
-    * Optional: Expected length of the UPI PIN for this account (4 or 6).
-    */
-   pinLength?: 4 | 6;
+  pinLength?: 4 | 6;
+  // Add other fields like account type (savings/current) if needed
 }
 
-/**
- * Represents a UPI transaction result.
- * Adding a flag to indicate if fallback was used, and ticket info for failures.
- */
 export interface UpiTransactionResult {
-  /**
-   * The transaction ID.
-   */
-  transactionId?: string; // Optional if failed before getting ID
-  /**
-   * The amount transferred.
-   */
+  transactionId?: string;
   amount: number;
-  /**
-   * The recipient's UPI ID.
-   */
   recipientUpiId: string;
-  /**
-   * The status of the transaction (e.g., Pending, Completed, Failed).
-   */
   status: 'Pending' | 'Completed' | 'Failed' | 'FallbackSuccess'; // Added FallbackSuccess
-   /**
-    * Optional message associated with the transaction status.
-    */
-   message?: string;
-   /**
-    * Flag indicating if the payment succeeded via wallet fallback.
-    */
-   usedWalletFallback?: boolean;
-   /**
-    * ID of the wallet transaction if fallback was used.
-    */
-   walletTransactionId?: string;
-   /**
-    * Unique ID for tracking failed-but-debited transactions.
-    */
-   ticketId?: string;
-   /**
-    * Estimated refund date/timeframe string.
-    */
-   refundEta?: string;
+  message?: string;
+  usedWalletFallback?: boolean;
+  walletTransactionId?: string;
+  ticketId?: string;
+  refundEta?: string;
 }
 
 /**
  * Asynchronously links a bank account for UPI transactions.
  * In a real app, this involves complex flows like fetching accounts from NPCI, SMS verification etc.
+ * This simulation adds the account to the user's subcollection in Firestore.
  *
- * @param bankAccount The bank account details to link.
- * @returns A promise that resolves to true if the account was successfully linked, false otherwise.
+ * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId).
+ * @returns A promise that resolves to the newly linked BankAccount object.
+ * @throws Error if the user is not logged in or linking fails.
  */
-export async function linkBankAccount(bankAccount: Omit<BankAccount, 'upiId'|'isDefault'|'pinLength'>): Promise<boolean> {
-  console.log("Simulating linking bank account:", bankAccount);
-  // TODO: Implement actual bank linking flow.
-  await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
-  // For simulation, assume success
-  return true;
+export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'userId' | 'isDefault' | 'upiId' | 'pinLength'>): Promise<BankAccount> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in to link an account.");
+    const userId = currentUser.uid;
+
+    console.log("Linking bank account for user:", userId, bankDetails);
+    // Simulate UPI ID generation (replace with actual generation logic)
+    const handle = bankDetails.accountNumber.slice(-4); // Simple handle based on last 4 digits
+    const bankDomain = bankDetails.bankName.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5); // Simple domain guess
+    const generatedUpiId = `${handle}@ok${bankDomain}`;
+    const pinLength = Math.random() > 0.5 ? 6 : 4; // Simulate PIN length
+
+    try {
+        const accountsColRef = collection(db, 'users', userId, 'linkedAccounts');
+
+        // Check if this is the first account being linked for the user
+        const q = query(accountsColRef, limit(1));
+        const existingAccountsSnap = await getDocs(q);
+        const isFirstAccount = existingAccountsSnap.empty;
+
+        const accountData: Omit<BankAccount, 'id'> = {
+            ...bankDetails,
+            userId,
+            upiId: generatedUpiId, // Use generated ID
+            isDefault: isFirstAccount, // Make the first account default
+            pinLength: pinLength,
+        };
+
+        const docRef = await addDoc(accountsColRef, accountData);
+        console.log("Bank account linked successfully with ID:", docRef.id);
+        return { id: docRef.id, ...accountData };
+
+    } catch (error) {
+        console.error("Error linking bank account:", error);
+        throw new Error("Could not link bank account.");
+    }
 }
 
 /**
- * Asynchronously retrieves linked bank accounts.
+ * Asynchronously retrieves linked bank accounts for the current user from Firestore.
  * @returns A promise that resolves to an array of BankAccount objects.
  */
 export async function getLinkedAccounts(): Promise<BankAccount[]> {
-   console.log("Fetching linked accounts...");
-   // TODO: Implement API call
-   await new Promise(resolve => setTimeout(resolve, 800));
-   // Return mock data including pinLength
-   return [
-      { bankName: "State Bank of India", accountNumber: "******1234", upiId: "user123@oksbi", isDefault: true, pinLength: 6 },
-      { bankName: "HDFC Bank", accountNumber: "******5678", upiId: "user.hdfc@okhdfcbank", pinLength: 4 },
-      { bankName: "ICICI Bank", accountNumber: "******9012", upiId: "user@okicici", pinLength: 6 },
-    ];
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        console.log("No user logged in to get linked accounts.");
+        return [];
+    }
+    const userId = currentUser.uid;
+    console.log(`Fetching linked accounts for user ${userId}`);
+
+    try {
+        const accountsColRef = collection(db, 'users', userId, 'linkedAccounts');
+        // Optionally order by isDefault descending to get the primary first
+        const q = query(accountsColRef, orderBy('isDefault', 'desc'));
+        const querySnapshot = await getDocs(q);
+
+        const accounts = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        } as BankAccount));
+        console.log(`Fetched ${accounts.length} linked accounts.`);
+        return accounts;
+
+    } catch (error) {
+        console.error("Error fetching linked accounts:", error);
+        throw new Error("Could not fetch linked accounts.");
+    }
 }
 
 /**
- * Asynchronously removes a UPI ID / linked account.
- * @param upiId The UPI ID to remove.
- * @returns A promise that resolves to true if successful, false otherwise.
+ * Asynchronously removes a UPI ID / linked account from Firestore.
+ * Ensures the default account cannot be removed unless it's the only one.
+ * @param upiId The UPI ID associated with the account to remove.
+ * @returns A promise that resolves when removal is complete.
+ * @throws Error if removal fails or is not allowed.
  */
-export async function removeUpiId(upiId: string): Promise<boolean> {
-    console.log(`Simulating removal of UPI ID: ${upiId}`);
-    // TODO: Implement API call
-    await new Promise(resolve => setTimeout(resolve, 600));
-    // Simulate success
-    return true;
+export async function removeUpiId(upiId: string): Promise<void> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in.");
+    const userId = currentUser.uid;
+    console.log(`Removing UPI ID: ${upiId} for user ${userId}`);
+
+    try {
+        const accountsColRef = collection(db, 'users', userId, 'linkedAccounts');
+        const q = query(accountsColRef, where('upiId', '==', upiId), limit(1));
+        const accountSnapshot = await getDocs(q);
+
+        if (accountSnapshot.empty) {
+            throw new Error("UPI ID not found.");
+        }
+
+        const accountDoc = accountSnapshot.docs[0];
+        const accountData = accountDoc.data() as BankAccount;
+
+        if (accountData.isDefault) {
+            // Check if there are other accounts
+            const allAccountsSnap = await getDocs(collection(db, 'users', userId, 'linkedAccounts'));
+            if (allAccountsSnap.size <= 1) {
+                throw new Error("Cannot remove the only linked account.");
+            }
+            throw new Error("Cannot remove the default account. Please set another account as default first.");
+        }
+
+        await deleteDoc(doc(db, 'users', userId, 'linkedAccounts', accountDoc.id));
+        console.log(`UPI ID ${upiId} removed successfully.`);
+
+    } catch (error: any) {
+        console.error("Error removing UPI ID:", error);
+        throw new Error(error.message || "Could not remove UPI ID.");
+    }
 }
 
 /**
- * Asynchronously sets a UPI ID as the default/primary account.
+ * Asynchronously sets a UPI ID as the default/primary account in Firestore.
+ * Ensures only one account is marked as default.
  * @param upiId The UPI ID to set as default.
- * @returns A promise that resolves to true if successful, false otherwise.
+ * @returns A promise that resolves when the update is complete.
+ * @throws Error if the UPI ID is not found or the update fails.
  */
-export async function setDefaultAccount(upiId: string): Promise<boolean> {
-    console.log(`Simulating setting ${upiId} as default`);
-    // TODO: Implement API call
-    await new Promise(resolve => setTimeout(resolve, 700));
-    // Simulate success
-    return true;
+export async function setDefaultAccount(upiId: string): Promise<void> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in.");
+    const userId = currentUser.uid;
+    console.log(`Setting ${upiId} as default for user ${userId}`);
+
+    try {
+        const accountsColRef = collection(db, 'users', userId, 'linkedAccounts');
+        const batch = writeBatch(db);
+
+        // Find the new default account
+        const newDefaultQuery = query(accountsColRef, where('upiId', '==', upiId), limit(1));
+        const newDefaultSnap = await getDocs(newDefaultQuery);
+        if (newDefaultSnap.empty) {
+            throw new Error("Selected UPI ID not found.");
+        }
+        const newDefaultDocRef = doc(db, 'users', userId, 'linkedAccounts', newDefaultSnap.docs[0].id);
+
+        // Find the current default account (if any)
+        const currentDefaultQuery = query(accountsColRef, where('isDefault', '==', true), limit(1));
+        const currentDefaultSnap = await getDocs(currentDefaultQuery);
+
+        // Unset the current default (if it exists and is different from the new one)
+        if (!currentDefaultSnap.empty) {
+            const currentDefaultDocRef = doc(db, 'users', userId, 'linkedAccounts', currentDefaultSnap.docs[0].id);
+            if (currentDefaultDocRef.id !== newDefaultDocRef.id) {
+                batch.update(currentDefaultDocRef, { isDefault: false });
+            }
+        }
+
+        // Set the new default account
+        batch.update(newDefaultDocRef, { isDefault: true });
+
+        await batch.commit();
+        console.log(`${upiId} set as default successfully.`);
+
+    } catch (error) {
+        console.error("Error setting default account:", error);
+        throw new Error("Could not set default account.");
+    }
 }
 
 
 /**
  * Asynchronously checks the balance of a linked bank account using UPI.
- * Requires UPI PIN authentication in a real app.
+ * Requires UPI PIN authentication in a real app. THIS IS A SIMULATION.
  *
  * @param upiId The UPI ID of the bank account.
  * @param pin The UPI PIN (for simulation, not used securely here).
@@ -147,20 +235,31 @@ export async function checkBalance(upiId: string, pin?: string): Promise<number>
   // TODO: Implement actual secure balance check flow via UPI SDK/API.
   await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate delay
 
-  // Simulate success/failure based on UPI ID or PIN for demo
-  if (upiId.includes('sbi') && pin?.length === 6) { // Check PIN length for SBI
-    return Math.random() * 10000; // Simulate random balance
-  } else if (upiId.includes('hdfc') && pin?.length === 4) { // Check PIN length for HDFC
-     return Math.random() * 50000;
-  } else if (!pin) {
-     throw new Error("UPI PIN required for balance check.");
-  } else {
-     throw new Error("Balance check failed. Invalid PIN or temporary issue.");
-  }
+    // Fetch account details to check PIN length (simulation)
+    const accounts = await getLinkedAccounts();
+    const account = accounts.find(acc => acc.upiId === upiId);
+    const expectedPinLength = account?.pinLength;
+
+    if (!pin) {
+        throw new Error("UPI PIN required for balance check.");
+    }
+    if (expectedPinLength && pin.length !== expectedPinLength) {
+        throw new Error(`Invalid PIN length. Expected ${expectedPinLength} digits.`);
+    }
+     if (!expectedPinLength && pin.length !== 4 && pin.length !== 6) {
+         throw new Error("Invalid PIN length. Please enter 4 or 6 digits.");
+     }
+
+    // Simulate success/failure based on PIN pattern for demo
+    if ((expectedPinLength === 4 && pin === '1234') || (expectedPinLength === 6 && pin === '123456') || (!expectedPinLength && (pin ==='1234' || pin === '123456'))) {
+        return parseFloat((Math.random() * 50000).toFixed(2)); // Simulate random balance
+    } else {
+        throw new Error("Balance check failed. Invalid PIN or temporary issue.");
+    }
 }
 
 /**
- * Asynchronously verifies a UPI ID with the bank/NPCI.
+ * Asynchronously verifies a UPI ID with the bank/NPCI. SIMULATED.
  * @param upiId The UPI ID to verify.
  * @returns A promise that resolves to the registered name of the UPI ID holder.
  * @throws Error if verification fails or UPI ID is invalid.
@@ -170,194 +269,201 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     // TODO: Implement actual UPI ID verification API call.
     await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network delay
 
-    // Mock verification results
-    if (upiId === 'alice@payfriend') return "Alice Smith";
-    if (upiId === 'bob.j@okbank') return "Robert Johnson";
-    if (upiId === 'charlie@paytm') return "Charles Brown";
-    if (upiId === 'david.will@ybl') return "David Williams";
-    // Simulate a specific ID hitting the limit for testing fallback
     if (upiId === 'limit@payfriend') return "Limit Exceeded User";
-     // Simulate a failed payment where money might be debited
     if (upiId === 'debitfail@payfriend') return "Debit Fail User";
     if (upiId.includes('invalid') || !upiId.includes('@')) {
         throw new Error("Invalid UPI ID format or ID not found.");
     }
-    // Default mock for any other valid-looking ID
     const namePart = upiId.split('@')[0].replace(/[._]/g, ' ');
-     // Capitalize first letter of each part
     const verifiedName = namePart
         .split(' ')
         .map(part => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
-    return verifiedName || "Verified User"; // Fallback name
+    return verifiedName || "Verified User";
 }
 
 
 /**
- * Asynchronously processes a UPI payment. Attempts fallback via wallet if UPI limit is exceeded.
- * Requires secure PIN entry in real implementation.
+ * Asynchronously processes a UPI payment. SIMULATED.
+ * Attempts fallback via wallet if UPI limit is exceeded (Smart Wallet Bridge).
+ * Logs transaction to Firestore.
  *
  * @param recipientUpiId The UPI ID of the recipient.
  * @param amount The amount to transfer.
- * @param pin The UPI PIN for authentication.
+ * @param pin The UPI PIN for authentication (required for simulation).
  * @param note An optional transaction note/description.
  * @param userId The ID of the user making the payment.
  * @param sourceAccountUpiId The specific UPI ID to use for payment.
- * @returns A promise that resolves to a UpiTransactionResult object representing the transaction details.
- * @throws Error if payment fails and fallback is not possible or also fails.
+ * @returns A promise that resolves to a UpiTransactionResult object.
  */
 export async function processUpiPayment(
   recipientUpiId: string,
   amount: number,
   pin: string,
   note?: string,
-  userId?: string, // Make userId optional for now, but needed for fallback checks
-  sourceAccountUpiId?: string // Added source account UPI ID
+  userId?: string,
+  sourceAccountUpiId?: string
 ): Promise<UpiTransactionResult> {
-  console.log(`Processing UPI payment to ${recipientUpiId} from ${sourceAccountUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ${pin})`);
-  // TODO: Implement actual secure UPI payment flow via SDK/API.
-  await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate UPI API delay
+    const currentUser = auth.currentUser;
+    const finalUserId = userId || currentUser?.uid; // Ensure we have a user ID
 
-  let upiFailedDueToLimit = false;
-  let upiFailedDueToBankDown = false; // New flag for bank server issues
-  let upiFailureMessage = 'Payment failed.';
-  let mightBeDebited = false; // Flag for simulation
-
-  // Simulate various UPI outcomes for demo
-  try {
-    // Simulate bank server down based on source UPI ID
-    if (sourceAccountUpiId === 'user@okicici') { // Simulate ICICI down
-        upiFailedDueToBankDown = true;
-        upiFailureMessage = 'Bank server is currently down. Please try later.';
-        throw new Error(upiFailureMessage);
+    if (!finalUserId) {
+         // This should ideally not happen if called from UI where user is logged in
+         console.error("UPI Payment attempted without User ID!");
+         return {
+             amount, recipientUpiId, status: 'Failed', message: 'User session error.', usedWalletFallback: false
+         };
+    }
+    if (!sourceAccountUpiId) {
+         return { amount, recipientUpiId, status: 'Failed', message: 'Source account UPI ID missing.', usedWalletFallback: false };
     }
 
-    if (pin !== '1234' && pin !== '123456') { // Example PIN check
-      throw new Error("Incorrect UPI PIN entered.");
-    }
-    if (recipientUpiId === 'limit@payfriend') { // Simulate limit exceeded
-      upiFailedDueToLimit = true;
-      upiFailureMessage = 'UPI daily limit exceeded.';
-      throw new Error(upiFailureMessage);
-    }
-    if (recipientUpiId === 'debitfail@payfriend') { // Simulate failure where debit *might* happen
-        mightBeDebited = true;
-        upiFailureMessage = 'Payment failed due to network error at bank. Money may be debited.';
-        throw new Error(upiFailureMessage);
-    }
-    if (amount > 10000) { // Simulate insufficient balance (different from limit)
-        throw new Error('Insufficient bank balance.');
-    }
-    if (recipientUpiId.includes('invalid')) { // Simulate invalid UPI ID scenario
-        throw new Error('Invalid recipient UPI ID.');
-    }
+    console.log(`Processing UPI payment to ${recipientUpiId} from ${sourceAccountUpiId}, Amount: ${amount}, Note: ${note || 'N/A'} (PIN: ****)`);
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate UPI API delay
 
-    // Simulate successful UPI transaction if no error thrown above
-    return {
-      transactionId: `TXN_UPI_${Date.now()}`,
-      amount: amount,
-      recipientUpiId: recipientUpiId,
-      status: 'Completed',
-      message: 'Transaction Successful',
-      usedWalletFallback: false,
-    };
+    let upiFailedDueToLimit = false;
+    let upiFailedDueToBankDown = false;
+    let upiFailureMessage = 'Payment failed.';
+    let mightBeDebited = false;
 
-  } catch (upiError: any) {
-    console.warn("UPI Payment failed:", upiError.message);
-    upiFailureMessage = upiError.message || upiFailureMessage; // Update failure message
+    // Fetch source account details for PIN check (simulation)
+    const accounts = await getLinkedAccounts(); // Ideally fetch only the source account
+    const sourceAccount = accounts.find(acc => acc.upiId === sourceAccountUpiId);
+    const expectedPinLength = sourceAccount?.pinLength;
 
-     // --- Smart Wallet Bridge Logic ---
-    if (upiFailedDueToLimit && userId) {
-        console.log("UPI limit exceeded, attempting Wallet Fallback...");
-        try {
-            // 1. Check User Eligibility & Settings
-            const userProfile = await getUserProfileById(userId); // Fetch user profile
-            if (userProfile?.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
-                console.log("Wallet Fallback disabled for user.");
-                throw new Error(upiFailureMessage); // Re-throw original UPI error
-            }
-            if (amount > (userProfile.smartWalletBridgeLimit || 0)) {
-                console.log(`Amount ${amount} exceeds wallet fallback limit ${userProfile.smartWalletBridgeLimit}`);
-                throw new Error(`${upiFailureMessage} Wallet fallback limit exceeded.`); // More specific error
-            }
-
-            // 2. Check Wallet Balance
-            const walletBalance = await getWalletBalance(userId);
-            if (walletBalance < amount) {
-                console.log(`Insufficient wallet balance (${walletBalance}) for fallback amount (${amount}).`);
-                // TODO: Check for auto-debit setup if needed
-                throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
-            }
-
-            // 3. Attempt Payment via Wallet
-            const walletPaymentResult = await payViaWallet(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
-
-            if (walletPaymentResult.success) {
-              console.log("Payment successful via Wallet Fallback!");
-
-              // 4. Schedule Recovery from Bank Account
-              const recoveryScheduled = await scheduleRecovery(userId, amount, recipientUpiId);
-              if (!recoveryScheduled) {
-                console.error("CRITICAL: Failed to schedule wallet recovery!");
-                // Handle this critical error - maybe notify admin, attempt retry later?
-              } else {
-                console.log("Wallet recovery scheduled successfully.");
-              }
-
-              // Return a specific status indicating fallback success
-              return {
-                // transactionId: upiPaymentResult.transactionId, // Can still use original ID or wallet ID // Error: upiPaymentResult is not defined here
-                walletTransactionId: walletPaymentResult.transactionId,
-                amount: amount,
-                recipientUpiId: recipientUpiId,
-                status: 'FallbackSuccess', // Use a distinct status
-                message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
-                usedWalletFallback: true,
-              };
-            } else {
-              // Wallet payment also failed
-              console.error("Wallet Fallback payment failed:", walletPaymentResult.message);
-              throw new Error(`${upiFailureMessage} Wallet fallback also failed: ${walletPaymentResult.message}`);
-            }
-        } catch (fallbackError: any) {
-            console.error("Wallet Fallback process failed:", fallbackError.message);
-            // Ensure the final thrown error includes the original UPI failure reason if possible
-            throw new Error(fallbackError.message || upiFailureMessage);
+    // Simulate various UPI outcomes
+    try {
+        const bankStatus = await getBankStatus(sourceAccountUpiId.split('@')[1]); // Get bank status
+        if (bankStatus === 'Down') {
+            upiFailedDueToBankDown = true;
+            upiFailureMessage = 'Bank server is currently down. Please try later.';
+            throw new Error(upiFailureMessage);
         }
-    } else { // --- End Smart Wallet Bridge Logic ---
-       // Handle non-limit related UPI failures
-       // If it *might* be debited, generate ticket ID and ETA
-       if (mightBeDebited) {
-           const ticketId = `ZET_TKT_${Date.now()}`;
-           const refundDate = addBusinessDays(new Date(), 3); // Example: 3 business days
-           const refundEtaString = `Expected refund by ${format(refundDate, 'PPP')}`;
-            console.log(`Generating ticket ${ticketId} for potentially debited failed transaction.`);
-           return {
-               transactionId: `TXN_UPI_FAILED_${Date.now()}`, // Still generate a failure ID
-               amount: amount,
-               recipientUpiId: recipientUpiId,
-               status: 'Failed',
-               message: upiFailureMessage,
-               usedWalletFallback: false,
-               ticketId: ticketId,
-               refundEta: refundEtaString,
-           };
-       } else {
-            // Normal failure without potential debit (or bank server down)
-             return {
-                 transactionId: `TXN_UPI_FAILED_${Date.now()}`,
-                 amount: amount,
-                 recipientUpiId: recipientUpiId,
-                 status: 'Failed',
-                 message: upiFailureMessage,
-                 usedWalletFallback: false,
-             };
-       }
+
+         if (!pin) {
+            throw new Error("UPI PIN is required.");
+        }
+        if (expectedPinLength && pin.length !== expectedPinLength) {
+            throw new Error(`Incorrect UPI PIN length. Expected ${expectedPinLength} digits.`);
+        }
+        if (!expectedPinLength && pin.length !== 4 && pin.length !== 6) {
+            throw new Error("Incorrect UPI PIN length. Enter 4 or 6 digits.");
+        }
+        // Simple PIN check for demo
+        if ((expectedPinLength === 4 && pin !== '1234') || (expectedPinLength === 6 && pin !== '123456') || (!expectedPinLength && pin !== '1234' && pin !== '123456')) {
+            throw new Error("Incorrect UPI PIN entered.");
+        }
+
+        if (recipientUpiId === 'limit@payfriend') {
+            upiFailedDueToLimit = true;
+            upiFailureMessage = 'UPI daily limit exceeded.';
+            throw new Error(upiFailureMessage);
+        }
+        if (recipientUpiId === 'debitfail@payfriend') {
+            mightBeDebited = true;
+            upiFailureMessage = 'Payment failed due to network error at bank. Money may be debited.';
+            throw new Error(upiFailureMessage);
+        }
+        if (amount > 10000) { // Simulate insufficient balance
+            throw new Error('Insufficient bank balance.');
+        }
+        if (recipientUpiId.includes('invalid')) {
+            throw new Error('Invalid recipient UPI ID.');
+        }
+
+        // --- UPI Success Case ---
+        const transactionId = `TXN_UPI_${Date.now()}`;
+        await addTransaction({
+            type: 'Sent',
+            name: await verifyUpiId(recipientUpiId), // Get name for history
+            description: `Paid via UPI ${note ? `- ${note}` : ''}`,
+            amount: -amount,
+            status: 'Completed',
+            userId: finalUserId,
+            upiId: recipientUpiId,
+        });
+        return { transactionId, amount, recipientUpiId, status: 'Completed', message: 'Transaction Successful', usedWalletFallback: false };
+
+    } catch (upiError: any) {
+        console.warn("UPI Payment failed:", upiError.message);
+        upiFailureMessage = upiError.message || upiFailureMessage;
+
+        // --- Smart Wallet Bridge Logic ---
+        if (upiFailedDueToLimit) {
+            console.log("UPI limit exceeded, attempting Wallet Fallback...");
+            try {
+                const userProfile = await getUserProfileById(finalUserId);
+                if (!userProfile || userProfile.kycStatus !== 'Verified' || !userProfile.isSmartWalletBridgeEnabled) {
+                    console.log("Wallet Fallback disabled or unavailable for user.");
+                    throw new Error(upiFailureMessage); // Re-throw original UPI error
+                }
+                 const fallbackLimit = userProfile.smartWalletBridgeLimit || 0;
+                 if (amount > fallbackLimit) {
+                     console.log(`Amount ${amount} exceeds wallet fallback limit ${fallbackLimit}`);
+                     throw new Error(`${upiFailureMessage} Wallet fallback limit exceeded (₹${fallbackLimit}).`);
+                 }
+
+                const walletBalance = await getWalletBalance(finalUserId);
+                if (walletBalance < amount) {
+                    console.log(`Insufficient wallet balance (${walletBalance}) for fallback amount (${amount}).`);
+                    throw new Error(`${upiFailureMessage} Insufficient wallet balance for fallback.`);
+                }
+
+                const walletPaymentResult = await payViaWallet(finalUserId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`);
+
+                if (walletPaymentResult.success) {
+                    console.log("Payment successful via Wallet Fallback!");
+                    const recoveryScheduled = await scheduleRecovery(finalUserId, amount, recipientUpiId, sourceAccountUpiId);
+                    if (!recoveryScheduled) console.error("CRITICAL: Failed to schedule wallet recovery!");
+
+                    return {
+                        walletTransactionId: walletPaymentResult.transactionId,
+                        amount, recipientUpiId, status: 'FallbackSuccess',
+                        message: `Paid via Wallet (UPI Limit Exceeded). Recovery scheduled.`,
+                        usedWalletFallback: true,
+                    };
+                } else {
+                    throw new Error(`${upiFailureMessage} Wallet fallback also failed: ${walletPaymentResult.message}`);
+                }
+            } catch (fallbackError: any) {
+                console.error("Wallet Fallback process failed:", fallbackError.message);
+                 upiFailureMessage = fallbackError.message || upiFailureMessage; // Use fallback error if more specific
+                // Continue to final failure handling below
+            }
+        } // --- End Smart Wallet Bridge Logic ---
+
+        // --- Final Failure Handling ---
+        const failedTxnId = `TXN_UPI_FAILED_${Date.now()}`;
+        let ticketDetails: { ticketId?: string; refundEta?: string } = {};
+
+        if (mightBeDebited) {
+            ticketDetails.ticketId = `ZET_TKT_${Date.now()}`;
+            ticketDetails.refundEta = `Expected refund by ${format(addBusinessDays(new Date(), 3), 'PPP')}`;
+            console.log(`Generating ticket ${ticketDetails.ticketId} for potentially debited failed transaction.`);
+        }
+
+        // Log failed transaction regardless of reason
+        await addTransaction({
+            type: 'Failed',
+            name: await verifyUpiId(recipientUpiId).catch(() => recipientUpiId), // Get name if possible
+            description: `UPI Payment Failed - ${upiFailureMessage}`,
+            amount: -amount,
+            status: 'Failed',
+            userId: finalUserId,
+            upiId: recipientUpiId,
+            ticketId: ticketDetails.ticketId, // Add ticket info if generated
+            refundEta: ticketDetails.refundEta,
+        });
+
+        return {
+            transactionId: failedTxnId,
+            amount, recipientUpiId, status: 'Failed',
+            message: upiFailureMessage,
+            usedWalletFallback: false,
+            ...ticketDetails, // Add ticket details to result
+        };
     }
-
-  }
 }
-
 
 /**
  * Simulates fetching the status of a bank's UPI server.
@@ -366,11 +472,8 @@ export async function processUpiPayment(
  */
 export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
     console.log(`Checking server status for bank: ${bankIdentifier}`);
-    // TODO: Implement actual API call to a status monitoring service (e.g., NPCI feed, third-party provider)
     await new Promise(resolve => setTimeout(resolve, 200)); // Simulate short delay
-
-    // Mock status based on identifier for demo
-    if (bankIdentifier === 'okicici') return 'Down'; // Simulate ICICI down
-    if (bankIdentifier === 'okhdfcbank') return 'Slow'; // Simulate HDFC slow
-    return 'Active'; // Default to active
+    if (bankIdentifier === 'okicici') return 'Down';
+    if (bankIdentifier === 'okhdfcbank') return 'Slow';
+    return 'Active';
 }

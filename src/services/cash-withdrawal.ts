@@ -1,31 +1,42 @@
+
 /**
- * @fileOverview Service functions for cardless cash withdrawal at Zet Agents.
+ * @fileOverview Service functions for cardless cash withdrawal at Zet Agents using Firestore.
+ * Note: Actual agent verification, secure OTP/QR handling, and fund movement require backend integration.
  */
 
-import { addTransaction } from './transactions'; // For logging the withdrawal
-import { auth } from '@/lib/firebase'; // To get current user
+import { db, auth } from '@/lib/firebase';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
+import { addTransaction } from './transactions'; // For logging the withdrawal/hold
+import { getWalletBalance, payViaWallet } from './wallet'; // To check/hold balance potentially
+import { addDays, differenceInMinutes } from 'date-fns'; // For expiry calculation
 
 export interface ZetAgent {
-    id: string;
+    id: string; // Firestore document ID of the agent (if stored)
     name: string;
     address: string;
     distanceKm: number; // Calculated distance
-    operatingHours: string; // e.g., "9 AM - 8 PM"
-    // Add other relevant fields like current cash limit, transaction limits, etc.
+    operatingHours: string;
+    // Add other relevant fields like geo-location, current cash limit, etc.
 }
 
 export interface WithdrawalDetails {
-    transactionId: string;
+    id?: string; // Firestore document ID for the withdrawal request
+    userId: string;
     agentId: string;
+    agentName?: string; // Optional denormalized agent name
     amount: number;
-    otp: string; // One-Time Password for verification
-    qrData: string; // Data to be encoded in the QR code for agent scanning
-    expiresInSeconds: number; // How long the OTP/QR is valid
-    status: 'Pending Confirmation' | 'Completed' | 'Expired' | 'Cancelled';
+    otp: string;
+    qrData: string;
+    status: 'Pending Confirmation' | 'Completed' | 'Expired' | 'Cancelled' | 'Failed';
+    createdAt: Timestamp;
+    expiresAt: Timestamp;
+    completedAt?: Timestamp;
+    failureReason?: string;
 }
 
 /**
  * Asynchronously retrieves a list of nearby Zet Agent shops.
+ * SIMULATED: Uses mock data and calculates dummy distance.
  * @param latitude User's current latitude.
  * @param longitude User's current longitude.
  * @returns A promise that resolves to an array of ZetAgent objects sorted by distance.
@@ -35,80 +46,181 @@ export async function getNearbyAgents(latitude: number, longitude: number): Prom
     // TODO: Implement API call to backend service that queries agents based on location.
     await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
 
-    // Mock Data (calculate dummy distance based on fixed points)
-    const mockAgents: Omit<ZetAgent, 'distanceKm'>[] = [
+    const mockAgentsData = [
         { id: 'agent1', name: 'Ramesh Kirana Store', address: '123 MG Road, Bangalore', operatingHours: '8 AM - 9 PM' },
         { id: 'agent2', name: 'Sri Sai Telecom', address: '45 Main St, Koramangala', operatingHours: '9 AM - 8 PM' },
         { id: 'agent3', name: 'Pooja General Store', address: '78 Market Rd, Jayanagar', operatingHours: '7 AM - 10 PM' },
     ];
 
-    // Simple distance simulation
-    return mockAgents.map(agent => ({
+    return mockAgentsData.map(agent => ({
         ...agent,
-        distanceKm: Math.random() * 5 + 0.5 // Random distance between 0.5 and 5.5 km
+        distanceKm: parseFloat((Math.random() * 5 + 0.5).toFixed(1))
     })).sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
 /**
- * Initiates a cardless cash withdrawal request.
- * Generates OTP and QR data to be shown to the agent.
+ * Initiates a cardless cash withdrawal request in Firestore.
+ * Generates OTP and QR data. Places a temporary hold (simulated).
  * @param agentId The ID of the selected Zet Agent.
+ * @param agentName The name of the agent (for logging).
  * @param amount The amount to withdraw.
- * @returns A promise resolving to the WithdrawalDetails object.
+ * @returns A promise resolving to the WithdrawalDetails object (including the Firestore document ID).
+ * @throws Error if user is not logged in, balance is insufficient, or initiation fails.
  */
-export async function initiateWithdrawal(agentId: string, amount: number): Promise<WithdrawalDetails> {
+export async function initiateWithdrawal(agentId: string, agentName: string, amount: number): Promise<WithdrawalDetails> {
     const currentUser = auth.currentUser;
-    if (!currentUser) {
-        throw new Error("User not logged in.");
+    if (!currentUser) throw new Error("User not logged in.");
+    const userId = currentUser.uid;
+
+    console.log(`Initiating withdrawal of ₹${amount} at agent ${agentId} (${agentName}) for user ${userId}`);
+
+    // 1. Check User Balance (e.g., Wallet Balance)
+    const balance = await getWalletBalance(userId);
+    if (balance < amount) {
+        throw new Error(`Insufficient wallet balance (₹${balance.toFixed(2)}) to initiate withdrawal.`);
     }
-    console.log(`Initiating withdrawal of ₹${amount} at agent ${agentId} for user ${currentUser.uid}`);
-    // TODO: Implement API call to backend to:
-    // 1. Check user balance/limits.
-    // 2. Generate a secure OTP and transaction token.
-    // 3. Create a pending withdrawal record in the database.
-    // 4. Generate QR code data containing transaction details.
-    // 5. Start a timer/webhook for expiry.
-    // 6. Potentially place a hold on the user's balance.
 
-    await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
+    // TODO: Implement more robust limit checks (daily withdrawal limit, agent limit, etc.)
 
-    // Simulate success
-    const transactionId = `CW${Date.now()}`;
-    const otp = String(Math.floor(100000 + Math.random() * 900000)); // Generate 6-digit OTP
+    // Simulate placing a temporary hold on the balance (in a real app, use transactions)
+    console.log(`Simulating balance hold of ₹${amount} for user ${userId}`);
+    // await updateDoc(doc(db, 'wallets', userId), { balance: balance - amount }); // This is risky without transaction
+
+    // 2. Generate OTP & QR Data
+    const now = new Date();
+    const expiryMinutes = 5;
+    const expiresAt = addMinutes(now, expiryMinutes); // Use addMinutes from date-fns
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const transactionId = `CW_${Date.now()}_${userId.substring(0, 5)}`; // Unique enough for demo
     const qrData = `zetpay://cashwithdrawal?txn=${transactionId}&agent=${agentId}&amount=${amount}&otp=${otp}`; // Example QR data format
 
-    // Log the initiated withdrawal (as pending)
-    // Note: Status should ideally be updated by the backend upon agent confirmation
-     await addTransaction({
-         type: 'Sent', // Consider this as 'Sent' from user's perspective until confirmed
-         name: `Cash Withdrawal @ ${agentId}`, // Use agent ID or fetch name
-         description: `Pending Agent Confirmation - OTP: ${otp}`,
-         amount: -amount, // Negative amount
-         status: 'Pending', // Initial status is pending
-         userId: currentUser.uid,
-         // Add specific fields if needed for this transaction type
-     });
-
-
-    return {
-        transactionId: transactionId,
-        agentId: agentId,
-        amount: amount,
-        otp: otp,
-        qrData: qrData,
-        expiresInSeconds: 300, // 5 minutes validity
+    // 3. Create Withdrawal Request Document in Firestore
+    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt'> = {
+        userId,
+        agentId,
+        agentName,
+        amount,
+        otp,
+        qrData,
         status: 'Pending Confirmation',
+        expiresAt: Timestamp.fromDate(expiresAt),
     };
+
+    try {
+        const withdrawalColRef = collection(db, 'cashWithdrawals'); // Top-level collection for requests
+        const docRef = await addDoc(withdrawalColRef, {
+            ...withdrawalData,
+            createdAt: serverTimestamp(), // Use server timestamp
+        });
+        console.log("Withdrawal request created with ID:", docRef.id);
+
+        // Log the initiated withdrawal transaction (as pending)
+        await addTransaction({
+            type: 'Sent', // Funds are 'sent' to the agent initially
+            name: `Cash Withdrawal @ ${agentName}`,
+            description: `Pending Agent Confirmation (Txn: ${docRef.id})`,
+            amount: -amount,
+            status: 'Pending', // Match withdrawal status
+            userId: userId,
+            // Add specific fields like withdrawalRequestId: docRef.id
+        });
+
+        return {
+            id: docRef.id,
+            ...withdrawalData,
+            createdAt: Timestamp.now(), // Use client time for immediate return
+        } as WithdrawalDetails;
+
+    } catch (error) {
+        console.error("Error initiating withdrawal:", error);
+        // TODO: Rollback balance hold if implemented
+        throw new Error("Could not initiate cash withdrawal request.");
+    }
 }
 
-// Optional: Function to check the status of a withdrawal (e.g., poll or use WebSocket)
-export async function checkWithdrawalStatus(transactionId: string): Promise<WithdrawalDetails['status']> {
-     console.log(`Checking status for withdrawal: ${transactionId}`);
-     // TODO: Implement API call to check status
-     await new Promise(resolve => setTimeout(resolve, 500));
-     // Simulate status change
-     const random = Math.random();
-     if (random < 0.2) return 'Completed'; // 20% chance it's completed
-     if (random < 0.3) return 'Expired'; // 10% chance it expired
-     return 'Pending Confirmation'; // Otherwise still pending
+/**
+ * Checks the status of a specific withdrawal request in Firestore.
+ * @param withdrawalId The Firestore document ID of the withdrawal request.
+ * @returns A promise resolving to the current status of the withdrawal.
+ */
+export async function checkWithdrawalStatus(withdrawalId: string): Promise<WithdrawalDetails['status']> {
+     console.log(`Checking status for withdrawal: ${withdrawalId}`);
+     try {
+        const withdrawalDocRef = doc(db, 'cashWithdrawals', withdrawalId);
+        const withdrawalSnap = await getDoc(withdrawalDocRef);
+
+        if (!withdrawalSnap.exists()) {
+            throw new Error("Withdrawal request not found.");
+        }
+
+        const data = withdrawalSnap.data() as WithdrawalDetails;
+
+        // Check for expiry server-side (or client-side if reliable time sync)
+        if (data.status === 'Pending Confirmation' && Timestamp.now() > data.expiresAt) {
+             console.log(`Withdrawal ${withdrawalId} has expired. Updating status.`);
+             // Update status to Expired if it hasn't been completed/cancelled
+             // This should ideally be handled by a backend process checking expiry
+             await updateDoc(withdrawalDocRef, { status: 'Expired', failureReason: 'Timed out' });
+             // TODO: Release balance hold if implemented
+             return 'Expired';
+        }
+
+        return data.status;
+
+     } catch (error: any) {
+         console.error(`Error checking withdrawal status for ${withdrawalId}:`, error);
+         throw new Error(error.message || "Could not check withdrawal status.");
+     }
+}
+
+/**
+ * Cancels a pending cash withdrawal request.
+ * @param withdrawalId The Firestore document ID of the withdrawal request.
+ * @returns A promise resolving when cancellation is complete.
+ */
+export async function cancelWithdrawal(withdrawalId: string): Promise<void> {
+     const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not logged in.");
+    const userId = currentUser.uid;
+    console.log(`Cancelling withdrawal ${withdrawalId} for user ${userId}`);
+
+    try {
+        const withdrawalDocRef = doc(db, 'cashWithdrawals', withdrawalId);
+         // Use a transaction to ensure we only cancel if it's still pending
+         await runTransaction(db, async (transaction) => {
+             const withdrawalSnap = await transaction.get(withdrawalDocRef);
+             if (!withdrawalSnap.exists()) throw new Error("Withdrawal request not found.");
+
+             const data = withdrawalSnap.data() as WithdrawalDetails;
+             if (data.userId !== userId) throw new Error("Permission denied.");
+             if (data.status !== 'Pending Confirmation') throw new Error(`Cannot cancel request with status: ${data.status}`);
+
+             transaction.update(withdrawalDocRef, {
+                 status: 'Cancelled',
+                 failureReason: 'Cancelled by user',
+                 updatedAt: serverTimestamp()
+             });
+             // TODO: Release balance hold if implemented
+         });
+
+         // Update the corresponding transaction log status
+         // Find transaction linked to this withdrawal (assuming withdrawalId was stored)
+         // const q = query(collection(db, 'transactions'), where('withdrawalRequestId', '==', withdrawalId), limit(1));
+         // const txSnap = await getDocs(q);
+         // if (!txSnap.empty) {
+         //     await updateDoc(doc(db, 'transactions', txSnap.docs[0].id), { status: 'Cancelled' });
+         // }
+
+        console.log(`Withdrawal ${withdrawalId} cancelled successfully.`);
+
+    } catch (error: any) {
+         console.error(`Error cancelling withdrawal ${withdrawalId}:`, error);
+         throw new Error(error.message || "Could not cancel withdrawal.");
+    }
+}
+
+
+// Helper function (import from date-fns if available)
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60000);
 }

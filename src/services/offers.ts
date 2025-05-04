@@ -1,173 +1,369 @@
 
+/**
+ * @fileOverview Service functions for managing offers, loyalty, referrals, and scratch cards using Firestore.
+ */
+import { db, auth } from '@/lib/firebase';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    doc,
+    updateDoc,
+    deleteDoc,
+    getDoc,
+    orderBy,
+    limit,
+    serverTimestamp,
+    Timestamp,
+    writeBatch
+} from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 
-/**
- * Represents an offer or reward.
- */
+// --- Offer Interfaces ---
+
 export interface Offer {
-  /**
-   * The ID of the offer.
-   */
-  offerId: string;
-  /**
-   * A description of the offer.
-   */
+  id?: string; // Firestore document ID
+  offerId: string; // Your internal offer code or identifier
   description: string;
-  /**
-   * URL for the image associated with the offer.
-   */
   imageUrl: string;
-  /**
-   * The type of offer (e.g., Cashback, Coupon, Scratch Card, Discount).
-   */
-  offerType: string;
-  /**
-   * Optional terms and conditions string.
-   */
+  offerType: 'Cashback' | 'Coupon' | 'Discount' | 'Partner'; // More specific types
   terms?: string;
-  /**
-   * Optional validity date (ISO string).
-   */
-  validUntil?: string;
+  validUntil?: Timestamp; // Use Firestore Timestamp
+  category?: string; // e.g., 'Recharge', 'Shopping', 'Food'
+  isActive: boolean; // Flag to easily enable/disable offers
+  createdAt?: Timestamp;
 }
 
-// Keep the original mock data simple for the list view
-const mockOffersData: Offer[] = [
-    { offerId: 'cashback1', description: 'Flat ₹50 Cashback on Electricity Bill Payment over ₹500', imageUrl: 'https://picsum.photos/seed/elec_cb/400/200', offerType: 'Cashback', validUntil: addDays(new Date(), 10).toISOString() },
-    { offerId: 'coupon1', description: 'Get 20% off up to ₹150 on Movie Tickets', imageUrl: 'https://picsum.photos/seed/movie_coupon/400/200', offerType: 'Coupon', validUntil: addDays(new Date(), 7).toISOString() },
-    { offerId: 'cashback2', description: 'Upto ₹25 Cashback on Mobile Recharge ₹199+', imageUrl: 'https://picsum.photos/seed/recharge_cb/400/200', offerType: 'Cashback', validUntil: addDays(new Date(), 15).toISOString() },
-    { offerId: 'partner1', description: '10% off on Zomato Orders via PayFriend', imageUrl: 'https://picsum.photos/seed/zomato_offer/400/200', offerType: 'Discount', validUntil: addDays(new Date(), 30).toISOString() },
-    { offerId: 'coupon2', description: '₹100 OFF on Myntra Shopping over ₹1000', imageUrl: 'https://picsum.photos/seed/myntra_coupon/400/200', offerType: 'Coupon', validUntil: addDays(new Date(), 5).toISOString() },
-    { offerId: 'cashback3', description: '₹20 Cashback on first UPI Lite transaction', imageUrl: 'https://picsum.photos/seed/upilite_cb/400/200', offerType: 'Cashback', validUntil: addDays(new Date(), 60).toISOString() },
-];
+// Interface for user-specific claimed offer data
+export interface ClaimedOffer {
+    userId: string;
+    offerId: string; // The ID of the Offer document
+    claimedAt: Timestamp;
+    // Add other relevant details like transaction ID if claimed on purchase
+}
 
+
+// --- Loyalty Interfaces ---
+
+export interface LoyaltyStatus {
+    userId: string; // Firestore document ID (Auth UID)
+    points: number;
+    tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+    benefits: string[]; // Store current benefits (could also be derived from tier)
+    lastUpdated: Timestamp;
+}
+
+// --- Referral Interfaces ---
+
+export interface ReferralStatus {
+    userId: string; // Firestore document ID (Auth UID)
+    referralCode: string;
+    successfulReferrals: number; // Count of successful referrals
+    pendingReferrals: number; // Count of signups using code but not yet meeting criteria
+    totalEarnings: number; // Total cashback/points earned via referrals
+    // Store referred user IDs in a subcollection if needed
+}
+
+// --- Scratch Card Interfaces ---
+
+export interface ScratchCardData {
+    id?: string; // Firestore document ID
+    userId: string;
+    isScratched: boolean;
+    rewardAmount?: number;
+    expiryDate: Timestamp;
+    message: string; // Message before/after scratching
+    sourceOfferId?: string; // Optional: Link to the offer that generated this card
+    createdAt: Timestamp;
+    scratchedAt?: Timestamp;
+}
+
+// --- Service Functions ---
 
 /**
- * Asynchronously retrieves a list of available offers.
+ * Asynchronously retrieves a list of active offers from Firestore.
  *
  * @returns A promise that resolves to an array of Offer objects.
  */
 export async function getOffers(): Promise<Offer[]> {
-  console.log("Fetching all offers...");
-  // TODO: Implement this by calling an API.
-  await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API delay
-  return mockOffersData;
+  console.log("Fetching active offers from Firestore...");
+  try {
+      const offersColRef = collection(db, 'offers');
+      const q = query(offersColRef,
+          where('isActive', '==', true), // Only get active offers
+          where('validUntil', '>=', Timestamp.now()), // Only get non-expired offers
+          orderBy('validUntil', 'asc') // Show soon-to-expire first
+      );
+      const querySnapshot = await getDocs(q);
+      const offers = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          validUntil: doc.data().validUntil ? (doc.data().validUntil as Timestamp).toDate() : undefined, // Convert for display if needed
+          createdAt: doc.data().createdAt ? (doc.data().createdAt as Timestamp).toDate() : undefined,
+      } as Offer));
+      console.log(`Fetched ${offers.length} active offers.`);
+      return offers;
+  } catch (error) {
+      console.error("Error fetching offers:", error);
+      throw new Error("Could not fetch available offers.");
+  }
 }
 
 /**
- * Asynchronously retrieves the details for a specific offer.
+ * Asynchronously retrieves the details for a specific offer from Firestore.
  *
- * @param offerId The ID of the offer to retrieve.
- * @returns A promise that resolves to the Offer object with details, or null if not found.
+ * @param offerId The Firestore document ID of the offer.
+ * @returns A promise that resolves to the Offer object or null if not found.
  */
 export async function getOfferDetails(offerId: string): Promise<Offer | null> {
     console.log(`Fetching details for offer: ${offerId}`);
-    // TODO: Implement API call to fetch specific offer details.
-    await new Promise(resolve => setTimeout(resolve, 400)); // Simulate API delay
+    try {
+        const offerDocRef = doc(db, 'offers', offerId);
+        const offerDocSnap = await getDoc(offerDocRef);
 
-    const baseOffer = mockOffersData.find(o => o.offerId === offerId);
-    if (!baseOffer) return null;
-
-    // Add mock details for the specific offer
-    const mockTerms = `1. Offer valid for PayFriend users only.\n2. Minimum transaction amount might apply.\n3. Offer valid once per user during the offer period.\n4. Cashback/Discount will be processed within 48 hours.\n5. PayFriend reserves the right to modify or withdraw the offer.`;
-    const details = {
-        ...baseOffer,
-        terms: mockTerms,
-        // validity is already in baseOffer, we just ensure it's there
-        validUntil: baseOffer.validUntil || addDays(new Date(), 7).toISOString(), // Add default expiry if missing
-    };
-
-    return details;
+        if (offerDocSnap.exists()) {
+             const data = offerDocSnap.data();
+             return {
+                 id: offerDocSnap.id,
+                 ...data,
+                 validUntil: data.validUntil ? (data.validUntil as Timestamp).toDate() : undefined,
+                 createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : undefined,
+             } as Offer;
+        } else {
+            console.log("Offer document not found:", offerId);
+            return null;
+        }
+    } catch (error) {
+        console.error("Error fetching offer details:", error);
+        throw new Error("Could not fetch offer details.");
+    }
 }
 
-
-// ----- Loyalty & Referral (Conceptual) -----
-
-export interface LoyaltyStatus {
-    points: number;
-    tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
-    benefits: string[];
-}
-
-export interface ReferralStatus {
-    referralCode: string;
-    successfulReferrals: number;
-    pendingReferrals: number;
-    totalEarnings: number;
-}
 
 /**
- * Fetches the user's current loyalty status and points.
+ * Claims an offer for the current user. (Simulated for now)
+ * In a real app, this might add a record to a 'claimedOffers' subcollection for the user.
+ *
+ * @param offerId The ID of the offer to claim.
+ * @returns A promise resolving to true if claim is recorded (simulated).
  */
-export async function getLoyaltyStatus(): Promise<LoyaltyStatus> {
-    console.log("Fetching loyalty status...");
-    await new Promise(resolve => setTimeout(resolve, 600));
-    // Mock data
-    return {
-        points: 1250,
-        tier: 'Silver',
-        benefits: ['Exclusive cashback offers', 'Priority customer support'],
-    };
+export async function claimOffer(offerId: string): Promise<boolean> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not logged in.");
+    const userId = currentUser.uid;
+    console.log(`Simulating claiming offer ${offerId} for user ${userId}`);
+
+    // TODO: Check if offer exists and is claimable
+    // TODO: Check if user has already claimed this offer
+
+    // Simulate adding a record to user's claimed offers
+    // const claimData: ClaimedOffer = { userId, offerId, claimedAt: serverTimestamp() };
+    // await addDoc(collection(db, 'users', userId, 'claimedOffers'), claimData);
+
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate backend operation
+    console.log(`Offer ${offerId} claimed (simulated).`);
+    return true;
 }
 
 /**
- * Fetches the user's referral status and code.
+ * Fetches the user's current loyalty status from Firestore.
+ * Creates a default status if none exists.
+ * @param userId The user's ID.
+ * @returns A promise resolving to the LoyaltyStatus object.
  */
-export async function getReferralStatus(): Promise<ReferralStatus> {
-     console.log("Fetching referral status...");
-     await new Promise(resolve => setTimeout(resolve, 500));
-     // Mock data
-     return {
-        referralCode: 'PAYFRND123',
-        successfulReferrals: 5,
-        pendingReferrals: 2,
-        totalEarnings: 250,
-     };
-}
+export async function getLoyaltyStatus(userId?: string): Promise<LoyaltyStatus> {
+     const currentUserId = userId || auth.currentUser?.uid;
+     if (!currentUserId) throw new Error("User ID required.");
+     console.log(`Fetching loyalty status for user ${currentUserId}...`);
 
-// ----- Scratch Cards (Conceptual) -----
+     try {
+         const loyaltyDocRef = doc(db, 'loyaltyStatus', currentUserId); // Store in top-level collection
+         const loyaltyDocSnap = await getDoc(loyaltyDocRef);
 
-export interface ScratchCardData {
-    id: string;
-    isScratched: boolean;
-    rewardAmount?: number; // Amount won, undefined until scratched
-    expiryDate: string; // ISO Date
-    message: string; // e.g., "Cashback Reward", "Better Luck Next Time"
+         if (loyaltyDocSnap.exists()) {
+             const data = loyaltyDocSnap.data();
+             return {
+                 ...data,
+                 userId: currentUserId,
+                 lastUpdated: (data.lastUpdated as Timestamp).toDate(),
+             } as LoyaltyStatus;
+         } else {
+             // Create default Bronze status
+             const defaultStatus: Omit<LoyaltyStatus, 'lastUpdated'> = {
+                 userId: currentUserId,
+                 points: 0,
+                 tier: 'Bronze',
+                 benefits: ['Basic Cashback Offers'],
+             };
+             await setDoc(loyaltyDocRef, {
+                 ...defaultStatus,
+                 lastUpdated: serverTimestamp()
+             });
+             return { ...defaultStatus, lastUpdated: new Date() };
+         }
+     } catch (error) {
+         console.error("Error fetching/creating loyalty status:", error);
+         throw new Error("Could not fetch loyalty status.");
+     }
 }
 
 /**
- * Fetches available scratch cards for the user.
+ * Fetches the user's referral status from Firestore.
+ * Creates a default status if none exists.
+ * @param userId The user's ID.
+ * @returns A promise resolving to the ReferralStatus object.
+ */
+export async function getReferralStatus(userId?: string): Promise<ReferralStatus> {
+     const currentUserId = userId || auth.currentUser?.uid;
+     if (!currentUserId) throw new Error("User ID required.");
+     console.log(`Fetching referral status for user ${currentUserId}...`);
+
+      try {
+         const referralDocRef = doc(db, 'referralStatus', currentUserId); // Store in top-level collection
+         const referralDocSnap = await getDoc(referralDocRef);
+
+         if (referralDocSnap.exists()) {
+             return { userId: currentUserId, ...referralDocSnap.data() } as ReferralStatus;
+         } else {
+             // Create default status with a generated code
+             const defaultStatus: ReferralStatus = {
+                 userId: currentUserId,
+                 referralCode: `ZET${currentUserId.substring(0, 6).toUpperCase()}`, // Example code generation
+                 successfulReferrals: 0,
+                 pendingReferrals: 0,
+                 totalEarnings: 0,
+             };
+             await setDoc(referralDocRef, defaultStatus);
+             return defaultStatus;
+         }
+     } catch (error) {
+         console.error("Error fetching/creating referral status:", error);
+         throw new Error("Could not fetch referral status.");
+     }
+}
+
+/**
+ * Fetches available (unscratched) scratch cards for the user from Firestore.
+ * @returns A promise resolving to an array of ScratchCardData objects.
  */
 export async function getScratchCards(): Promise<ScratchCardData[]> {
-    console.log("Fetching scratch cards...");
-    await new Promise(resolve => setTimeout(resolve, 700));
-    // Mock data
-    return [
-        { id: 'sc1', isScratched: false, expiryDate: addDays(new Date(), 3).toISOString(), message: "Scratch to win cashback!" },
-        { id: 'sc2', isScratched: true, rewardAmount: 15, expiryDate: addDays(new Date(), -1).toISOString(), message: "You won ₹15 Cashback!" },
-        { id: 'sc3', isScratched: false, expiryDate: addDays(new Date(), 5).toISOString(), message: "Win up to ₹100!" },
-    ];
+     const currentUser = auth.currentUser;
+     if (!currentUser) return [];
+     const userId = currentUser.uid;
+     console.log(`Fetching scratch cards for user ${userId}...`);
+
+     try {
+         const cardsColRef = collection(db, 'scratchCards');
+         const q = query(cardsColRef,
+             where('userId', '==', userId),
+            // where('isScratched', '==', false), // Optionally fetch only unscratched
+             where('expiryDate', '>=', Timestamp.now()), // Only non-expired
+             orderBy('expiryDate', 'asc') // Show soon-to-expire first
+         );
+         const querySnapshot = await getDocs(q);
+         const cards = querySnapshot.docs.map(doc => ({
+             id: doc.id,
+             ...doc.data(),
+             expiryDate: (doc.data().expiryDate as Timestamp).toDate(),
+             createdAt: (doc.data().createdAt as Timestamp).toDate(),
+             scratchedAt: doc.data().scratchedAt ? (doc.data().scratchedAt as Timestamp).toDate() : undefined,
+         } as ScratchCardData));
+         console.log(`Fetched ${cards.length} scratch cards.`);
+         return cards;
+     } catch (error) {
+         console.error("Error fetching scratch cards:", error);
+         throw new Error("Could not fetch scratch cards.");
+     }
 }
 
 /**
- * Simulates scratching a card and reveals the reward.
- * @param cardId The ID of the card to scratch.
+ * Simulates scratching a card, reveals reward, and updates status in Firestore.
+ * @param cardId The Firestore document ID of the card to scratch.
+ * @returns A promise resolving to the updated ScratchCardData (with reward).
  */
-export async function scratchCard(cardId: string): Promise<Omit<ScratchCardData, 'isScratched'>> {
-     console.log(`Scratching card: ${cardId}`);
-     await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate scratching delay
+export async function scratchCard(cardId: string): Promise<ScratchCardData> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not logged in.");
+    const userId = currentUser.uid;
+    console.log(`Scratching card: ${cardId} for user ${userId}`);
 
-     // Find the card to update (in real app, this happens backend)
-     const cardIndex = -1; // This needs state management or refetching in real UI
-     // For simulation, generate a random reward
-     const wonAmount = Math.random() > 0.3 ? Math.floor(Math.random() * 50) + 5 : 0; // 70% chance to win 5-55
+    const cardDocRef = doc(db, 'scratchCards', cardId);
 
-     const result = {
-         id: cardId,
-         rewardAmount: wonAmount > 0 ? wonAmount : undefined,
-         expiryDate: addDays(new Date(), 3).toISOString(), // Assume expiry remains same for demo
-         message: wonAmount > 0 ? `You won ₹${wonAmount} Cashback!` : "Better luck next time!",
+    try {
+        let updatedCardData: Partial<ScratchCardData> | null = null;
+
+        await runTransaction(db, async (transaction) => {
+             const cardDoc = await transaction.get(cardDocRef);
+             if (!cardDoc.exists()) throw new Error("Scratch card not found.");
+
+             const cardData = cardDoc.data() as ScratchCardData;
+             if (cardData.userId !== userId) throw new Error("Permission denied.");
+             if (cardData.isScratched) throw new Error("Card already scratched.");
+             if (Timestamp.now() > cardData.expiryDate) throw new Error("Scratch card has expired.");
+
+            // Simulate reward generation
+            const wonAmount = Math.random() > 0.3 ? Math.floor(Math.random() * 50) + 5 : 0;
+            const message = wonAmount > 0 ? `You won ₹${wonAmount} Cashback!` : "Better luck next time!";
+
+            updatedCardData = {
+                isScratched: true,
+                rewardAmount: wonAmount > 0 ? wonAmount : undefined,
+                message: message,
+                scratchedAt: serverTimestamp() as Timestamp, // Use server timestamp
+            };
+
+            transaction.update(cardDocRef, updatedCardData);
+
+            // TODO: If cashback is won, credit the user's wallet or add to pending cashback balance here within the transaction.
+            if (wonAmount > 0) {
+                 console.log(`TODO: Credit ₹${wonAmount} to user ${userId}'s wallet/cashback balance.`);
+                 // Example: const walletRef = doc(db, 'wallets', userId);
+                 // const walletSnap = await transaction.get(walletRef);
+                 // const currentBalance = walletSnap.data()?.balance || 0;
+                 // transaction.update(walletRef, { balance: currentBalance + wonAmount });
+            }
+         });
+
+        // Fetch the updated document to return the complete data with resolved timestamps
+        const finalCardSnap = await getDoc(cardDocRef);
+        if (!finalCardSnap.exists() || !updatedCardData) throw new Error("Failed to retrieve updated card data."); // Should not happen
+
+         const finalData = finalCardSnap.data();
+         return {
+             id: finalCardSnap.id,
+             ...finalData,
+             expiryDate: (finalData.expiryDate as Timestamp).toDate(),
+             createdAt: (finalData.createdAt as Timestamp).toDate(),
+             scratchedAt: finalData.scratchedAt ? (finalData.scratchedAt as Timestamp).toDate() : undefined,
+         } as ScratchCardData;
+
+
+    } catch (error: any) {
+        console.error(`Error scratching card ${cardId}:`, error);
+        throw new Error(error.message || "Could not scratch the card.");
+    }
+}
+
+// Helper: Give a user a new scratch card (e.g., after a specific action)
+export async function giveScratchCard(userId: string, message: string, expiryDays: number = 7, sourceOfferId?: string): Promise<void> {
+     if (!userId) return;
+     console.log(`Giving scratch card to user ${userId}: ${message}`);
+     const cardData = {
+        userId,
+        isScratched: false,
+        rewardAmount: undefined,
+        expiryDate: Timestamp.fromDate(addDays(new Date(), expiryDays)),
+        message,
+        sourceOfferId: sourceOfferId || null,
+        createdAt: serverTimestamp(),
+        scratchedAt: null,
+     };
+     try {
+         await addDoc(collection(db, 'scratchCards'), cardData);
+         console.log("Scratch card added for user", userId);
+     } catch (error) {
+         console.error("Error giving scratch card:", error);
      }
-     // TODO: Update the card status in the backend/state
-     return result;
 }

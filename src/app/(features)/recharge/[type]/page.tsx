@@ -1,4 +1,5 @@
 
+      
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -10,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban } from 'lucide-react'; // Added Lock, AlarmClockOff, Ban
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus, mockDthPlans, cancelRecharge as cancelRechargeService } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService
+import { getBillers, Biller, RechargePlan, getRechargeHistory, RechargeHistoryEntry, mockRechargePlans, processRecharge, scheduleRecharge, checkActivationStatus, mockDthPlans, cancelRechargeService } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator'; // Import Separator
 import { getWalletBalance } from '@/services/wallet'; // Import wallet balance service
 import { getBankStatus } from '@/services/upi'; // Import bank status service
+import { Transaction } from '@/services/transactions'; // Import Transaction for history type check
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
@@ -108,7 +110,7 @@ export default function RechargePage() {
   const [plansToCompare, setPlansToCompare] = useState<RechargePlan[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [showTariffModal, setShowTariffModal] = useState<RechargePlan | null>(null);
-  const [rechargeHistory, setRechargeHistory] = useState<RechargeHistoryEntry[]>([]);
+  const [rechargeHistory, setRechargeHistory] = useState<Transaction[]>([]); // Use Transaction interface
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [couponCode, setCouponCode] = useState('');
@@ -279,7 +281,7 @@ export default function RechargePage() {
         if (result.status === 'Completed' || result.status === 'Processing Activation') {
              toast({
                 title: "Recharge Successful",
-                description: `Recharge of ₹${amount} for ${identifier} (${selectedBillerName || 'Selected Operator'}) processed. Status: ${result.status}. Transaction ID: ${result.transactionId}`,
+                description: `Recharge of ₹${amount} for ${identifier} (${selectedBillerName || 'Selected Operator'}) processed. Status: ${result.status}. Transaction ID: ${result.id}`,
                 duration: 5000,
              });
              setAmount('');
@@ -288,19 +290,20 @@ export default function RechargePage() {
              fetchHistory(identifier); // Refresh history
              if(result.status === 'Processing Activation') {
                 // Start polling for activation status
-                pollActivationStatus(result.transactionId);
+                pollActivationStatus(result.id);
              }
              // Optionally redirect after success
              // router.push('/history');
         } else if (result.status === 'Pending') {
              toast({
                 title: "Recharge Pending",
-                description: `Recharge of ₹${amount} for ${identifier} is pending confirmation. Transaction ID: ${result.transactionId}`,
+                description: `Recharge of ₹${amount} for ${identifier} is pending confirmation. Transaction ID: ${result.id}`,
                 duration: 5000,
              });
              // Keep form state, maybe show pending status near the button
         } else { // Failed status
-             throw new Error(`Recharge ${result.status || 'Failed'}`);
+            // The error message from processRecharge will be used
+            throw new Error(`Recharge ${result.status || 'Failed'}`);
         }
 
     } catch (err: any) {
@@ -556,15 +559,15 @@ export default function RechargePage() {
     }
   };
 
-  const handleQuickRecharge = (entry: RechargeHistoryEntry) => {
+  const handleQuickRecharge = (entry: Transaction) => { // Changed type to Transaction
     if (entry.billerId && entry.amount) {
-      setIdentifier(entry.identifier); // Set the identifier from history
+      setIdentifier(entry.upiId || ''); // Use upiId as identifier
       setSelectedBiller(entry.billerId);
-      setAmount(entry.amount.toString());
+      setAmount(Math.abs(entry.amount).toString()); // Use absolute value
       // Attempt to find matching plan based on amount and potentially description
-       const plan = rechargePlans.find(p => p.price === entry.amount && (!entry.planDescription || p.description.includes(entry.planDescription))) || null;
+       const plan = rechargePlans.find(p => p.price === Math.abs(entry.amount) && (!entry.description || p.description.includes(entry.description))) || null;
       setSelectedPlan(plan);
-      toast({ title: "Details Filled", description: `Recharging ₹${entry.amount} for ${entry.identifier}` });
+      toast({ title: "Details Filled", description: `Recharging ₹${Math.abs(entry.amount)} for ${entry.upiId}` });
       setShowHistory(false);
        // Auto-detect operator based on billerId if needed
         const biller = billers.find(b => b.billerId === entry.billerId);
@@ -781,36 +784,36 @@ export default function RechargePage() {
                     {rechargeHistory.map((entry) => {
                          const canCancelEntry = entry.status === 'Completed' || entry.status === 'Processing Activation'; // Add other cancellable statuses if needed
                         return (
-                            <div key={entry.transactionId} className="flex justify-between items-center p-2 border-b last:border-b-0">
+                            <div key={entry.id} className="flex justify-between items-center p-2 border-b last:border-b-0">
                                 <div>
-                                    <p className="text-sm font-medium">₹{entry.amount}{entry.planDescription ? ` (${entry.planDescription})` : ''}</p>
+                                    <p className="text-sm font-medium">₹{Math.abs(entry.amount)}{entry.description ? ` (${entry.description.split('-')[0].trim()})` : ''}</p> {/* Simplified description */}
                                     <p className="text-xs text-muted-foreground">
                                         {format(entry.date, 'PPp')} - Status: {entry.status}
-                                        {checkingActivationTxnId === entry.transactionId && <Loader2 className="inline ml-1 h-3 w-3 animate-spin"/>}
+                                        {checkingActivationTxnId === entry.id && <Loader2 className="inline ml-1 h-3 w-3 animate-spin"/>}
                                     </p>
                                 </div>
                                 <div className="flex gap-1">
-                                    <Button size="xs" variant="outline" onClick={() => handleQuickRecharge(entry)} disabled={checkingActivationTxnId === entry.transactionId}>
+                                    <Button size="xs" variant="outline" onClick={() => handleQuickRecharge(entry)} disabled={checkingActivationTxnId === entry.id}>
                                         Recharge Again
                                     </Button>
                                      {/* Cancel Button */}
                                      {canCancelEntry && (
                                         <AlertDialog>
                                              <AlertDialogTrigger asChild>
-                                                <Button size="xs" variant="destructive" disabled={isCancelling === entry.transactionId}>
-                                                     {isCancelling === entry.transactionId ? <Loader2 className="h-3 w-3 animate-spin"/> : <Ban className="h-3 w-3"/>}
+                                                <Button size="xs" variant="destructive" disabled={isCancelling === entry.id}>
+                                                     {isCancelling === entry.id ? <Loader2 className="h-3 w-3 animate-spin"/> : <Ban className="h-3 w-3"/>}
                                                  </Button>
                                              </AlertDialogTrigger>
                                              <AlertDialogContent>
                                                  <AlertDialogHeader>
                                                      <AlertDialogTitle>Cancel Recharge?</AlertDialogTitle>
                                                      <AlertDialogDescription>
-                                                         Attempt to cancel recharge of ₹{entry.amount} from {format(entry.date, 'PPp')}? Cancellation is not guaranteed.
+                                                         Attempt to cancel recharge of ₹{Math.abs(entry.amount)} from {format(entry.date, 'PPp')}? Cancellation is not guaranteed.
                                                      </AlertDialogDescription>
                                                  </AlertDialogHeader>
                                                  <AlertDialogFooter>
                                                      <AlertDialogCancel>Close</AlertDialogCancel>
-                                                     <AlertDialogAction onClick={() => handleCancelRecharge(entry.transactionId)} className="bg-destructive hover:bg-destructive/90">Request Cancellation</AlertDialogAction>
+                                                     <AlertDialogAction onClick={() => handleCancelRecharge(entry.id)} className="bg-destructive hover:bg-destructive/90">Request Cancellation</AlertDialogAction>
                                                  </AlertDialogFooter>
                                              </AlertDialogContent>
                                          </AlertDialog>
@@ -870,7 +873,7 @@ export default function RechargePage() {
 
 
         {/* Plan Browser Section */}
-         {selectedBiller && rechargePlans.length > 0 && ( // Show only if plans are available for the selected biller
+         {selectedBiller && ( // Show only if an operator is selected (auto or manual)
                 <Card className="shadow-md">
                     <CardHeader className="pb-2">
                         <div className="flex items-start justify-between flex-wrap gap-2">
@@ -1196,3 +1199,24 @@ export default function RechargePage() {
     </div>
   );
 }
+
+// Mock API calls (replace with actual fetch/axios calls)
+async function getBillers_mock(billerType: string): Promise<Biller[]> {
+  console.log(`Fetching billers for type: ${billerType}`);
+  await new Promise(resolve => setTimeout(resolve, 300)); // Simulate delay
+  const mockData: { [key: string]: Biller[] } = {
+    Mobile: [
+      { billerId: 'airtel-prepaid', billerName: 'Airtel Prepaid', billerType: 'Mobile', logoUrl: '/logos/airtel.png' },
+      { billerId: 'jio-prepaid', billerName: 'Jio Prepaid', billerType: 'Mobile', logoUrl: '/logos/jio.png' },
+      // ... more mobile operators
+    ],
+    DTH: [
+      { billerId: 'tata-play', billerName: 'Tata Play (Tata Sky)', billerType: 'DTH', logoUrl: '/logos/tataplay.png' },
+      // ... more DTH operators
+    ],
+    // ... other types
+  };
+  return mockData[billerType] || [];
+}
+
+    

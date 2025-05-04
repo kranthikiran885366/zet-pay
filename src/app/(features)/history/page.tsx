@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Input } from "@/components/ui/input";
+import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Filter, Calendar as CalendarIcon, ArrowUpDown, CheckCircle, XCircle, Clock, Loader2, Search, Ban } from 'lucide-react'; // Added Ban icon
 import Link from 'next/link';
@@ -23,7 +23,7 @@ const statusIcons = {
   Completed: <CheckCircle className="h-4 w-4 text-green-600" />,
   Pending: <Clock className="h-4 w-4 text-yellow-600" />,
   Failed: <XCircle className="h-4 w-4 text-destructive" />,
-  Processing Activation: <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
+  'Processing Activation': <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
   Cancelled: <Ban className="h-4 w-4 text-muted-foreground" />, // Added Cancelled status
 };
 
@@ -66,9 +66,8 @@ export default function HistoryPage() {
           };
 
           unsubscribe = subscribeToTransactionHistory(
-              (transactions) => {
-                  // The filtering (including search) is now handled by the subscription service
-                  setAllTransactions(transactions);
+              (fetchedTransactions) => {
+                  setAllTransactions(fetchedTransactions);
                   setIsLoading(false);
               },
               (error) => {
@@ -117,11 +116,11 @@ export default function HistoryPage() {
        const groups: { [key: string]: Transaction[] } = {};
        const today = new Date(); today.setHours(0,0,0,0);
        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-
+       
        txs.forEach(tx => {
            const txDate = new Date(tx.date); txDate.setHours(0,0,0,0);
            let dateKey: string;
-
+           
            if (txDate.getTime() === today.getTime()) {
                dateKey = "Today";
            } else if (txDate.getTime() === yesterday.getTime()) {
@@ -129,7 +128,7 @@ export default function HistoryPage() {
            } else {
                dateKey = format(tx.date, "MMMM d, yyyy");
            }
-
+            
            if (!groups[dateKey]) {
                groups[dateKey] = [];
            }
@@ -194,7 +193,7 @@ export default function HistoryPage() {
                 className="pl-8 w-full h-9"
             />
          </div>
-
+         
          <div className="flex flex-wrap gap-2">
              {/* Type Filter */}
              <Select value={filterType} onValueChange={setFilterType}>
@@ -223,7 +222,7 @@ export default function HistoryPage() {
                        <SelectItem value="Cancelled">Cancelled</SelectItem> {/* Added Cancelled Type */}
                 </SelectContent>
              </Select>
-
+             
              {/* Status Filter */}
              <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="h-9 w-full sm:w-[160px]">
@@ -238,7 +237,7 @@ export default function HistoryPage() {
                      <SelectItem value="Cancelled">Cancelled</SelectItem> {/* Added Cancelled Status */}
                 </SelectContent>
              </Select>
-
+ 
               {/* Date Range Picker */}
                <Popover>
                 <PopoverTrigger asChild>
@@ -276,19 +275,19 @@ export default function HistoryPage() {
                   />
                 </PopoverContent>
               </Popover>
-
+             
              {/* Sort Toggle */}
              <Button variant="outline" size="sm" onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')} className="h-9 w-full sm:w-auto">
                 <ArrowUpDown className="mr-2 h-4 w-4" />
                 Sort: {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
             </Button>
-
+             
              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs w-full sm:w-auto">
                Clear Filters
              </Button>
         </div>
       </div>
-
+ 
       {/* Transaction List */}
       <main className="flex-grow p-4 space-y-4 pb-20"> {/* Added pb-20 */}
          {isLoading && isLoggedIn !== false && ( // Only show loader if logged in or status unknown
@@ -296,7 +295,7 @@ export default function HistoryPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>
          )}
-
+ 
           {!isLoading && isLoggedIn === false && ( // Message if logged out
             <Card className="shadow-md text-center">
                 <CardContent className="p-6">
@@ -305,7 +304,7 @@ export default function HistoryPage() {
                 </CardContent>
             </Card>
           )}
-
+ 
         {!isLoading && isLoggedIn && Object.keys(groupedTransactions).length === 0 && (
             <Card className="shadow-md text-center">
                 <CardContent className="p-6">
@@ -316,20 +315,14 @@ export default function HistoryPage() {
                 </CardContent>
             </Card>
         )}
-
+ 
          {!isLoading && isLoggedIn && Object.entries(groupedTransactions).map(([dateKey, txs]) => (
             <div key={dateKey}>
                  <h2 className="text-sm font-semibold text-muted-foreground mb-2 px-1">{dateKey}</h2>
                  <Card className="shadow-md overflow-hidden">
                     <CardContent className="p-0 divide-y divide-border">
-                        {txs.map((tx) => {
-                            const minutesSinceTransaction = differenceInMinutes(new Date(), tx.date);
-                            const isRecharge = tx.type === 'Recharge'; // Check if it's a recharge type
-                             // Allow cancellation only for recent (e.g., < 30 mins) completed/processing recharges
-                            const canCancel = isRecharge && (tx.status === 'Completed' || tx.status === 'Processing Activation') && minutesSinceTransaction < 30;
-
-                           return (
-                                <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
+                        {txs.map((tx) => (
+                             <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
                                 <div className="flex items-center gap-3 overflow-hidden">
                                     <Avatar className="h-9 w-9 flex-shrink-0">
                                         <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="transaction related avatar"/>
@@ -338,42 +331,16 @@ export default function HistoryPage() {
                                     <div className="flex-grow overflow-hidden">
                                         <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
                                         <p className="text-xs text-muted-foreground truncate">{tx.description} <span className="text-xs">· {format(tx.date, "p")}</span></p>
-                                        {/* Add Cancel Button conditionally */}
-                                        {canCancel && (
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button variant="destructive" size="xs" className="mt-1 h-5 px-1.5 text-[10px]" disabled={isCancelling === tx.id}>
-                                                        {isCancelling === tx.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Ban className="h-3 w-3 mr-1"/>} Cancel
-                                                    </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>Cancel Recharge?</AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                            Are you sure you want to cancel this recharge of ₹{Math.abs(tx.amount).toFixed(2)} for {tx.name}? This can only be done shortly after the transaction.
-                                                        </AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Keep Recharge</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleCancelRecharge(tx.id)} className="bg-destructive hover:bg-destructive/90">Confirm Cancel</AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right flex-shrink-0 ml-2">
-                                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : tx.status === 'Cancelled' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
                                         {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(2)}
                                     </p>
-                                    <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                                        {statusIcons[tx.status as keyof typeof statusIcons] || <Clock className="h-4 w-4 text-muted-foreground" />}
-                                        <span>{tx.status}</span>
-                                    </div>
+                                    <p className="text-xs text-muted-foreground">{tx.status}</p>
                                 </div>
-                                </div>
-                           );
-                        })}
+                             </div>
+                        ))}
                     </CardContent>
                  </Card>
             </div>
@@ -382,4 +349,3 @@ export default function HistoryPage() {
     </div>
   );
 }
-

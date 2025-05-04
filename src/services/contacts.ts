@@ -3,7 +3,22 @@
  * @fileOverview Service functions for managing user contacts/payees in Firestore.
  */
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, orderBy, limit, onSnapshot, Unsubscribe, getDoc } from 'firebase/firestore'; // Added getDoc, onSnapshot, Unsubscribe
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    doc,
+    updateDoc,
+    deleteDoc,
+    orderBy,
+    limit,
+    onSnapshot, // Import for real-time updates
+    Unsubscribe,
+    getDoc,
+    QueryConstraint // Import QueryConstraint
+} from 'firebase/firestore';
 import { getUserProfileById } from './user'; // To potentially fetch full payee details
 
 // Interface remains the same
@@ -21,69 +36,23 @@ export interface Payee {
 }
 
 /**
- * Asynchronously retrieves a list of the current user's saved contacts/payees from Firestore.
- * Optionally filters by search term. Performs a one-time fetch.
- *
- * @param searchTerm Optional search term to filter contacts by name or identifier.
- * @returns A promise that resolves to an array of Payee objects.
- */
-export async function getContacts(searchTerm?: string): Promise<Payee[]> {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    console.log("No user logged in to get contacts.");
-    return [];
-  }
-  const userId = currentUser.uid;
-
-  console.log(`Fetching contacts for user ${userId} ${searchTerm ? `matching "${searchTerm}"` : ''}`);
-
-  try {
-    const contactsColRef = collection(db, 'users', userId, 'contacts');
-    let q = query(contactsColRef, orderBy('name')); // Default sort by name
-
-    // Note: Firestore requires composite indexes for queries involving multiple different fields (e.g., filtering by name OR identifier).
-    // For simplicity, this example searches only by name prefix if a search term is provided.
-    // A more robust solution might involve a dedicated search index (like Algolia) or client-side filtering after fetching.
-    if (searchTerm) {
-        const lowerCaseSearch = searchTerm.toLowerCase();
-        // Simple prefix search on name (case-insensitive requires workaround or different DB)
-        // This query might need adjustments based on exact search needs and Firestore limitations.
-        // q = query(contactsColRef, where('name', '>=', searchTerm), where('name', '<=', searchTerm + '\uf8ff'));
-        // Client-side filtering is easier for mock/simple cases:
-         const allContactsSnap = await getDocs(q);
-         const allContacts = allContactsSnap.docs.map(doc => ({ id: doc.id, userId, ...doc.data() } as Payee));
-         return allContacts.filter(payee =>
-            payee.name.toLowerCase().includes(lowerCaseSearch) ||
-            payee.identifier.toLowerCase().includes(lowerCaseSearch) ||
-            payee.upiId?.toLowerCase().includes(lowerCaseSearch)
-         );
-    }
-
-    const querySnapshot = await getDocs(q);
-    const contacts = querySnapshot.docs.map(doc => ({ id: doc.id, userId, ...doc.data() } as Payee));
-    return contacts;
-
-  } catch (error) {
-    console.error("Error fetching contacts:", error);
-    throw new Error("Could not fetch contacts.");
-  }
-}
-
-
-/**
  * Subscribes to real-time updates for the current user's contacts/payees.
+ * Optionally filters by search term (client-side).
  *
  * @param onUpdate Callback function triggered with the updated list of contacts.
  * @param onError Callback function triggered on error.
+ * @param searchTerm Optional search term for client-side filtering.
  * @returns An unsubscribe function to stop listening for updates, or null if user is not logged in.
  */
 export function subscribeToContacts(
   onUpdate: (contacts: Payee[]) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  searchTerm?: string // Add searchTerm parameter
 ): Unsubscribe | null {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     console.log("User not logged in. Cannot subscribe to contacts.");
+    // onError(new Error("User not logged in.")); // Avoid calling onError here
     return null;
   }
   const userId = currentUser.uid;
@@ -91,15 +60,28 @@ export function subscribeToContacts(
 
   try {
     const contactsColRef = collection(db, 'users', userId, 'contacts');
-    const q = query(contactsColRef, orderBy('name')); // Order by name
+    // Always order by name for consistency
+    const q = query(contactsColRef, orderBy('name'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const contacts = querySnapshot.docs.map(doc => ({
+      let contacts = querySnapshot.docs.map(doc => ({
         id: doc.id,
         userId,
-        ...doc.data()
+        ...doc.data(),
+        avatarSeed: doc.data().avatarSeed || doc.data().name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
       } as Payee));
-      console.log(`Received ${contacts.length} real-time contacts.`);
+
+      // Apply client-side filtering if searchTerm is provided
+      if (searchTerm) {
+          const lowerCaseSearch = searchTerm.toLowerCase();
+          contacts = contacts.filter(payee =>
+              payee.name.toLowerCase().includes(lowerCaseSearch) ||
+              payee.identifier.toLowerCase().includes(lowerCaseSearch) ||
+              payee.upiId?.toLowerCase().includes(lowerCaseSearch)
+          );
+      }
+
+      console.log(`Received ${contacts.length} real-time contacts (filtered: ${!!searchTerm}).`);
       onUpdate(contacts);
     }, (error) => {
       console.error("Error subscribing to contacts:", error);
@@ -112,6 +94,58 @@ export function subscribeToContacts(
     console.error("Error setting up contacts subscription:", error);
     onError(new Error("Could not set up contacts subscription."));
     return null;
+  }
+}
+
+
+/**
+ * Asynchronously retrieves a list of the current user's saved contacts/payees from Firestore.
+ * Optionally filters by search term. Performs a one-time fetch.
+ * (Kept for scenarios where a non-realtime fetch is needed).
+ *
+ * @param searchTerm Optional search term to filter contacts by name or identifier.
+ * @returns A promise that resolves to an array of Payee objects.
+ */
+export async function getContacts(searchTerm?: string): Promise<Payee[]> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.log("No user logged in to get contacts.");
+    return [];
+  }
+  const userId = currentUser.uid;
+
+  console.log(`Fetching contacts (one-time) for user ${userId} ${searchTerm ? `matching "${searchTerm}"` : ''}`);
+
+  try {
+    const contactsColRef = collection(db, 'users', userId, 'contacts');
+    const queryConstraints: QueryConstraint[] = [orderBy('name')]; // Start with ordering
+
+    // Client-side filtering will be applied after fetching all contacts
+    const q = query(contactsColRef, ...queryConstraints);
+    const querySnapshot = await getDocs(q);
+
+    let contacts = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        userId,
+        ...doc.data(),
+        avatarSeed: doc.data().avatarSeed || doc.data().name?.toLowerCase().replace(/\s+/g, '') || doc.id, // Ensure avatarSeed
+    } as Payee));
+
+    // Apply client-side filtering if searchTerm is provided
+    if (searchTerm) {
+        const lowerCaseSearch = searchTerm.toLowerCase();
+        contacts = contacts.filter(payee =>
+            payee.name.toLowerCase().includes(lowerCaseSearch) ||
+            payee.identifier.toLowerCase().includes(lowerCaseSearch) ||
+            payee.upiId?.toLowerCase().includes(lowerCaseSearch)
+        );
+    }
+
+    return contacts;
+
+  } catch (error) {
+    console.error("Error fetching contacts (one-time):", error);
+    throw new Error("Could not fetch contacts.");
   }
 }
 
@@ -133,7 +167,13 @@ export async function getPayeeDetails(payeeId: string): Promise<Payee | null> {
         const payeeDocSnap = await getDoc(payeeDocRef);
 
         if (payeeDocSnap.exists()) {
-            return { id: payeeDocSnap.id, userId, ...payeeDocSnap.data() } as Payee;
+             const data = payeeDocSnap.data();
+            return {
+                id: payeeDocSnap.id,
+                userId,
+                ...data,
+                 avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || payeeDocSnap.id, // Ensure avatarSeed
+             } as Payee;
         } else {
             console.log("Payee document not found:", payeeId);
             return null;
@@ -162,7 +202,6 @@ export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatar
         const contactsColRef = collection(db, 'users', userId, 'contacts');
         const dataToSave = {
             ...payeeData,
-            // userId: userId, // userId is implicitly part of the path
             isFavorite: payeeData.isFavorite ?? false, // Default favorite status
             avatarSeed: payeeData.name.toLowerCase().replace(/\s+/g, '') || Date.now().toString() // Add avatar seed on creation
         };

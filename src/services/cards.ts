@@ -1,140 +1,225 @@
 
 /**
- * @fileOverview Service functions for managing saved Debit/Credit cards.
+ * @fileOverview Service functions for managing saved Debit/Credit cards metadata in Firestore.
+ * IMPORTANT: This service ONLY stores non-sensitive metadata (last4, expiry, type, issuer).
+ * Actual card details and tokens MUST be handled and stored securely by a PCI-DSS compliant
+ * payment gateway (e.g., Stripe, Razorpay). The `id` here would typically correspond to the
+ * gateway's token ID.
  */
-import { payViaWallet, getWalletBalance } from './wallet'; // Import wallet services
-import { addTransaction } from './transactions'; // Import transaction logging
-import { auth } from '@/lib/firebase'; // Import auth for user ID
+import { db, auth } from '@/lib/firebase';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    doc,
+    updateDoc,
+    deleteDoc,
+    writeBatch,
+    limit,
+    orderBy // Added orderBy
+} from 'firebase/firestore';
+import { payViaWallet, getWalletBalance } from './wallet';
+import { addTransaction } from './transactions';
+import { isBefore, addMonths, parse } from 'date-fns'; // Used for expiry checks
 
+// Interface for card metadata stored in Firestore
 export interface CardDetails {
-    id: string; // Unique identifier for the saved card (e.g., token ID)
-    cardIssuer?: string; // e.g., "Visa", "Mastercard", "Rupay" - might be derived from BIN
-    bankName?: string; // Issuing bank name (optional)
-    last4: string; // Last 4 digits of the card number
-    expiryMonth: string; // MM format
-    expiryYear: string; // YYYY format
-    cardHolderName?: string; // Name on the card (optional, often not stored)
+    id?: string; // Firestore document ID (maps to gateway token ID)
+    userId: string; // Belongs to which user
+    cardIssuer?: string; // e.g., "Visa", "Mastercard"
+    bankName?: string;
+    last4: string;
+    expiryMonth: string; // MM
+    expiryYear: string; // YYYY
+    cardHolderName?: string; // Optional
     cardType: 'Credit' | 'Debit';
-    isPrimary?: boolean; // Flag if this is the default card for payments
-    token?: string; // The actual token representing the card (should not be sent to client usually)
+    isPrimary?: boolean;
+    // NOTE: NO full card number, CVV, or raw token should be stored here.
 }
 
-/**
- * Represents the result of a card payment attempt.
- */
 export interface CardPaymentResult {
     success: boolean;
-    transactionId?: string; // ID if payment succeeded (partially or fully)
-    message: string; // User-friendly message
-    usedWalletFallback?: boolean; // Flag if wallet was used after card failure
-    walletTransactionId?: string; // ID if wallet fallback succeeded
-    retryWithDifferentMethod?: boolean; // Flag to suggest retrying
-    errorCode?: string; // Optional error code (e.g., 'INSUFFICIENT_FUNDS', 'EXPIRED_CARD', 'CVV_MISMATCH', 'DECLINED')
+    transactionId?: string;
+    message: string;
+    usedWalletFallback?: boolean;
+    walletTransactionId?: string;
+    retryWithDifferentMethod?: boolean;
+    errorCode?: string;
 }
 
-
 /**
- * Asynchronously retrieves the list of saved cards for the user.
+ * Asynchronously retrieves the list of saved card metadata for the current user from Firestore.
  *
- * @returns A promise that resolves to an array of CardDetails objects (without the full token).
+ * @returns A promise that resolves to an array of CardDetails objects.
  */
 export async function getSavedCards(): Promise<CardDetails[]> {
-    console.log("Fetching saved cards...");
-    // TODO: Implement actual API call to backend to fetch saved card tokens/details
-    await new Promise(resolve => setTimeout(resolve, 900)); // Simulate API delay
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        console.log("No user logged in to get saved cards.");
+        return [];
+    }
+    const userId = currentUser.uid;
+    console.log(`Fetching saved cards for user ${userId}...`);
 
-    // Mock Data
-    return [
-        {
-            id: 'card_tok_1',
-            cardIssuer: 'Visa',
-            bankName: 'HDFC Bank',
-            last4: '1234',
-            expiryMonth: '12',
-            expiryYear: '2028',
-            cardHolderName: 'Chandra S.',
-            cardType: 'Credit',
-            isPrimary: true,
-        },
-        {
-            id: 'card_tok_2',
-            cardIssuer: 'Mastercard',
-            bankName: 'SBI',
-            last4: '5678',
-            expiryMonth: '06',
-            expiryYear: '2026',
-            cardHolderName: 'Chandra S.',
-            cardType: 'Debit',
-            isPrimary: false,
-        },
-         {
-            id: 'card_tok_3',
-            cardIssuer: 'Rupay',
-            bankName: 'ICICI Bank',
-            last4: '9012',
-            expiryMonth: '09',
-            expiryYear: '2027',
-            cardHolderName: 'Chandra S.',
-            cardType: 'Credit',
-            isPrimary: false,
-        },
-    ].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)); // Sort primary card first
+    try {
+        const cardsColRef = collection(db, 'users', userId, 'savedCards'); // Store cards in user's subcollection
+        const q = query(cardsColRef, orderBy('isPrimary', 'desc')); // Primary first
+        const querySnapshot = await getDocs(q);
+
+        const cards = querySnapshot.docs.map(doc => ({
+            id: doc.id, // Use Firestore doc ID as the card's unique ID
+            userId, // Add userId if needed elsewhere
+            ...doc.data()
+        } as CardDetails));
+        console.log(`Fetched ${cards.length} saved cards.`);
+        return cards;
+
+    } catch (error) {
+        console.error("Error fetching saved cards:", error);
+        throw new Error("Could not fetch saved cards.");
+    }
 }
 
 /**
- * Asynchronously initiates the flow to add a new card.
- * This typically involves integrating with a payment gateway SDK for secure capture and tokenization.
+ * Asynchronously adds the METADATA of a new card to Firestore.
+ * Assumes tokenization happened via a secure gateway and the gateway token ID is passed.
  *
- * @param cardData Raw card details (SHOULD NOT be handled directly like this in production).
- * @returns A promise that resolves with details of the newly saved card (e.g., its ID/token info).
+ * @param cardMetadata Metadata of the card (last4, expiry, type, etc.).
+ * @param gatewayTokenId The token ID obtained from the payment gateway (this will be the Firestore doc ID).
+ * @returns A promise that resolves with the saved CardDetails object.
  */
-export async function addCard(cardData: any): Promise<{ success: boolean; cardId?: string; message?: string }> {
-    console.log("Initiating add card flow...", cardData);
-    // TODO: Implement secure card adding flow using a Gateway SDK (e.g., Stripe Elements, Razorpay Checkout)
-    // The SDK handles PCI compliance. Never send raw card details to your backend directly.
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    // Simulate success
-    return { success: true, cardId: `card_tok_${Date.now()}`, message: "Card added successfully (Simulated)." };
+export async function addCard(cardMetadata: Omit<CardDetails, 'id' | 'userId' | 'isPrimary'>, gatewayTokenId: string): Promise<CardDetails> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in to add a card.");
+    const userId = currentUser.uid;
+
+    console.log(`Adding card metadata for user ${userId}, token ID: ${gatewayTokenId}`);
+
+    try {
+        const cardsColRef = collection(db, 'users', userId, 'savedCards');
+        const cardDocRef = doc(cardsColRef, gatewayTokenId); // Use gateway token as document ID
+
+        // Check if this is the first card being added
+        const q = query(cardsColRef, limit(1));
+        const existingCardsSnap = await getDocs(q);
+        const isFirstCard = existingCardsSnap.empty;
+
+        const dataToSave: Omit<CardDetails, 'id'> = {
+            ...cardMetadata,
+            userId,
+            isPrimary: isFirstCard, // Make the first card primary
+        };
+
+        await setDoc(cardDocRef, dataToSave); // Use setDoc to explicitly use the gatewayTokenId
+        console.log("Card metadata added successfully.");
+        return { id: gatewayTokenId, ...dataToSave };
+
+    } catch (error) {
+        console.error("Error adding card metadata:", error);
+        throw new Error("Could not save card information.");
+    }
 }
 
 /**
- * Asynchronously deletes a saved card.
+ * Asynchronously deletes saved card metadata from Firestore.
+ * Also triggers deletion of the token at the payment gateway via backend.
  *
- * @param cardId The unique ID (token ID) of the card to delete.
+ * @param cardId The Firestore document ID (gateway token ID) of the card to delete.
  * @returns A promise that resolves to true if successful, false otherwise.
  */
 export async function deleteCard(cardId: string): Promise<boolean> {
-    console.log(`Deleting card ID: ${cardId}`);
-    // TODO: Implement API call to backend to delete the card token
-    await new Promise(resolve => setTimeout(resolve, 700));
-    // Simulate success
-    return true;
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in.");
+    const userId = currentUser.uid;
+
+    console.log(`Deleting card metadata ID: ${cardId} for user ${userId}`);
+    try {
+        const cardDocRef = doc(db, 'users', userId, 'savedCards', cardId);
+        const cardSnap = await getDoc(cardDocRef);
+        if (!cardSnap.exists() || cardSnap.data()?.isPrimary) {
+            if (cardSnap.data()?.isPrimary) throw new Error("Cannot delete the primary card.");
+            else throw new Error("Card not found.");
+        }
+
+        // TODO: Trigger backend API call HERE to delete the actual card token from the payment gateway first.
+        console.log(`Simulating backend call to delete gateway token: ${cardId}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const gatewayDeletionSuccess = true; // Assume success for demo
+
+        if (!gatewayDeletionSuccess) {
+            throw new Error("Failed to delete card token at payment gateway.");
+        }
+
+        // If gateway deletion is successful, delete Firestore metadata
+        await deleteDoc(cardDocRef);
+        console.log("Card metadata deleted successfully from Firestore.");
+        return true;
+
+    } catch (error: any) {
+        console.error("Error deleting card:", error);
+        throw new Error(error.message || "Could not delete the card.");
+    }
 }
 
 /**
- * Asynchronously sets a saved card as the primary payment method.
+ * Asynchronously sets a saved card as the primary payment method in Firestore.
  *
- * @param cardId The unique ID (token ID) of the card to set as primary.
+ * @param cardId The Firestore document ID (gateway token ID) of the card to set as primary.
  * @returns A promise that resolves to true if successful, false otherwise.
  */
 export async function setPrimaryCard(cardId: string): Promise<boolean> {
-    console.log(`Setting card ID ${cardId} as primary...`);
-    // TODO: Implement API call to backend to update the primary card flag
-    await new Promise(resolve => setTimeout(resolve, 600));
-    // Simulate success
-    return true;
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User must be logged in.");
+    const userId = currentUser.uid;
+
+    console.log(`Setting card ID ${cardId} as primary for user ${userId}...`);
+    try {
+        const cardsColRef = collection(db, 'users', userId, 'savedCards');
+        const batch = writeBatch(db);
+
+        // Find the new primary card
+        const newPrimaryDocRef = doc(cardsColRef, cardId);
+        const newPrimarySnap = await getDoc(newPrimaryDocRef);
+        if (!newPrimarySnap.exists()) throw new Error("Card not found.");
+
+        // Find the current primary card (if any)
+        const currentPrimaryQuery = query(cardsColRef, where('isPrimary', '==', true), limit(1));
+        const currentPrimarySnap = await getDocs(currentPrimaryQuery);
+
+        // Unset current primary if it exists and is different
+        if (!currentPrimarySnap.empty) {
+            const currentPrimaryDocRef = doc(cardsColRef, currentPrimarySnap.docs[0].id);
+            if (currentPrimaryDocRef.id !== newPrimaryDocRef.id) {
+                batch.update(currentPrimaryDocRef, { isPrimary: false });
+            }
+        }
+
+        // Set the new card as primary
+        batch.update(newPrimaryDocRef, { isPrimary: true });
+
+        await batch.commit();
+        console.log("Primary card updated successfully in Firestore.");
+        return true;
+
+    } catch (error) {
+        console.error("Error setting primary card:", error);
+        throw new Error("Could not set the primary card.");
+    }
 }
+
 
 /**
  * Processes a payment using a saved card token.
- * Requires CVV and potentially OTP/3D Secure authentication.
- * Includes fallback logic to wallet if card payment fails due to insufficient funds or expiry.
+ * SIMULATED - Requires actual gateway integration for payment processing & 3D Secure.
+ * Includes wallet fallback logic and transaction logging.
  *
- * @param cardId The ID of the saved card token to use.
+ * @param cardId The Firestore doc ID / Gateway token ID of the card.
  * @param amount The amount to pay.
- * @param cvv The CVV code (required for payment).
- * @param purpose A brief description of the payment purpose (e.g., "Electricity Bill").
- * @param recipientIdentifier Optional identifier of the recipient (e.g., Biller ID, Merchant UPI).
+ * @param cvv The CVV code (required for simulation).
+ * @param purpose A brief description of the payment purpose.
+ * @param recipientIdentifier Optional identifier of the recipient.
  * @returns A promise resolving to the CardPaymentResult object.
  */
 export async function payWithSavedCard(
@@ -145,66 +230,87 @@ export async function payWithSavedCard(
     recipientIdentifier?: string
 ): Promise<CardPaymentResult> {
     const currentUser = auth.currentUser;
-    const userId = currentUser?.uid; // Needed for wallet fallback
+    const userId = currentUser?.uid;
 
-    console.log(`Processing payment with card ${cardId} for amount ${amount} (CVV: ${cvv.replace(/./g, '*')}). Purpose: ${purpose}`);
-    // TODO: Implement secure payment processing via payment gateway, likely involving redirects or further steps for 3D Secure.
+    if (!userId) {
+        return { success: false, message: "User not logged in." };
+    }
+
+    console.log(`Processing payment with card ${cardId} for amount ${amount}. Purpose: ${purpose}`);
+
+    // Fetch card metadata to simulate checks (like expiry)
+    let cardDetails: CardDetails | null = null;
+    try {
+        const cardDocRef = doc(db, 'users', userId, 'savedCards', cardId);
+        const cardSnap = await getDoc(cardDocRef);
+        if (cardSnap.exists()) {
+            cardDetails = cardSnap.data() as CardDetails;
+        } else {
+             throw new Error("Saved card details not found.");
+        }
+    } catch(e) {
+         console.error("Failed to fetch card details:", e);
+         return { success: false, message: "Failed to retrieve card details." };
+    }
+
+
+    // TODO: Trigger payment gateway API call HERE using the cardId (token), amount, cvv, purpose.
+    // The gateway would handle 3D Secure/OTP if needed.
     await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate gateway delay
 
     let cardFailed = false;
-    let failureReason: string | undefined;
-    let errorCode: CardPaymentResult['errorCode'];
+    let failureReason: string | undefined = 'Payment failed at gateway.';
+    let errorCode: CardPaymentResult['errorCode'] = 'UNKNOWN_ERROR';
 
     try {
-        // Simulate different card payment outcomes
-        if (cvv !== '123') { // Simulate wrong CVV
-            cardFailed = true;
-            failureReason = "Incorrect CVV.";
-            errorCode = 'CVV_MISMATCH';
-        } else if (cardId === 'card_tok_2' && (new Date() > new Date(2026, 5))) { // Simulate expired card (card_tok_2 expires 06/2026)
-             cardFailed = true;
-             failureReason = "Card has expired.";
-             errorCode = 'EXPIRED_CARD';
-        } else if (amount > 1000 && cardId !== 'card_tok_1') { // Simulate insufficient funds/limit (except for primary HDFC card)
-            cardFailed = true;
-            failureReason = "Payment declined by bank (Insufficient Limit/Funds).";
-            errorCode = 'INSUFFICIENT_FUNDS';
-        } else if (Math.random() < 0.1) { // Simulate generic decline
-            cardFailed = true;
-            failureReason = "Payment declined by bank.";
-            errorCode = 'DECLINED';
+        // Simulate different card payment outcomes based on CVV, amount, expiry
+        if (cvv !== '123') {
+            cardFailed = true; failureReason = "Incorrect CVV."; errorCode = 'CVV_MISMATCH';
+        } else {
+             try {
+                // Check expiry using date-fns
+                 const expiryDate = parse(`01/${cardDetails.expiryMonth}/${cardDetails.expiryYear}`, 'dd/MM/yyyy', new Date());
+                 const expiryCheckDate = addMonths(expiryDate, 1); // Check against start of month *after* expiry
+                 if (isBefore(expiryCheckDate, new Date())) {
+                     cardFailed = true; failureReason = "Card has expired."; errorCode = 'EXPIRED_CARD';
+                 }
+             } catch (dateError) {
+                 console.error("Error parsing card expiry:", dateError);
+                 // Proceed cautiously, maybe flag for review? Or fail safe.
+                 cardFailed = true; failureReason = "Invalid card expiry date found."; errorCode = 'INVALID_EXPIRY';
+             }
+        }
+
+        if (!cardFailed && amount > 10000 && !cardDetails?.isPrimary) { // Simulate limit/funds issue
+             cardFailed = true; failureReason = "Payment declined by bank (Limit/Funds)."; errorCode = 'INSUFFICIENT_FUNDS';
+        }
+        if (!cardFailed && Math.random() < 0.1) { // Simulate generic decline
+             cardFailed = true; failureReason = "Payment declined by bank."; errorCode = 'DECLINED';
         }
 
         if (cardFailed) {
             throw new Error(failureReason);
         }
 
-        // Card Payment Succeeded
+        // --- Card Payment Succeeded ---
         const transactionId = `PAY_CARD_${Date.now()}`;
-        // Log successful card transaction
-        if (userId) {
-            await addTransaction({
-                type: 'Bill Payment', // Or other appropriate type based on purpose
-                name: purpose || recipientIdentifier || `Card Payment`,
-                description: `Paid via Card ending ...${cardId.slice(-4)}`,
-                amount: -amount,
-                status: 'Completed',
-                userId: userId,
-                billerId: recipientIdentifier, // Store if available
-            });
-        }
-
-        return {
-            success: true,
-            transactionId: transactionId,
-            message: "Payment successful with card."
-        };
+        await addTransaction({
+            type: 'Bill Payment', // Assume bill payment, adjust based on purpose
+            name: purpose || recipientIdentifier || `Card Pmt ...${cardDetails.last4}`,
+            description: `Paid via Card ...${cardDetails.last4}`,
+            amount: -amount,
+            status: 'Completed',
+            userId: userId,
+            billerId: recipientIdentifier,
+        });
+        console.log("Card payment successful, transaction logged.");
+        return { success: true, transactionId, message: "Payment successful with card." };
 
     } catch (cardError: any) {
         console.warn(`Card payment failed for ${cardId}: ${cardError.message}`);
 
-        // Wallet Fallback Logic (only for specific errors like insufficient funds/expired card)
-        if (userId && (errorCode === 'INSUFFICIENT_FUNDS' || errorCode === 'EXPIRED_CARD')) {
+        // --- Wallet Fallback Logic (Only for specific errors) ---
+        if (userId && (errorCode === 'INSUFFICIENT_FUNDS' || errorCode === 'EXPIRED_CARD' || errorCode === 'DECLINED')) {
             console.log("Attempting wallet fallback...");
             try {
                 const walletBalance = await getWalletBalance(userId);
@@ -212,62 +318,43 @@ export async function payWithSavedCard(
                     const walletResult = await payViaWallet(userId, recipientIdentifier || purpose, amount, `Wallet Fallback: ${purpose}`);
                     if (walletResult.success) {
                         console.log("Wallet fallback successful.");
-                        // Log original card failure + wallet success? Maybe just log wallet tx.
-                        // The payViaWallet already logs a 'Sent' transaction.
                         return {
-                            success: true, // Overall transaction succeeded via fallback
-                            transactionId: walletResult.transactionId, // Use wallet transaction ID
+                            success: true, // Overall success via fallback
+                            transactionId: walletResult.transactionId,
                             message: `Card payment failed (${cardError.message}). Paid successfully using Wallet.`,
                             usedWalletFallback: true,
                             walletTransactionId: walletResult.transactionId,
                         };
                     } else {
-                        // Wallet fallback also failed
-                        return {
-                            success: false,
-                            message: `Card payment failed (${cardError.message}). Wallet fallback also failed: ${walletResult.message}`,
-                            retryWithDifferentMethod: true, // Suggest trying another card/method
-                            errorCode: errorCode,
-                        };
+                        failureReason = `Card payment failed (${cardError.message}). Wallet fallback also failed: ${walletResult.message}`;
                     }
                 } else {
-                    // Insufficient wallet balance for fallback
-                    return {
-                        success: false,
-                        message: `Card payment failed (${cardError.message}). Insufficient wallet balance for fallback.`,
-                        retryWithDifferentMethod: true,
-                        errorCode: errorCode,
-                    };
+                    failureReason = `Card payment failed (${cardError.message}). Insufficient wallet balance (₹${walletBalance.toFixed(2)}) for fallback.`;
                 }
             } catch (walletError: any) {
                  console.error("Wallet fallback error:", walletError);
-                 return {
-                    success: false,
-                    message: `Card payment failed (${cardError.message}). Error during wallet fallback.`,
-                    retryWithDifferentMethod: true,
-                    errorCode: errorCode,
-                };
+                 failureReason = `Card payment failed (${cardError.message}). Error during wallet fallback.`;
             }
-        } else {
-             // Card failed for other reasons (CVV, generic decline) - No wallet fallback
-             // Log the failed card transaction attempt
-            if (userId) {
-                await addTransaction({
-                    type: 'Failed',
-                    name: purpose || recipientIdentifier || `Card Payment`,
-                    description: `Card Payment Failed - ${cardError.message}`,
-                    amount: -amount,
-                    status: 'Failed',
-                    userId: userId,
-                     billerId: recipientIdentifier,
-                });
-            }
-            return {
-                success: false,
-                message: `Card payment failed: ${cardError.message}`,
-                retryWithDifferentMethod: true, // Suggest trying another card/method
-                errorCode: errorCode || 'UNKNOWN_ERROR',
-            };
+        } // --- End Wallet Fallback Logic ---
+
+        // --- Log Final Failure ---
+        // Log the failed card transaction attempt only if wallet fallback wasn't successful
+        if (! (cardError.message.includes('Wallet fallback also failed') || cardError.message.includes('Insufficient wallet balance for fallback'))) {
+            await addTransaction({
+                type: 'Failed',
+                name: purpose || recipientIdentifier || `Card Pmt ...${cardDetails?.last4 || cardId.slice(-4)}`,
+                description: `Card Payment Failed - ${cardError.message}`,
+                amount: -amount,
+                status: 'Failed',
+                userId: userId,
+                billerId: recipientIdentifier,
+            });
         }
+        return {
+            success: false,
+            message: failureReason || cardError.message,
+            retryWithDifferentMethod: true, // Suggest retry
+            errorCode: errorCode,
+        };
     }
 }
