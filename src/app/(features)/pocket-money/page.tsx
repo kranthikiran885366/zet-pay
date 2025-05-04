@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addDays, differenceInDays } from 'date-fns'; // Import addDays, differenceInDays
 import { checkMicroLoanEligibility, applyForMicroLoan, getMicroLoanStatus, repayMicroLoan, MicroLoanStatus, MicroLoanEligibility } from '@/services/loans'; // Import loan services
-import { getPocketMoneyConfig, updatePocketMoneyConfig, PocketMoneyConfig, PocketMoneyTransaction, getPocketMoneyTransactions } from '@/services/pocket-money'; // Import pocket money services
+import { getPocketMoneyConfig, updatePocketMoneyConfig, PocketMoneyConfig, ChildAccountConfig, PocketMoneyTransaction, getPocketMoneyTransactions } from '@/services/pocket-money'; // Import pocket money services
 import { auth } from '@/lib/firebase'; // Import auth
 
 
@@ -27,7 +27,8 @@ export default function DigitalPocketMoneyPage() {
     const [isAddingFunds, setIsAddingFunds] = useState(false);
     const [addFundsAmount, setAddFundsAmount] = useState('');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [currentSettings, setCurrentSettings] = useState<Partial<PocketMoneyConfig['children'][0]>>({}); // For editing child settings
+    const [currentSettings, setCurrentSettings] = useState<Partial<ChildAccountConfig>>({}); // For editing child settings
+    const [editingGoalId, setEditingGoalId] = useState<string | null>(null); // Keep if used elsewhere, maybe rename if only for settings ID?
     const [loanStatus, setLoanStatus] = useState<MicroLoanStatus | null>(null);
     const [loanEligibility, setLoanEligibility] = useState<MicroLoanEligibility | null>(null);
     const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
@@ -36,6 +37,10 @@ export default function DigitalPocketMoneyPage() {
     const [loanAmountToApply, setLoanAmountToApply] = useState('');
     const [repayAmount, setRepayAmount] = useState('');
     const [userId, setUserId] = useState<string | null>(null);
+    const [showContributeDialog, setShowContributeDialog] = useState(false); // State for contribution dialog
+    const [selectedGoalForContribution, setSelectedGoalForContribution] = useState<any | null>(null); // Placeholder type
+    const [contributionAmount, setContributionAmount] = useState<string>('');
+    const [isContributing, setIsContributing] = useState<string | null>(null);
 
 
     const { toast } = useToast();
@@ -63,7 +68,7 @@ export default function DigitalPocketMoneyPage() {
                 setConfig(fetchedConfig);
                 setLoanStatus(fetchedLoanStatus);
                 // Select the first child by default if config exists and has children
-                if (fetchedConfig && fetchedConfig.children.length > 0) {
+                if (fetchedConfig && fetchedConfig.children.length > 0 && !selectedChildId) { // Check if selectedChildId is not already set
                     setSelectedChildId(fetchedConfig.children[0].id);
                 }
             } catch (error: any) {
@@ -76,7 +81,7 @@ export default function DigitalPocketMoneyPage() {
             }
         };
         fetchData();
-    }, [userId, toast]);
+    }, [userId, toast, selectedChildId]); // Add selectedChildId dependency to avoid resetting selection
 
     // Fetch transactions for the selected child
     useEffect(() => {
@@ -151,7 +156,14 @@ export default function DigitalPocketMoneyPage() {
              const childIndex = config!.children.findIndex(c => c.id === selectedChildId);
              if (childIndex === -1) throw new Error("Child not found");
 
-             const updatedChildData = { ...config!.children[childIndex], ...currentSettings };
+             // Ensure allowanceFrequency is correctly typed, default to 'None' if undefined
+             const freq = currentSettings.allowanceFrequency || 'None';
+
+             const updatedChildData = {
+                 ...config!.children[childIndex],
+                 ...currentSettings,
+                 allowanceFrequency: freq
+             };
              const updatedChildren = [...config!.children];
              updatedChildren[childIndex] = updatedChildData;
 
@@ -356,45 +368,93 @@ export default function DigitalPocketMoneyPage() {
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                  {/* --- Child Wallet Section --- */}
-                 <Card className="shadow-md">
-                    {/* ... (Child Balance Card - same as before) ... */}
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                         <div className="flex items-center gap-3">
-                             <Avatar className="h-12 w-12">
-                                <AvatarImage src={`https://picsum.photos/seed/${selectedChild.avatarSeed}/60/60`} alt={selectedChild.name} data-ai-hint="child avatar large"/>
-                                <AvatarFallback>{selectedChild.name?.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <CardTitle>{selectedChild.name}'s Wallet</CardTitle>
-                         </div>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={() => { setCurrentSettings({...selectedChild}); setIsSettingsOpen(true); }}>
-                                <Settings className="h-5 w-5 text-muted-foreground" />
-                            </Button>
-                         </DialogTrigger>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <p className="text-3xl font-bold text-center">₹{selectedChild.balance.toFixed(2)}</p>
-                        <div className="flex gap-2">
-                             <Input
-                                type="number"
-                                placeholder="Amount to add"
-                                value={addFundsAmount}
-                                onChange={e => setAddFundsAmount(e.target.value)}
-                                min="1"
-                                className="h-9"
-                             />
-                            <Button size="sm" onClick={handleAddFunds} disabled={isAddingFunds} className="h-9">
-                                {isAddingFunds ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-1" />} Add Funds
-                            </Button>
-                        </div>
-                    </CardContent>
-                 </Card>
+                 {/* Wrap Card in Dialog to fix trigger error */}
+                 <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+                    <Card className="shadow-md">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <div className="flex items-center gap-3">
+                                <Avatar className="h-12 w-12">
+                                    <AvatarImage src={`https://picsum.photos/seed/${selectedChild.avatarSeed}/60/60`} alt={selectedChild.name} data-ai-hint="child avatar large"/>
+                                    <AvatarFallback>{selectedChild.name?.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                                <CardTitle>{selectedChild.name}'s Wallet</CardTitle>
+                            </div>
+                            {/* DialogTrigger now correctly placed */}
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => { setCurrentSettings({...selectedChild}); }}>
+                                    <Settings className="h-5 w-5 text-muted-foreground" />
+                                </Button>
+                            </DialogTrigger>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <p className="text-3xl font-bold text-center">₹{selectedChild.balance.toFixed(2)}</p>
+                            <div className="flex gap-2">
+                                <Input
+                                    type="number"
+                                    placeholder="Amount to add"
+                                    value={addFundsAmount}
+                                    onChange={e => setAddFundsAmount(e.target.value)}
+                                    min="1"
+                                    className="h-9"
+                                />
+                                <Button size="sm" onClick={handleAddFunds} disabled={isAddingFunds} className="h-9">
+                                    {isAddingFunds ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-1" />} Add Funds
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                {/* ... (Allowance Info, Quick Actions, Recent Transactions - same as before) ... */}
+                    {/* Settings Dialog Content */}
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Pocket Money Settings for {selectedChild.name}</DialogTitle>
+                            <DialogDescription>Manage allowance and spending controls.</DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4 space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="child-name">Child's Name</Label>
+                                <Input id="child-name" placeholder="Enter name" value={currentSettings.name || ''} onChange={e => setCurrentSettings({...currentSettings, name: e.target.value })} required/>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="allowance-amount">Automatic Allowance Amount (₹)</Label>
+                                <Input id="allowance-amount" type="number" min="0" value={currentSettings.allowanceAmount || ''} onChange={e => setCurrentSettings({...currentSettings, allowanceAmount: Number(e.target.value) || undefined})}/>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="allowance-freq">Allowance Frequency</Label>
+                                <Select
+                                    value={currentSettings.allowanceFrequency || 'None'} // Ensure 'None' is handled
+                                    onValueChange={val => setCurrentSettings({...currentSettings, allowanceFrequency: val as ChildAccountConfig['allowanceFrequency'] | 'None'})}
+                                >
+                                    <SelectTrigger id="allowance-freq"><SelectValue placeholder="Select Frequency" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Daily">Daily</SelectItem>
+                                        <SelectItem value="Weekly">Weekly</SelectItem>
+                                        <SelectItem value="Monthly">Monthly</SelectItem>
+                                        <SelectItem value="None">None</SelectItem> {/* Ensure value="None" */}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="spending-limit">Spending Limit per Transaction (₹) (0 for no limit)</Label>
+                                <Input id="spending-limit" type="number" min="0" value={currentSettings.spendingLimitPerTxn || ''} onChange={e => setCurrentSettings({...currentSettings, spendingLimitPerTxn: Number(e.target.value) || undefined})}/>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="school-biller">Linked School Biller ID (Optional)</Label>
+                                <Input id="school-biller" placeholder="Enter School Biller ID for Fee Payment" value={currentSettings.linkedSchoolBillerId || ''} onChange={e => setCurrentSettings({...currentSettings, linkedSchoolBillerId: e.target.value || undefined })}/>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleSaveSettings} disabled={isLoading}>Save Settings</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                 </Dialog>
+
+
                  {/* Allowance Info */}
                  <Card className="shadow-sm border-dashed">
                      <CardContent className="p-3 text-center">
-                        {selectedChild.allowanceAmount && selectedChild.allowanceFrequency ? (
+                        {selectedChild.allowanceAmount && selectedChild.allowanceFrequency && selectedChild.allowanceFrequency !== 'None' ? (
                              <p className="text-sm text-muted-foreground">
                                 Gets <span className="font-medium text-primary">₹{selectedChild.allowanceAmount}</span> {selectedChild.allowanceFrequency}.
                                 {selectedChild.lastAllowanceDate && ` Next on ${format(addDays(new Date(selectedChild.lastAllowanceDate), selectedChild.allowanceFrequency === 'Weekly' ? 7 : selectedChild.allowanceFrequency === 'Monthly' ? 30 : 1), 'MMM d')}`}
@@ -462,6 +522,7 @@ export default function DigitalPocketMoneyPage() {
                                  <div className="p-3 border rounded-md bg-muted/50 mt-1 space-y-1">
                                      <p>Amount Due: <span className="font-semibold">₹{loanStatus.amountDue?.toFixed(2)}</span></p>
                                      <p>Due Date: {format(loanStatus.dueDate!, 'PPP')} ({differenceInDays(loanStatus.dueDate!, new Date())} days left)</p>
+                                     {loanStatus.purpose && <p>Purpose: {loanStatus.purpose}</p>}
                                      <p className="text-xs text-muted-foreground">Loan ID: {loanStatus.loanId}</p>
                                  </div>
                                  <div className="mt-3 space-y-2">
@@ -506,51 +567,6 @@ export default function DigitalPocketMoneyPage() {
                          )}
                      </CardContent>
                  </Card>
-
-
-                 {/* Settings Dialog */}
-                 <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-                     <DialogContent>
-                         <DialogHeader>
-                             <DialogTitle>Pocket Money Settings for {selectedChild.name}</DialogTitle>
-                             <DialogDescription>Manage allowance and spending controls.</DialogDescription>
-                         </DialogHeader>
-                         <div className="py-4 space-y-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="child-name">Child's Name</Label>
-                                <Input id="child-name" placeholder="Enter name" value={currentSettings.name || ''} onChange={e => setCurrentSettings({...currentSettings, name: e.target.value })} required/>
-                            </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="allowance-amount">Automatic Allowance Amount (₹)</Label>
-                                <Input id="allowance-amount" type="number" min="0" value={currentSettings.allowanceAmount || ''} onChange={e => setCurrentSettings({...currentSettings, allowanceAmount: Number(e.target.value) || 0})}/>
-                            </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="allowance-freq">Allowance Frequency</Label>
-                                <Select value={currentSettings.allowanceFrequency || ''} onValueChange={val => setCurrentSettings({...currentSettings, allowanceFrequency: val as ChildAccount['allowanceFrequency']})}>
-                                     <SelectTrigger id="allowance-freq"><SelectValue placeholder="Select Frequency" /></SelectTrigger>
-                                     <SelectContent>
-                                        <SelectItem value="Daily">Daily</SelectItem>
-                                        <SelectItem value="Weekly">Weekly</SelectItem>
-                                        <SelectItem value="Monthly">Monthly</SelectItem>
-                                        <SelectItem value="None">None</SelectItem> {/* Option to disable */}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="spending-limit">Spending Limit per Transaction (₹) (0 for no limit)</Label>
-                                <Input id="spending-limit" type="number" min="0" value={currentSettings.spendingLimitPerTxn || ''} onChange={e => setCurrentSettings({...currentSettings, spendingLimitPerTxn: Number(e.target.value) || 0})}/>
-                            </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="school-biller">Linked School Biller ID (Optional)</Label>
-                                <Input id="school-biller" placeholder="Enter School Biller ID for Fee Payment" value={currentSettings.linkedSchoolBillerId || ''} onChange={e => setCurrentSettings({...currentSettings, linkedSchoolBillerId: e.target.value || undefined })}/>
-                            </div>
-                         </div>
-                         <DialogFooter>
-                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                             <Button onClick={handleSaveSettings} disabled={isLoading}>Save Settings</Button>
-                         </DialogFooter>
-                     </DialogContent>
-                 </Dialog>
 
             </main>
         </div>
