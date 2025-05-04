@@ -46,7 +46,7 @@ import {
   Gift as GiftIcon, //Alias Gift to avoid conflict
   Home, // Used as placeholder for Temple
   Car,
-  Bike as Motorbike,
+  Bike as Motorbike, // Use Bike icon
   CalendarCheck,
   Video,
     Sparkles,
@@ -58,12 +58,15 @@ import {
     Users,
     QrCode,
     Clock,
-    MoreHorizontal,
-    Briefcase, // For Mutual Funds
-    Database, // For Deposits
-    Gauge, // For Credit Score
-    Coins, // For Gold
-    Building2 // For Zet Bank
+  MoreHorizontal,
+  Briefcase, // For Mutual Funds
+  Database, // For Deposits
+  Gauge, // For Credit Score
+  Coins, // For Gold
+  Building2, // For Zet Bank
+  Zap, // For EV Charging
+  Siren, // For Emergency Assistance
+  Store // For Rest Stop (placeholder)
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -88,6 +91,9 @@ const travelServices = [
     { name: "Book Bus Tickets", icon: Bus, href: "/travels/bus", category: "Travel"},
     { name: "Book Flight Tickets", icon: Plane, href: "/travels/flight", category: "Travel"},
     { name: "Book Train Tickets", icon: Train, href: "/travels/train", category: "Travel"},
+    { name: "EV Charging Stations", icon: Zap, href: "/travels/ev-charging", category: "Travel" }, // New
+    { name: "Rest Stop Booking", icon: Store, href: "/travels/rest-stop", category: "Travel" }, // New
+    { name: "Emergency Assistance", icon: Siren, href: "/travels/assistance", category: "Travel" }, // New
 ];
 
 // Combine existing "Financial Services" and add new ones
@@ -102,7 +108,6 @@ const financialServices = [
     { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" },
      { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" }, // Added SIP Reminders
 ];
-
 
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
@@ -132,12 +137,7 @@ const otherServices = [
     { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Payments" },
     { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Payments" },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Payments" },
-
-    // See All
-    // { name: "See All", icon: MoreHorizontal, href: "/services", category: "See All" }, // Removed 'See All' icon as it's the page itself
-
 ];
-
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
@@ -173,7 +173,6 @@ const groupServicesByCategory = (services: any[]) => {
 
     return finalGrouped;
 }
-
 
 export default function AllServicesPage() {
     const allServices = [...templeServices, ...travelServices, ...financialServices, ...otherServices];
