@@ -2,20 +2,20 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react'; // Import useRef
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info } from 'lucide-react'; // Added CheckCircle, XCircle, Info
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { processUpiPayment, UpiTransaction, verifyUpiId, getLinkedAccounts, BankAccount } from '@/services/upi'; // Use actual service
+import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount } from '@/services/upi';
 import { addTransaction, Transaction } from '@/services/transactions';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Import Select
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // For PIN prompt
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { auth } from '@/lib/firebase'; // Import auth
 
 // Helper to parse UPI URL (basic example)
 const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; amount?: string, note?: string } => {
@@ -45,35 +45,56 @@ export default function PaymentConfirmationPage() {
     const [amount, setAmount] = useState<string>('');
     const [note, setNote] = useState<string>('');
     const [upiPin, setUpiPin] = useState<string>('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [isVerifying, setIsVerifying] = useState(true);
-    const [paymentResult, setPaymentResult] = useState<Transaction | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [accounts, setAccounts] = useState<BankAccount[]>([]); // State for linked accounts
-    const [selectedAccountUpiId, setSelectedAccountUpiId] = useState<string>(''); // State for selected account
+    const [isLoading, setIsLoading] = useState(false); // General loading state for async operations like verify/pay
+    const [isVerifying, setIsVerifying] = useState(true); // Specifically for UPI ID verification
+    const [paymentResult, setPaymentResult] = useState<Transaction | null>(null); // Store final transaction outcome
+    const [error, setError] = useState<string | null>(null); // Store general error messages
+    const [accounts, setAccounts] = useState<BankAccount[]>([]);
+    const [selectedAccountUpiId, setSelectedAccountUpiId] = useState<string>('');
     const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
     const pinPromiseResolverRef = useRef<{ resolve: (pin: string | null) => void } | null>(null);
+    const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
 
-    // Fetch linked accounts and set default
+    // Check login status
     useEffect(() => {
-        const fetchUserAccounts = async () => {
-             try {
-                 const userAccounts = await getLinkedAccounts();
-                 setAccounts(userAccounts);
-                 const defaultAccount = userAccounts.find(acc => acc.isDefault);
-                 setSelectedAccountUpiId(defaultAccount?.upiId || userAccounts[0]?.upiId || '');
-             } catch (accError) {
-                 console.error("Failed to fetch accounts for payment:", accError);
-                 setError("Could not load your payment accounts.");
-                 toast({ variant: "destructive", title: "Error", description: "Could not load payment accounts." });
-             }
-         };
-         fetchUserAccounts();
-    }, [toast]);
+        const unsubscribeAuth = auth.onAuthStateChanged(user => {
+            const loggedIn = !!user;
+            setIsLoggedIn(loggedIn);
+            if (!loggedIn) {
+                setError("User not logged in. Please log in to make payments.");
+                setIsLoading(false);
+                setIsVerifying(false);
+            } else {
+                fetchUserAccounts();
+            }
+        });
+        return () => unsubscribeAuth();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run only on mount
 
+    // Fetch linked accounts
+    const fetchUserAccounts = useCallback(async () => {
+        if (!isLoggedIn) return; // Ensure user is logged in
+        try {
+            const userAccounts = await getLinkedAccounts();
+            setAccounts(userAccounts);
+            if (userAccounts.length > 0) {
+                const defaultAccount = userAccounts.find(acc => acc.isDefault);
+                setSelectedAccountUpiId(defaultAccount?.upiId || userAccounts[0]?.upiId || '');
+            } else {
+                setError("No linked bank accounts found. Please link an account first.");
+            }
+        } catch (accError) {
+            console.error("Failed to fetch accounts for payment:", accError);
+            setError("Could not load your payment accounts.");
+            toast({ variant: "destructive", title: "Error", description: "Could not load payment accounts." });
+        }
+    }, [isLoggedIn, toast]); // Added toast as dependency
 
     // Extract details from URL parameters and verify UPI ID
     useEffect(() => {
+        if (!isLoggedIn) return; // Don't run if not logged in
+
         const directPayeeId = searchParams.get('pa');
         const directPayeeName = searchParams.get('pn');
         const directAmount = searchParams.get('am');
@@ -88,13 +109,18 @@ export default function PaymentConfirmationPage() {
         };
 
         if (upiData) {
-            const parsed = parseUpiUrl(upiData);
-            details = { ...details, ...parsed };
+            try {
+                const parsed = parseUpiUrl(upiData);
+                details = { ...details, ...parsed };
+            } catch (parseError) {
+                 setError("Invalid QR code data.");
+                 setIsVerifying(false);
+                 return;
+            }
         }
 
         if (!details.payeeAddress) {
             setError("Recipient UPI ID is missing.");
-            toast({ variant: "destructive", title: "Error", description: "Recipient details incomplete." });
             setIsVerifying(false);
             return;
         }
@@ -103,20 +129,20 @@ export default function PaymentConfirmationPage() {
         setAmount(details.amount || '');
         setNote(details.note || '');
         setPayeeName(details.payeeName || 'Verifying Payee...');
+        setError(null); // Clear previous errors
 
         // Verify UPI ID
         const verifyRecipient = async (address: string) => {
             setIsVerifying(true);
-            setError(null);
+            setError(null); // Clear error before verification
             try {
                  const verifiedName = await verifyUpiId(address);
                  setPayeeName(verifiedName);
-                 toast({ title: "Payee Verified", description: `Paying ${verifiedName}` });
+                 // Don't toast here, verification status is shown in UI
             } catch (verificationError: any) {
                  console.error("UPI ID Verification failed:", verificationError);
                  setPayeeName('Verification Failed');
-                 setError(`Could not verify UPI ID: ${address}. Please check and try again.`);
-                 toast({ variant: "destructive", title: "Verification Failed", description: `Could not verify UPI ID: ${address}` });
+                 setError(`Could not verify UPI ID: ${address}.`); // Set error message
             } finally {
                 setIsVerifying(false);
             }
@@ -124,7 +150,7 @@ export default function PaymentConfirmationPage() {
 
         verifyRecipient(details.payeeAddress);
 
-    }, [searchParams, toast]);
+    }, [searchParams, isLoggedIn, toast]); // Rerun if searchParams or login status changes
 
     // Function to show PIN dialog and return a Promise
     const promptForPin = (): Promise<string | null> => {
@@ -135,16 +161,19 @@ export default function PaymentConfirmationPage() {
         });
     };
 
+    // Handle PIN submission from dialog
     const handlePinSubmit = () => {
         if ((upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
             pinPromiseResolverRef.current.resolve(upiPin);
-            pinPromiseResolverRef.current = null;
-            setIsPinDialogOpen(false);
         } else {
             toast({ variant: "destructive", title: "Invalid PIN", description: "Please enter a 4 or 6 digit UPI PIN." });
+            pinPromiseResolverRef.current?.resolve(null); // Resolve null on error
         }
+        pinPromiseResolverRef.current = null;
+        setIsPinDialogOpen(false);
     };
 
+    // Handle PIN cancellation
     const handlePinCancel = () => {
         if (pinPromiseResolverRef.current) {
             pinPromiseResolverRef.current.resolve(null); // Resolve with null on cancel
@@ -157,58 +186,63 @@ export default function PaymentConfirmationPage() {
         e.preventDefault();
         if (!payeeAddress || !amount || Number(amount) <= 0) {
             setError("Please enter a valid amount.");
-            toast({ variant: "destructive", title: "Invalid Amount" });
             return;
         }
          if (!selectedAccountUpiId) {
              setError("Please select a bank account to pay from.");
-             toast({ variant: "destructive", title: "Account Not Selected" });
+             return;
+         }
+         // Don't proceed if UPI ID verification failed previously
+         if (payeeName === 'Verification Failed') {
+             setError("Cannot proceed with unverified recipient.");
              return;
          }
 
-        setError(null);
+        setError(null); // Clear previous errors
         setIsLoading(true);
         setPaymentResult(null);
 
         try {
              // Prompt for PIN
              const enteredPin = await promptForPin();
-             if (enteredPin === null) {
+             if (enteredPin === null) { // User cancelled PIN entry
                  toast({ title: "Payment Cancelled", description: "PIN entry was cancelled." });
                  setIsLoading(false);
                  return;
              }
 
-            // Call the actual UPI service with selected account (implicitly handled by SDK usually)
+            // Call the actual UPI service
             const result = await processUpiPayment(payeeAddress, Number(amount), enteredPin, note || `Payment to ${payeeName}`);
 
-            // Add transaction to Firestore history using the transaction service
+            // Add transaction to Firestore history
             const historyEntry = await addTransaction({
                 type: result.status === 'Completed' ? 'Sent' : 'Failed',
-                name: payeeName,
+                name: payeeName, // Use the verified or provided name
                 description: note || `Payment to ${payeeName}${result.status !== 'Completed' ? ` (${result.status} - ${result.message || ''})` : ''}`,
                 amount: -Number(amount),
                 status: result.status as Transaction['status'],
                 upiId: payeeAddress,
-                billerId: undefined, // Not applicable
+                billerId: undefined,
+                avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress // Generate seed
             });
 
-            setPaymentResult(historyEntry);
+            setPaymentResult(historyEntry); // Show result view
 
             if (result.status === 'Completed') {
-                 toast({ title: "Payment Successful!", description: `₹${amount} sent to ${payeeName}. Transaction ID: ${result.transactionId}` });
-                 setTimeout(() => router.push('/'), 2000);
+                 toast({ title: "Payment Successful!", description: `₹${amount} sent to ${payeeName}.`, duration: 5000 });
+                 // No automatic redirect, let user see the result screen
             } else {
                  setError(`Payment ${result.status.toLowerCase()}. ${result.message || ''}`);
                  toast({ variant: "destructive", title: `Payment ${result.status}`, description: result.message || `Failed to send ₹${amount} to ${payeeName}` });
             }
         } catch (err: any) {
-             console.error("Payment failed:", err);
+             console.error("Payment processing error:", err);
              const message = err.message || "Payment failed due to an unexpected error.";
              setError(message);
+             toast({ variant: "destructive", title: "Payment Failed", description: message });
 
              // Add failed transaction to history
-              try {
+             try {
                 const failedEntry = await addTransaction({
                      type: 'Failed',
                      name: payeeName,
@@ -217,11 +251,13 @@ export default function PaymentConfirmationPage() {
                      status: 'Failed',
                      upiId: payeeAddress,
                      billerId: undefined,
+                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress // Generate seed
                  });
-                  setPaymentResult(failedEntry);
+                  setPaymentResult(failedEntry); // Show result view even for failure
              } catch (historyError) {
                  console.error("Failed to log failed transaction:", historyError);
-                 setPaymentResult({ // Fallback local result display
+                 // Show a basic failure message if history logging also fails
+                 setPaymentResult({
                      id: `local_${Date.now()}`,
                      type: 'Failed',
                      name: payeeName,
@@ -229,13 +265,11 @@ export default function PaymentConfirmationPage() {
                      amount: -Number(amount),
                      status: 'Failed',
                      date: new Date(),
-                     avatarSeed: payeeName,
-                     userId: 'local', // Indicate it wasn't saved properly
+                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress,
+                     userId: 'local_error',
                      upiId: payeeAddress,
-                 })
+                 });
              }
-
-             toast({ variant: "destructive", title: "Payment Failed", description: message });
         } finally {
             setIsLoading(false);
             setUpiPin(''); // Clear PIN field after attempt
@@ -243,35 +277,17 @@ export default function PaymentConfirmationPage() {
     };
 
     // Determine if the payment button should be disabled
-    const isPayDisabled = isLoading || isVerifying || !!error || !payeeAddress || !amount || Number(amount) <= 0 || !selectedAccountUpiId;
+    const isPayDisabled = isLoading || isVerifying || !!error || !payeeAddress || !amount || Number(amount) <= 0 || !selectedAccountUpiId || payeeName === 'Verification Failed' || accounts.length === 0;
 
-
-    return (
-    <div className="min-h-screen bg-secondary flex flex-col">
-        {/* Header */}
-        <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-            { !isLoading && paymentResult?.status !== 'Completed' ? (
-                 <Link href="/" passHref>
-                    <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
-                        <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                </Link>
-            ) : (
-                 <Button variant="ghost" size="icon" className="text-primary-foreground opacity-50 cursor-not-allowed">
-                     <ArrowLeft className="h-5 w-5" />
-                 </Button>
-            )}
-
-            <Send className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">Confirm Payment</h1>
-        </header>
-
-        {/* Main Content */}
-        <main className="flex-grow p-4">
-            {paymentResult ? (
-                // Payment Result View
+    const renderContent = () => {
+         if (paymentResult) {
+            // Payment Result View
+             return (
                  <Card className={`shadow-md border-2 ${paymentResult.status === 'Completed' ? 'border-green-500' : 'border-destructive'}`}>
                     <CardHeader className="items-center text-center">
+                         <div className={`mb-4 ${paymentResult.status === 'Completed' ? 'text-green-600' : 'text-destructive'}`}>
+                             {paymentResult.status === 'Completed' ? <CheckCircle className="h-16 w-16" /> : <XCircle className="h-16 w-16" />}
+                         </div>
                          <CardTitle className={`text-2xl ${paymentResult.status === 'Completed' ? 'text-green-600' : 'text-destructive'}`}>
                            Payment {paymentResult.status}
                         </CardTitle>
@@ -280,34 +296,48 @@ export default function PaymentConfirmationPage() {
                         </CardDescription>
                     </CardHeader>
                      <CardContent className="text-center space-y-4">
-                         {paymentResult.status !== 'Completed' && <p className="text-sm text-destructive">{paymentResult.description}</p>}
-                         <p className="text-xs text-muted-foreground">Transaction ID: {paymentResult.id}</p>
+                         <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
+                            <p><strong>Amount:</strong> ₹{Math.abs(paymentResult.amount).toFixed(2)}</p>
+                            <p><strong>To:</strong> {paymentResult.name} ({paymentResult.upiId})</p>
+                            <p><strong>Date:</strong> {format(paymentResult.date, 'PPp')}</p>
+                            {paymentResult.status !== 'Completed' && <p><strong>Reason:</strong> {paymentResult.description}</p>}
+                            <p><strong>Transaction ID:</strong> {paymentResult.id}</p>
+                         </div>
+
                          <Link href="/" passHref>
                              <Button className="w-full">Go to Home</Button>
                          </Link>
                           {paymentResult.status !== 'Completed' && (
-                              <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); }}>Try Again</Button>
+                              <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); /* Reset other fields? */ }}>Try Again</Button>
                           )}
+                          <Link href="/history" passHref>
+                                <Button variant="link" className="w-full">View Transaction History</Button>
+                          </Link>
                      </CardContent>
                  </Card>
-            ) : (
-                // Payment Confirmation View
+             );
+        } else {
+             // Payment Confirmation View
+             return (
                  <Card className="shadow-md">
                     <CardHeader className="items-center text-center">
                         <Avatar className="h-16 w-16 mb-2 border">
                             <AvatarImage src={`https://picsum.photos/seed/${payeeAddress}/80/80`} alt={payeeName} data-ai-hint="payee avatar"/>
-                            <AvatarFallback>{payeeName.charAt(0) || '?'}</AvatarFallback>
+                            <AvatarFallback>{payeeName === 'Verification Failed' ? '!' : payeeName.charAt(0) || '?'}</AvatarFallback>
                         </Avatar>
                          <CardTitle className="flex items-center gap-2">
                             Pay {payeeName}
                              {isVerifying && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
                          </CardTitle>
                         <CardDescription>{payeeAddress}</CardDescription>
-                         {error && !isVerifying && <p className="text-sm text-destructive pt-2">{error}</p>}
+                         {/* Show permanent error if verification failed, otherwise show temporary process errors below button */}
+                        {error && payeeName === 'Verification Failed' && (
+                            <p className="text-sm text-destructive pt-2">{error}</p>
+                         )}
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handlePayment} className="space-y-6">
-                            {/* Amount Display/Input */}
+                             {/* Amount Display/Input */}
                              <div className="space-y-2 text-center">
                                 <Label htmlFor="amount" className="text-sm text-muted-foreground">Amount to Pay</Label>
                                 <div className="text-4xl font-bold flex items-center justify-center">
@@ -325,7 +355,7 @@ export default function PaymentConfirmationPage() {
                                             step="0.01"
                                             className="text-4xl font-bold h-auto p-0 border-0 text-center bg-transparent focus-visible:ring-0 shadow-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-grow w-32"
                                             placeholder="0.00"
-                                            disabled={isLoading || isVerifying}
+                                            disabled={isLoading || isVerifying || payeeName === 'Verification Failed'} // Disable if verification failed
                                         />
                                      )}
                                 </div>
@@ -340,11 +370,10 @@ export default function PaymentConfirmationPage() {
                                     placeholder="Add a message"
                                     value={note}
                                     onChange={(e) => setNote(e.target.value)}
-                                    disabled={isLoading || isVerifying}
+                                    disabled={isLoading || isVerifying || payeeName === 'Verification Failed'}
                                     maxLength={50}
                                 />
                             </div>
-
 
                             {/* Bank Account Selection */}
                             <div className="space-y-2">
@@ -361,18 +390,13 @@ export default function PaymentConfirmationPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {accounts.length === 0 && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
                             </div>
 
-
-                             {/* UPI PIN Input is now in a dialog triggered by the button */}
-                            {/* <div className="space-y-2">
-                                <Label htmlFor="upi-pin">Enter UPI PIN</Label>
-                                <Input ... />
-                            </div> */}
-
-                            {/* Display error message if exists */}
-                            {error && !isVerifying && <p className="text-sm text-destructive text-center">{error}</p>}
-
+                             {/* Display error message (not verification error) */}
+                             {error && payeeName !== 'Verification Failed' && (
+                                <p className="text-sm text-destructive text-center">{error}</p>
+                             )}
 
                             <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isPayDisabled}>
                                 {isLoading ? (
@@ -381,7 +405,7 @@ export default function PaymentConfirmationPage() {
                                 </>
                                 ) : isVerifying ? (
                                  <>
-                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...
+                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying Payee...
                                  </>
                                 ) : (
                                 <>
@@ -391,8 +415,34 @@ export default function PaymentConfirmationPage() {
                             </Button>
                         </form>
                     </CardContent>
-                </Card>
-            )}
+                 </Card>
+             );
+         }
+    };
+
+    return (
+    <div className="min-h-screen bg-secondary flex flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
+             {/* Conditionally render Link or disabled Button based on state */}
+             {(isLoading || (paymentResult && paymentResult.status === 'Completed')) ? (
+                 <Button variant="ghost" size="icon" className="text-primary-foreground opacity-50 cursor-not-allowed">
+                     <ArrowLeft className="h-5 w-5" />
+                 </Button>
+             ) : (
+                 <Link href="/" passHref>
+                    <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                </Link>
+             )}
+            <Send className="h-6 w-6" />
+            <h1 className="text-lg font-semibold">Confirm Payment</h1>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-grow p-4">
+            {renderContent()}
         </main>
 
         {/* UPI PIN Dialog */}
@@ -401,7 +451,7 @@ export default function PaymentConfirmationPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Enter your 4 or 6 digit UPI PIN to authorize this payment of ₹{Number(amount).toFixed(2)} to {payeeName}.
+                         Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹{Number(amount).toFixed(2)} to {payeeName}.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4">
@@ -431,4 +481,4 @@ export default function PaymentConfirmationPage() {
     );
 }
 
-      
+    

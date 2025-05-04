@@ -1,3 +1,4 @@
+
 /**
  * Represents a bank account.
  */
@@ -18,6 +19,10 @@ export interface BankAccount {
    * Flag indicating if this is the primary/default account.
    */
   isDefault?: boolean;
+   /**
+    * Optional: Expected length of the UPI PIN for this account (4 or 6).
+    */
+   pinLength?: 4 | 6;
 }
 
 /**
@@ -53,7 +58,7 @@ export interface UpiTransaction {
  * @param bankAccount The bank account details to link.
  * @returns A promise that resolves to true if the account was successfully linked, false otherwise.
  */
-export async function linkBankAccount(bankAccount: Omit<BankAccount, 'upiId'|'isDefault'>): Promise<boolean> {
+export async function linkBankAccount(bankAccount: Omit<BankAccount, 'upiId'|'isDefault'|'pinLength'>): Promise<boolean> {
   console.log("Simulating linking bank account:", bankAccount);
   // TODO: Implement actual bank linking flow.
   await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
@@ -69,11 +74,11 @@ export async function getLinkedAccounts(): Promise<BankAccount[]> {
    console.log("Fetching linked accounts...");
    // TODO: Implement API call
    await new Promise(resolve => setTimeout(resolve, 800));
-   // Return mock data defined in the page for now
+   // Return mock data including pinLength
    return [
-      { bankName: "State Bank of India", accountNumber: "******1234", upiId: "user123@oksbi", isDefault: true },
-      { bankName: "HDFC Bank", accountNumber: "******5678", upiId: "user.hdfc@okhdfcbank" },
-      { bankName: "ICICI Bank", accountNumber: "******9012", upiId: "user@okicici" },
+      { bankName: "State Bank of India", accountNumber: "******1234", upiId: "user123@oksbi", isDefault: true, pinLength: 6 },
+      { bankName: "HDFC Bank", accountNumber: "******5678", upiId: "user.hdfc@okhdfcbank", pinLength: 4 },
+      { bankName: "ICICI Bank", accountNumber: "******9012", upiId: "user@okicici", pinLength: 6 },
     ];
 }
 
@@ -119,9 +124,9 @@ export async function checkBalance(upiId: string, pin?: string): Promise<number>
   await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate delay
 
   // Simulate success/failure based on UPI ID or PIN for demo
-  if (upiId.includes('sbi') && pin === '1234') {
+  if (upiId.includes('sbi') && pin?.length === 6) { // Check PIN length for SBI
     return Math.random() * 10000; // Simulate random balance
-  } else if (upiId.includes('hdfc') && pin === '5678') {
+  } else if (upiId.includes('hdfc') && pin?.length === 4) { // Check PIN length for HDFC
      return Math.random() * 50000;
   } else if (!pin) {
      throw new Error("UPI PIN required for balance check.");
@@ -151,7 +156,7 @@ export async function processUpiPayment(
    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
 
    // Simulate various outcomes for demo
-   if (pin !== '1234' && pin !== '5678') { // Simulate incorrect PIN
+   if (pin !== '1234' && pin !== '123456') { // Example PIN check
       throw new Error("Incorrect UPI PIN entered.");
    }
    if (amount > 5000) { // Simulate insufficient balance
@@ -213,3 +218,5 @@ export async function verifyUpiId(upiId: string): Promise<string> {
         .join(' ');
     return verifiedName || "Verified User"; // Fallback name
 }
+
+    
