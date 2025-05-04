@@ -1,23 +1,23 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback, useMemo } from 'react'; // Added useMemo
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Landmark, Loader2, Send, X, UserPlus } from 'lucide-react'; // Added UserPlus
+import { ArrowLeft, User, Landmark, Loader2, Send, X, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { suggestFrequentContacts, SmartPayeeSuggestionInput } from '@/ai/flows/smart-payee-suggestion';
 import { subscribeToContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface
-import { processUpiPayment, verifyUpiId } from '@/services/upi';
+import { processUpiPayment, verifyUpiId } from '@/services/upi'; // Import processUpiPayment
 // Transaction import not needed here as processUpiPayment handles logging internally
 import { auth } from '@/lib/firebase'; // Import Firebase auth instance
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger
+import { AlertDialogTrigger } from "@radix-ui/react-alert-dialog"; // Import trigger separately if needed
 
 // Debounce function (remains the same)
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -76,11 +76,18 @@ export default function SendMoneyPage() {
 
   // Subscribe to contacts
     useEffect(() => {
-        if (!isLoggedIn) return; // Don't subscribe if not logged in
+        let unsubscribe: Unsubscribe | null = null; // Define unsubscribe variable
+        if (!isLoggedIn) {
+            setIsLoadingContacts(false);
+            setAllUserContacts([]); // Clear contacts if not logged in
+            return; // Don't subscribe if not logged in
+        }
 
         setIsLoadingContacts(true);
-        const unsubscribe = subscribeToContacts(
+        console.log("Setting up contacts subscription...");
+        unsubscribe = subscribeToContacts( // Assign the result of subscribeToContacts
             (contacts) => {
+                 console.log("Received contacts update:", contacts.length);
                 setAllUserContacts(contacts);
                 setIsLoadingContacts(false);
                 // Refresh suggestions when contacts change (optional, depends on desired behavior)
@@ -109,15 +116,15 @@ export default function SendMoneyPage() {
 
   // Fetch AI-powered suggestions (only once on mount if logged in and contacts available)
   useEffect(() => {
-      if (!isLoggedIn || isLoadingContacts) return; // Wait for login and contacts load
+      if (!isLoggedIn || isLoadingContacts || allUserContacts.length === 0) return; // Wait for login, contacts load, and ensure contacts exist
 
       const fetchSuggestions = async (currentContacts: Payee[]) => {
           setIsLoadingSuggestions(true);
           try {
               const currentUserId = auth.currentUser?.uid;
               // Only fetch if contacts exist
-              if (!currentUserId || currentContacts.length === 0) {
-                   setIsLoadingSuggestions(false); // Stop loading if no contacts
+              if (!currentUserId) { // Removed check for currentContacts.length as it's checked above
+                   setIsLoadingSuggestions(false); // Stop loading if no user ID
                    return;
                }
 
@@ -134,6 +141,7 @@ export default function SendMoneyPage() {
           } catch (error) {
               console.error("Failed to fetch suggestions:", error);
               // Optionally inform user that suggestions failed
+               toast({ description: "Could not load suggestions.", duration: 3000 });
           } finally {
               setIsLoadingSuggestions(false);
           }
@@ -142,7 +150,7 @@ export default function SendMoneyPage() {
       // Fetch suggestions once contacts are loaded
       fetchSuggestions(allUserContacts);
 
-   }, [isLoggedIn, isLoadingContacts, allUserContacts]); // Dependencies ensure it runs when logged in and contacts are ready
+   }, [isLoggedIn, isLoadingContacts, allUserContacts, toast]); // Added toast
 
 
    // Filter contacts based on search term (client-side filtering)
@@ -155,7 +163,7 @@ export default function SendMoneyPage() {
         return allUserContacts.filter(payee =>
             (type === 'mobile' ? payee.type === 'mobile' : true) && // Type filter
             (payee.name.toLowerCase().includes(lowerSearch) ||
-             payee.identifier.toLowerCase().includes(lowerSearch))
+             (payee.identifier && payee.identifier.toLowerCase().includes(lowerSearch))) // Check if identifier exists
         );
     }, [searchTerm, allUserContacts, type, selectedPayee]);
 
@@ -256,35 +264,40 @@ export default function SendMoneyPage() {
   const handleSendMoney = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Determine the actual UPI ID to send to.
+    // For mobile type, ASSUME the identifier IS the UPI ID.
+    // In a real app, backend/PSP would map mobile# to primary UPI ID.
     const targetIdentifier = selectedPayee ? selectedPayee.identifier : manualIdentifier.trim();
-     // Use verified name if manual, otherwise selected payee name, fallback to identifier
-    const targetPayeeName = selectedPayee ? selectedPayee.name : (verifiedManualName || manualPayeeName || manualIdentifier || 'Recipient');
+    const targetUPIAddress = targetIdentifier; // **ASSUMPTION**: identifier holds the UPI address
 
-    if (!targetIdentifier || !amount || Number(amount) <= 0) {
-      toast({ variant: "destructive", title: "Invalid Input" });
+    // Use verified name if manual, otherwise selected payee name, fallback to identifier
+    const targetPayeeName = selectedPayee ? selectedPayee.name : (verifiedManualName || manualPayeeName || targetIdentifier || 'Recipient');
+
+    if (!targetUPIAddress || !amount || Number(amount) <= 0) {
+      toast({ variant: "destructive", title: "Invalid Input", description: "Please select recipient and enter a valid amount." });
       return;
     }
 
     // Basic validation (simplified)
-     if (type === 'mobile' && !targetIdentifier.match(/^[6-9]\d{9}$/)) {
+     if (type === 'mobile' && !targetUPIAddress.match(/^[6-9]\d{9}$/)) { // Assuming mobile number is the UPI ID for now
         toast({ variant: "destructive", title: "Invalid Mobile Number" });
         return;
      }
-     // Basic check for UPI ID (@) or Account Number (digits)
-     if (type === 'bank' && !targetIdentifier.includes('@') && !targetIdentifier.match(/^\d{9,18}$/)) {
-         toast({ variant: "destructive", title: "Invalid UPI ID or Account Number" });
-         return;
-     }
+     // Basic check for UPI ID (@) or Account Number (digits) - now handled by processUpiPayment
+     // if (type === 'bank' && !targetUPIAddress.includes('@') && !targetUPIAddress.match(/^\d{9,18}$/)) {
+     //     toast({ variant: "destructive", title: "Invalid UPI ID or Account Number" });
+     //     return;
+     // }
       if (type === 'bank' && !selectedPayee && !verifiedManualName) {
           toast({ variant: "destructive", title: "Recipient Not Verified", description:"Please enter a valid ID and wait for verification." });
           return;
       }
 
     setIsSending(true);
-    console.log("Sending money:", { identifier: targetIdentifier, amount, type });
+    console.log("Sending money via API:", { recipientUpiId: targetUPIAddress, amount, type });
 
     try {
-        // ** TODO: Integrate secure PIN entry here **
+        // ** TODO: Integrate secure PIN entry here - USING PROMPT FOR DEMO **
         const enteredPin = prompt("Enter UPI PIN (DEMO ONLY - DO NOT USE IN PROD)"); // SECURITY RISK
         if (!enteredPin) {
             toast({ title: "PIN Entry Cancelled" });
@@ -292,13 +305,13 @@ export default function SendMoneyPage() {
             return;
         }
 
-        // processUpiPayment now handles transaction logging internally
+        // Call the backend API via the service function
         const paymentResult = await processUpiPayment(
-            targetIdentifier,
+            targetUPIAddress,
             Number(amount),
             enteredPin,
             `Payment to ${targetPayeeName}`, // Pass note
-            auth.currentUser?.uid, // Pass user ID
+            auth.currentUser?.uid, // Pass user ID if needed by backend for checks/logging
             undefined // Let backend select default source account or implement UI selection
         );
 
@@ -307,9 +320,7 @@ export default function SendMoneyPage() {
              // Redirect to home or history AFTER success
              setTimeout(() => router.push('/'), 500); // Slight delay before redirect
          } else {
-             // Error toast will be shown by processUpiPayment if logging works
-             // If processUpiPayment itself throws, catch block handles it.
-             // Display ticket info if available
+             // Error handling for failed payments (including ticket info)
              if (paymentResult.ticketId) {
                   toast({
                      variant: "destructive",
@@ -328,10 +339,9 @@ export default function SendMoneyPage() {
          }
 
     } catch (error: any) {
-        // This catch block handles errors thrown by processUpiPayment (e.g., network issues, major failures)
+        // This catch block handles errors from the API call itself (network error, 500 etc.)
         console.error("Payment processing failed:", error);
         toast({ variant: "destructive", title: "Payment Failed", description: error.message || "An unexpected error occurred." });
-          // Transaction logging for failure is handled within processUpiPayment
     } finally {
        setIsSending(false);
     }
@@ -343,7 +353,7 @@ export default function SendMoneyPage() {
   const showSearchResults = searchTerm.trim() !== '' && !selectedPayee && filteredPayees.length > 0;
   const showManualInputArea = !selectedPayee; // Show manual input if no payee is selected
   const showNoResults = searchTerm.trim() !== '' && !selectedPayee && !isLoadingContacts && filteredPayees.length === 0;
-  const showNoSuggestions = searchTerm.trim() === '' && !selectedPayee && !isLoadingSuggestions && suggestedPayees.length === 0;
+  const showNoSuggestions = searchTerm.trim() === '' && !selectedPayee && !isLoadingSuggestions && suggestedPayees.length === 0 && !isLoadingContacts;
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -447,9 +457,11 @@ export default function SendMoneyPage() {
                         <div className="flex justify-between items-center pt-1">
                              <p className="text-xs text-green-600">✓ Verified: {verifiedManualName}</p>
                              {/* Add Save Payee Button */}
-                              <Button type="button" variant="link" size="sm" className="text-xs h-auto p-0" onClick={handleInitiateSavePayee}>
-                                <UserPlus className="h-3 w-3 mr-1"/> Save Payee
-                              </Button>
+                              <AlertDialogTrigger asChild>
+                                <Button type="button" variant="link" size="sm" className="text-xs h-auto p-0" onClick={handleInitiateSavePayee}>
+                                  <UserPlus className="h-3 w-3 mr-1"/> Save Payee
+                                </Button>
+                              </AlertDialogTrigger>
                         </div>
                     )}
                      {manualVerificationError && type === 'bank' && (
