@@ -1,30 +1,22 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2 } from 'lucide-react';
+import { ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Repeat, Wallet } from 'lucide-react'; // Added Repeat, Wallet
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { BankAccount, linkBankAccount /*, getLinkedAccounts, removeUpiId, setDefaultAccount */ } from '@/services/upi'; // Assuming these functions exist
+import { BankAccount, getLinkedAccounts, removeUpiId, setDefaultAccount /*, linkBankAccount */ } from '@/services/upi'; // Assuming these functions exist
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge"; // Import Badge component
+import { Separator } from '@/components/ui/separator'; // Import Separator
 
-// Mock Data (Replace with actual API calls via useEffect)
-const mockLinkedAccounts: BankAccount[] = [
-  { bankName: "State Bank of India", accountNumber: "******1234", upiId: "user123@oksbi" },
-  { bankName: "HDFC Bank", accountNumber: "******5678", upiId: "user.hdfc@okhdfcbank" },
-  { bankName: "ICICI Bank", accountNumber: "******9012", upiId: "user@okicici" },
-];
-
-// Assume one account is default
-const defaultUpiId = "user123@oksbi";
 
 export default function UPISettingsPage() {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState<string | null>(null); // Track which UPI ID is being updated/deleted
+  const [defaultUpiId, setDefaultUpiId] = useState<string | null>(null); // State to hold the default UPI ID
   const { toast } = useToast();
 
    // Fetch linked accounts on mount
@@ -33,8 +25,11 @@ export default function UPISettingsPage() {
            setIsLoading(true);
            try {
                // TODO: Replace with actual API call: const fetchedAccounts = await getLinkedAccounts();
-               await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate loading
-               setAccounts(mockLinkedAccounts);
+                const fetchedAccounts: BankAccount[] = await getLinkedAccounts();
+                setAccounts(fetchedAccounts);
+                // Find and set the default account from the fetched data
+                const defaultAcc = fetchedAccounts.find(acc => acc.isDefault);
+                setDefaultUpiId(defaultAcc?.upiId || null);
            } catch (error) {
                console.error("Failed to fetch linked accounts:", error);
                toast({ variant: "destructive", title: "Could not load accounts" });
@@ -61,27 +56,28 @@ export default function UPISettingsPage() {
         try {
             console.log(`Setting ${upiId} as default...`);
             // TODO: Replace with actual API call: await setDefaultAccount(upiId);
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate update
-             // Update state to reflect new default (mock implementation)
-             // In a real app, re-fetch or trust API success
-             // For mock: update `defaultUpiId` variable locally (won't persist)
-             // defaultUpiId = upiId; // This is incorrect state management, just for demo
+            await setDefaultAccount(upiId); // Call the actual service
+            setDefaultUpiId(upiId); // Update local state on success
+             setAccounts(prev => prev.map(acc => ({ ...acc, isDefault: acc.upiId === upiId }))); // Update isDefault flag in local state
              toast({ title: "Default Account Updated", description: `${upiId} is now your primary account.` });
         } catch (error) {
              console.error("Failed to set default account:", error);
              toast({ variant: "destructive", title: "Update Failed", description: "Could not set default account." });
         } finally {
              setIsUpdating(null);
-             // Force re-render if needed, or ideally re-fetch accounts
         }
     };
 
     const handleDeleteUpiId = async (upiId: string) => {
+         if (upiId === defaultUpiId) {
+             toast({ variant: "destructive", title: "Cannot Remove Default", description: "Please set another account as default before removing this one." });
+             return;
+         }
         setIsUpdating(upiId);
         try {
             console.log(`Deleting UPI ID ${upiId}...`);
             // TODO: Replace with actual API call: await removeUpiId(upiId);
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate deletion
+            await removeUpiId(upiId); // Call the actual service
             setAccounts(prev => prev.filter(acc => acc.upiId !== upiId)); // Remove from local state
             toast({ title: "UPI ID Removed", description: `${upiId} has been unlinked.` });
         } catch (error) {
@@ -112,11 +108,11 @@ export default function UPISettingsPage() {
           </Button>
         </Link>
         <Landmark className="h-6 w-6" />
-        <h1 className="text-lg font-semibold">UPI & Payment Settings</h1>
+        <h1 className="text-lg font-semibold">UPI &amp; Payment Settings</h1>
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4 space-y-6">
+      <main className="flex-grow p-4 space-y-6 pb-20">
           {isLoading ? (
                <div className="flex justify-center items-center py-10">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -172,8 +168,8 @@ export default function UPISettingsPage() {
                                     )}
                                      <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" disabled={isUpdating === account.upiId}>
-                                                 {isUpdating === account.upiId && isUpdating !== defaultUpiId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" disabled={isUpdating === account.upiId || account.upiId === defaultUpiId}>
+                                                 {isUpdating === account.upiId && account.upiId !== defaultUpiId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                                              </Button>
                                         </AlertDialogTrigger>
                                         <AlertDialogContent>
@@ -192,31 +188,47 @@ export default function UPISettingsPage() {
                                 </div>
                             </div>
                              {isUpdating === account.upiId && (
-                                <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+                                <div className="absolute inset-0 bg-background/50 flex items-center justify-center rounded-md">
                                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
                                 </div>
                              )}
                         </div>
                         ))}
                     </CardContent>
+                     <Separator />
+                     <CardContent className="p-4">
+                         <Button variant="outline" className="w-full" onClick={handleLinkNewAccount}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add Another Bank Account
+                         </Button>
+                     </CardContent>
                 </Card>
 
-                <Button variant="outline" className="w-full mt-6" onClick={handleLinkNewAccount}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Another Bank Account
-                </Button>
+                {/* Other UPI Settings */}
+                <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle>Other UPI Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                         <Link href="/autopay" passHref>
+                            <Button variant="ghost" className="w-full justify-start p-2 h-auto">
+                                <Repeat className="mr-2 h-4 w-4 text-primary"/> UPI Autopay (Mandates)
+                            </Button>
+                         </Link>
+                         <Separator/>
+                         <Link href="/upi-lite" passHref>
+                            <Button variant="ghost" className="w-full justify-start p-2 h-auto">
+                                <Wallet className="mr-2 h-4 w-4 text-primary"/> UPI Lite
+                            </Button>
+                        </Link>
+                        <Separator/>
+                         <Button variant="ghost" className="w-full justify-start p-2 h-auto" onClick={() => alert("UPI PIN Setup/Reset Flow (Not Implemented)")}>
+                            <Lock className="mr-2 h-4 w-4 text-primary"/> Set/Reset UPI PIN
+                        </Button>
+                    </CardContent>
+                </Card>
             </>
           )}
       </main>
     </div>
   );
 }
-
-// Define Button size xs if not present in shadcn theme
-// Add this potentially in globals.css or manage via utility classes if preferred:
-/*
-.btn-xs {
-  @apply h-6 px-2 text-xs;
-}
-*/
-// Or use `className="text-xs h-6 px-2"` directly as done above.
-

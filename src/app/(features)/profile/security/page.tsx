@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -15,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 const securitySettings = {
   appLockEnabled: true,
   biometricEnabled: false,
-  pinSet: true, // Assume PIN is initially set
+  // pinSet: true, // PIN status is now managed under UPI settings
 };
 
 export default function SecuritySettingsPage() {
@@ -27,6 +26,9 @@ export default function SecuritySettingsPage() {
         setAppLock(checked);
         // TODO: Call API to update app lock setting
         toast({ title: `App Lock ${checked ? 'Enabled' : 'Disabled'}` });
+        if (!checked) {
+             setBiometric(false); // Disable biometric if app lock is turned off
+        }
    };
 
     const handleBiometricChange = (checked: boolean) => {
@@ -38,18 +40,6 @@ export default function SecuritySettingsPage() {
         // TODO: Call API to update biometric setting
         toast({ title: `Biometric Unlock ${checked ? 'Enabled' : 'Disabled'}` });
    };
-
-   const handleChangePin = () => {
-       // TODO: Navigate to Change PIN flow
-       alert("Navigate to Change PIN screen (not implemented).");
-       // router.push('/profile/security/change-pin');
-   };
-
-   const handleSetPin = () => {
-        // TODO: Navigate to Set PIN flow
-       alert("Navigate to Set PIN screen (not implemented).");
-       // router.push('/profile/security/set-pin');
-   }
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -65,20 +55,21 @@ export default function SecuritySettingsPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4 space-y-6">
+      <main className="flex-grow p-4 space-y-6 pb-20">
         <Card className="shadow-md">
             <CardHeader>
                 <CardTitle>App Security</CardTitle>
                 <CardDescription>Manage how you secure the PayFriend app.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-                {/* Change UPI PIN */}
-                <SettingsItem
-                    icon={Key}
-                    title={securitySettings.pinSet ? "Change UPI PIN" : "Set UPI PIN"}
-                    description="Secure your UPI transactions"
-                    onClick={securitySettings.pinSet ? handleChangePin : handleSetPin}
-                />
+                {/* Link to UPI PIN management */}
+                 <Link href="/profile/upi" passHref legacyBehavior>
+                    <SettingsItem
+                        icon={Key}
+                        title="Manage UPI PIN"
+                        description="Set or reset your UPI transaction PIN"
+                    />
+                 </Link>
                 <Separator className="my-0" />
 
                 {/* App Lock Switch */}
@@ -124,13 +115,17 @@ interface SettingsItemProps {
     icon: React.ElementType;
     title: string;
     description: string;
-    onClick?: () => void;
+    onClick?: () => void; // Keep onClick optional if it's a link
 }
 
 function SettingsItem({ icon: Icon, title, description, onClick }: SettingsItemProps) {
+  const Comp = onClick ? 'button' : 'div'; // Use button if onClick is provided
+  const commonClasses = "flex items-center justify-between p-4 hover:bg-accent transition-colors w-full text-left";
+  const cursorClass = onClick ? "cursor-pointer" : "";
+
   return (
-    <div
-      className="flex items-center justify-between p-4 hover:bg-accent transition-colors cursor-pointer"
+    <Comp
+      className={`${commonClasses} ${cursorClass}`}
       onClick={onClick}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -144,9 +139,10 @@ function SettingsItem({ icon: Icon, title, description, onClick }: SettingsItemP
             </div>
         </div>
         {onClick && <ChevronRight className="h-5 w-5 text-muted-foreground" />}
-    </div>
+    </Comp>
   );
 }
+
 
 // Reusable Setting Item with Switch Component
 interface SettingsSwitchItemProps {
