@@ -1,151 +1,277 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, PiggyBank, Settings, PlusCircle, IndianRupee, BarChart, Bell, CalendarDays, Loader2, GraduationCap } from 'lucide-react';
+import { ArrowLeft, PiggyBank, Settings, PlusCircle, IndianRupee, BarChart, Bell, CalendarDays, Loader2, GraduationCap, Landmark, HandCoins, Percent, RefreshCw, History } from 'lucide-react'; // Added HandCoins, Percent, RefreshCw, History
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useToast } from '@/hooks/use-toast';
-import { Progress } from '@/components/ui/progress';
+import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Corrected import line
-import { format, addDays } from 'date-fns'; // Import addDays
-
-// Mock Data Interfaces
-interface ChildAccount {
-    id: string;
-    name: string;
-    avatarSeed: string;
-    balance: number;
-    allowanceAmount?: number;
-    allowanceFrequency?: 'Daily' | 'Weekly' | 'Monthly';
-    lastAllowanceDate?: Date;
-    spendingLimitPerTxn?: number;
-    linkedSchoolBillerId?: string; // For school fee payments
-}
-
-interface PocketMoneyTransaction {
-    id: string;
-    childId: string;
-    description: string; // e.g., "Allowance Added", "Ice Cream", "Book Store", "School Fee"
-    amount: number; // Positive for allowance, negative for spending
-    date: Date;
-}
-
-// Mock Data (replace with actual backend/service calls)
-const mockChildAccounts: ChildAccount[] = [
-    { id: 'child1', name: 'Rohan S.', avatarSeed: 'rohan', balance: 580.50, allowanceAmount: 100, allowanceFrequency: 'Weekly', lastAllowanceDate: new Date(Date.now() - 3 * 86400000), spendingLimitPerTxn: 200 },
-    { id: 'child2', name: 'Priya K.', avatarSeed: 'priya', balance: 125.00, allowanceAmount: 50, allowanceFrequency: 'Daily', lastAllowanceDate: new Date(Date.now() - 1 * 86400000) },
-];
-
-const mockTransactions: PocketMoneyTransaction[] = [
-    { id: 'txn1', childId: 'child1', description: 'Allowance Added', amount: 100, date: new Date(Date.now() - 3 * 86400000) },
-    { id: 'txn2', childId: 'child1', description: 'Book Store', amount: -150, date: new Date(Date.now() - 2 * 86400000) },
-    { id: 'txn3', childId: 'child1', description: 'Snacks Corner', amount: -45.50, date: new Date(Date.now() - 1 * 86400000) },
-    { id: 'txn4', childId: 'child2', description: 'Allowance Added', amount: 50, date: new Date(Date.now() - 1 * 86400000) },
-    { id: 'txn5', childId: 'child2', description: 'Toy Shop', amount: -80, date: new Date(Date.now() - 1 * 86400000) },
-].sort((a, b) => b.date.getTime() - a.date.getTime());
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format, addDays, differenceInDays } from 'date-fns'; // Import addDays, differenceInDays
+import { checkMicroLoanEligibility, applyForMicroLoan, getMicroLoanStatus, repayMicroLoan, MicroLoanStatus, MicroLoanEligibility } from '@/services/loans'; // Import loan services
+import { getPocketMoneyConfig, updatePocketMoneyConfig, PocketMoneyConfig, PocketMoneyTransaction, getPocketMoneyTransactions } from '@/services/pocket-money'; // Import pocket money services
+import { auth } from '@/lib/firebase'; // Import auth
 
 
 export default function DigitalPocketMoneyPage() {
-    const [childAccounts, setChildAccounts] = useState<ChildAccount[]>([]);
-    const [selectedChild, setSelectedChild] = useState<ChildAccount | null>(null);
+    const [config, setConfig] = useState<PocketMoneyConfig | null>(null); // Holds multiple child accounts
+    const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
     const [childTransactions, setChildTransactions] = useState<PocketMoneyTransaction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAddingFunds, setIsAddingFunds] = useState(false);
     const [addFundsAmount, setAddFundsAmount] = useState('');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [currentSettings, setCurrentSettings] = useState<Partial<ChildAccount>>({});
+    const [currentSettings, setCurrentSettings] = useState<Partial<PocketMoneyConfig['children'][0]>>({}); // For editing child settings
+    const [loanStatus, setLoanStatus] = useState<MicroLoanStatus | null>(null);
+    const [loanEligibility, setLoanEligibility] = useState<MicroLoanEligibility | null>(null);
+    const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
+    const [isApplyingLoan, setIsApplyingLoan] = useState(false);
+    const [isRepayingLoan, setIsRepayingLoan] = useState(false);
+    const [loanAmountToApply, setLoanAmountToApply] = useState('');
+    const [repayAmount, setRepayAmount] = useState('');
+    const [userId, setUserId] = useState<string | null>(null);
+
 
     const { toast } = useToast();
 
-    // Fetch child accounts and select the first one initially
+     // Get user ID on mount
     useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            setUserId(user ? user.uid : null);
+        });
+        return () => unsubscribe();
+    }, []);
+
+
+    // Fetch initial data (config, loan status) when userId is available
+    useEffect(() => {
+        if (!userId) return;
+
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                // TODO: Replace with actual API call to fetch child accounts linked to the parent
-                await new Promise(resolve => setTimeout(resolve, 800)); // Simulate loading
-                setChildAccounts(mockChildAccounts);
-                if (mockChildAccounts.length > 0) {
-                    setSelectedChild(mockChildAccounts[0]);
+                const [fetchedConfig, fetchedLoanStatus] = await Promise.all([
+                    getPocketMoneyConfig(userId),
+                    getMicroLoanStatus(userId) // Fetch loan status for the parent/user
+                ]);
+                setConfig(fetchedConfig);
+                setLoanStatus(fetchedLoanStatus);
+                // Select the first child by default if config exists and has children
+                if (fetchedConfig && fetchedConfig.children.length > 0) {
+                    setSelectedChildId(fetchedConfig.children[0].id);
                 }
-            } catch (error) {
-                console.error("Failed to fetch child accounts:", error);
-                toast({ variant: "destructive", title: "Error", description: "Could not load child accounts." });
+            } catch (error: any) {
+                console.error("Failed to fetch initial data:", error);
+                toast({ variant: "destructive", title: "Error", description: "Could not load pocket money data." });
+                // Set default empty config if fetch fails
+                setConfig({ userId, children: [] });
             } finally {
                 setIsLoading(false);
             }
         };
         fetchData();
-    }, [toast]);
+    }, [userId, toast]);
 
     // Fetch transactions for the selected child
     useEffect(() => {
-        if (selectedChild) {
-            // TODO: Replace with actual API call to fetch transactions for selectedChild.id
-            const transactions = mockTransactions.filter(tx => tx.childId === selectedChild.id).slice(0, 5); // Get latest 5 for demo
-            setChildTransactions(transactions);
+        if (selectedChildId && userId) {
+            // Fetch transactions for the selected child
+            // This might need adjustment based on how transactions are stored (parent or child level)
+             const fetchChildTransactions = async () => {
+                try {
+                    // Assuming transactions are linked to the child ID within the parent's data
+                    const transactions = await getPocketMoneyTransactions(userId, selectedChildId);
+                    setChildTransactions(transactions.slice(0, 5)); // Show latest 5
+                } catch (error) {
+                     console.error(`Failed to fetch transactions for child ${selectedChildId}:`, error);
+                     setChildTransactions([]);
+                }
+            };
+            fetchChildTransactions();
         } else {
             setChildTransactions([]);
         }
-    }, [selectedChild]);
+    }, [selectedChildId, userId]);
 
+    const selectedChild = config?.children.find(c => c.id === selectedChildId);
+
+    // Add Funds Handler (similar to before, uses config state)
     const handleAddFunds = async () => {
-        if (!selectedChild || !addFundsAmount || Number(addFundsAmount) <= 0) {
-            toast({ variant: "destructive", title: "Invalid Amount" });
+        if (!selectedChild || !addFundsAmount || Number(addFundsAmount) <= 0 || !userId) {
+            toast({ variant: "destructive", title: "Invalid Amount or Selection" });
             return;
         }
         const amount = Number(addFundsAmount);
         setIsAddingFunds(true);
         try {
-            // TODO: Implement API call to add funds to child's wallet
+            // TODO: Implement actual fund transfer from parent account
             console.log(`Adding ₹${amount} to ${selectedChild.name}'s account`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API
 
-            // Update local state (simulation)
-            setChildAccounts(prev => prev.map(acc => acc.id === selectedChild.id ? { ...acc, balance: acc.balance + amount } : acc));
-            setSelectedChild(prev => prev ? { ...prev, balance: prev.balance + amount } : null);
-            // Add transaction locally (simulation)
-            const newTx: PocketMoneyTransaction = { id: `txn-${Date.now()}`, childId: selectedChild.id, description: 'Funds Added by Parent', amount, date: new Date() };
-            setChildTransactions(prev => [newTx, ...prev].slice(0, 5));
+            // Update local state
+            const updatedConfig = {
+                ...config!,
+                children: config!.children.map(c =>
+                    c.id === selectedChildId ? { ...c, balance: c.balance + amount } : c
+                )
+            };
+            setConfig(updatedConfig);
+            // Update settings in backend (optional if balance update handles it)
+            // await updatePocketMoneyConfig(userId, updatedConfig); // Maybe update whole config? Depends on backend
+
+            // Add transaction (this should ideally happen server-side after fund transfer)
+            // const newTx: PocketMoneyTransaction = { id: `txn-${Date.now()}`, childId: selectedChildId, description: 'Funds Added by Parent', amount, date: new Date() };
+            // setChildTransactions(prev => [newTx, ...prev].slice(0, 5));
 
             toast({ title: "Funds Added", description: `₹${amount} added to ${selectedChild.name}'s pocket money.` });
             setAddFundsAmount('');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to add funds:", error);
-            toast({ variant: "destructive", title: "Failed to Add Funds" });
+            toast({ variant: "destructive", title: "Failed to Add Funds", description: error.message });
         } finally {
             setIsAddingFunds(false);
         }
     };
 
-    const handleSaveSettings = () => {
-         if (!selectedChild || !currentSettings.allowanceFrequency || !currentSettings.allowanceAmount) {
-             toast({ variant: "destructive", title: "Invalid Settings", description:"Please provide allowance details."});
+    // Save Child Settings Handler
+    const handleSaveSettings = async () => {
+         if (!selectedChild || !currentSettings.name || !userId) {
+             toast({ variant: "destructive", title: "Invalid Settings", description:"Child name is required."});
              return;
          }
-         // TODO: Implement API call to save settings for selectedChild.id
-         console.log("Saving settings for", selectedChild.name, currentSettings);
-         setChildAccounts(prev => prev.map(acc => acc.id === selectedChild.id ? {...acc, ...currentSettings } as ChildAccount : acc));
-         setSelectedChild(prev => prev ? {...prev, ...currentSettings} as ChildAccount : null);
-         setIsSettingsOpen(false);
-         toast({title: "Settings Saved"});
+         setIsLoading(true); // Use main loading state for simplicity
+         try {
+             // Find the child index to update
+             const childIndex = config!.children.findIndex(c => c.id === selectedChildId);
+             if (childIndex === -1) throw new Error("Child not found");
+
+             const updatedChildData = { ...config!.children[childIndex], ...currentSettings };
+             const updatedChildren = [...config!.children];
+             updatedChildren[childIndex] = updatedChildData;
+
+             const updatedConfig = { ...config!, children: updatedChildren };
+
+             // Update backend
+             await updatePocketMoneyConfig(userId, updatedConfig);
+
+             setConfig(updatedConfig); // Update local state
+             setIsSettingsOpen(false);
+             toast({title: "Settings Saved"});
+         } catch (error: any) {
+              console.error("Failed to save settings:", error);
+              toast({ variant: "destructive", title: "Save Failed", description: error.message });
+         } finally {
+             setIsLoading(false);
+             setCurrentSettings({}); // Clear editing state
+         }
      };
+
+      // --- Micro-Loan Handlers ---
+
+     const handleCheckEligibility = async () => {
+         if (!userId) return;
+         setIsCheckingEligibility(true);
+         setLoanEligibility(null);
+         try {
+             const eligibility = await checkMicroLoanEligibility(userId, 5000); // Check for a default/max amount
+             setLoanEligibility(eligibility);
+             if (!eligibility.eligible) {
+                 toast({ variant: "destructive", title: "Not Eligible", description: eligibility.message || "You are currently not eligible for a micro-loan." });
+             } else {
+                  toast({ title: "Eligibility Checked", description: `You are eligible for a loan up to ₹${eligibility.limit}.` });
+             }
+         } catch (error: any) {
+             console.error("Eligibility check failed:", error);
+             toast({ variant: "destructive", title: "Eligibility Check Failed", description: error.message });
+         } finally {
+             setIsCheckingEligibility(false);
+         }
+     };
+
+     const handleApplyLoan = async (purpose: 'General' | 'Education' = 'General') => {
+         if (!userId || !loanAmountToApply || Number(loanAmountToApply) <= 0) {
+             toast({ variant: "destructive", title: "Invalid Amount" });
+             return;
+         }
+         if (!loanEligibility?.eligible || Number(loanAmountToApply) > loanEligibility.limit) {
+              toast({ variant: "destructive", title: "Amount Exceeds Limit", description: `You are eligible for up to ₹${loanEligibility?.limit || 0}.` });
+             return;
+         }
+         setIsApplyingLoan(true);
+         try {
+             const result = await applyForMicroLoan(userId, Number(loanAmountToApply), purpose);
+             if (result.success) {
+                 toast({ title: "Loan Approved!", description: `₹${loanAmountToApply} credited. Repay by ${format(result.dueDate!, 'PPp')} for 0% interest.` });
+                 // Refresh loan status
+                 const newStatus = await getMicroLoanStatus(userId);
+                 setLoanStatus(newStatus);
+                 setLoanAmountToApply('');
+                 setLoanEligibility(null); // Reset eligibility check
+             } else {
+                 throw new Error(result.message || "Loan application failed.");
+             }
+         } catch (error: any) {
+             console.error("Loan application failed:", error);
+             toast({ variant: "destructive", title: "Loan Application Failed", description: error.message });
+         } finally {
+             setIsApplyingLoan(false);
+         }
+     };
+
+    const handleRepayLoan = async () => {
+         if (!userId || !loanStatus?.loanId || !repayAmount || Number(repayAmount) <= 0) {
+             toast({ variant: "destructive", title: "Invalid Repayment Details" });
+             return;
+         }
+         setIsRepayingLoan(true);
+         try {
+            // TODO: Add logic to select payment source (Wallet/Bank)
+             const result = await repayMicroLoan(userId, loanStatus.loanId, Number(repayAmount));
+             if (result.success) {
+                 toast({ title: "Repayment Successful", description: result.message || `₹${repayAmount} paid towards your loan.` });
+                 // Refresh loan status
+                 const newStatus = await getMicroLoanStatus(userId);
+                 setLoanStatus(newStatus);
+                 setRepayAmount('');
+             } else {
+                 throw new Error(result.message || "Repayment failed.");
+             }
+         } catch (error: any) {
+             console.error("Loan repayment failed:", error);
+             toast({ variant: "destructive", title: "Repayment Failed", description: error.message });
+         } finally {
+             setIsRepayingLoan(false);
+         }
+     };
+
+      // --- End Micro-Loan Handlers ---
 
       const handlePaySchoolFees = () => {
           if (!selectedChild || !selectedChild.linkedSchoolBillerId) {
               toast({description: "No linked school for this child."});
               return;
           }
-          // TODO: Redirect to bill payment page with pre-filled details
+          // Check if eligible for SNPL?
+          if (loanEligibility?.eligible) {
+              const confirmSNPL = confirm(`Do you want to use "Study Now, Pay Later" for the school fees? You are eligible for up to ₹${loanEligibility.limit}.`);
+              if (confirmSNPL) {
+                  // TODO: Fetch actual fee amount maybe? Or let user enter it in SNPL flow.
+                  // For now, just trigger the loan application with 'Education' purpose.
+                  // You might need a dedicated SNPL application UI later.
+                  setLoanAmountToApply('5000'); // Example amount
+                  handleApplyLoan('Education');
+                  return;
+              }
+          }
+          // Fallback to regular bill payment flow
+          alert(`Redirecting to pay school fees for ${selectedChild.name} (School Biller ID: ${selectedChild.linkedSchoolBillerId}) using regular payment methods.`);
           // router.push(`/bills/education?billerId=${selectedChild.linkedSchoolBillerId}&identifier=...`);
-          alert(`Redirecting to pay school fees for ${selectedChild.name} (School Biller ID: ${selectedChild.linkedSchoolBillerId})`);
       }
 
     if (isLoading) {
@@ -157,7 +283,7 @@ export default function DigitalPocketMoneyPage() {
         );
     }
 
-    if (childAccounts.length === 0) {
+    if (!config || config.children.length === 0) {
         return (
              <div className="min-h-screen bg-secondary flex flex-col">
                 <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
@@ -182,14 +308,14 @@ export default function DigitalPocketMoneyPage() {
     }
 
     // Ensure selectedChild is set if accounts exist but state is somehow null
-    if (!selectedChild && childAccounts.length > 0) {
-        setSelectedChild(childAccounts[0]);
+    if (!selectedChildId && config.children.length > 0) {
+        setSelectedChildId(config.children[0].id);
         return null; // Render will happen on next cycle
     }
 
     if (!selectedChild) {
          // This case should ideally not be reached if loading/empty state handled correctly
-         return <p>Error: No child selected.</p>;
+         return <p>Error: No child selected or found.</p>;
     }
 
 
@@ -205,13 +331,13 @@ export default function DigitalPocketMoneyPage() {
                     <h1 className="text-lg font-semibold">Digital Pocket Money</h1>
                 </div>
                  {/* Child Selector Dropdown */}
-                 {childAccounts.length > 1 && (
-                     <Select value={selectedChild.id} onValueChange={(id) => setSelectedChild(childAccounts.find(c => c.id === id) || null)}>
+                 {config.children.length > 1 && (
+                     <Select value={selectedChildId || ''} onValueChange={(id) => setSelectedChildId(id || null)}>
                          <SelectTrigger className="w-auto h-8 text-xs bg-primary/80 border-none text-primary-foreground max-w-[150px]">
                              <SelectValue placeholder="Select Child"/>
                          </SelectTrigger>
                          <SelectContent>
-                             {childAccounts.map(child => (
+                             {config.children.map(child => (
                                  <SelectItem key={child.id} value={child.id}>
                                      <div className="flex items-center gap-2">
                                           <Avatar className="h-5 w-5">
@@ -229,8 +355,9 @@ export default function DigitalPocketMoneyPage() {
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
-                {/* Child Balance Card */}
-                <Card className="shadow-md">
+                 {/* --- Child Wallet Section --- */}
+                 <Card className="shadow-md">
+                    {/* ... (Child Balance Card - same as before) ... */}
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                          <div className="flex items-center gap-3">
                              <Avatar className="h-12 w-12">
@@ -261,8 +388,9 @@ export default function DigitalPocketMoneyPage() {
                             </Button>
                         </div>
                     </CardContent>
-                </Card>
+                 </Card>
 
+                {/* ... (Allowance Info, Quick Actions, Recent Transactions - same as before) ... */}
                  {/* Allowance Info */}
                  <Card className="shadow-sm border-dashed">
                      <CardContent className="p-3 text-center">
@@ -318,14 +446,80 @@ export default function DigitalPocketMoneyPage() {
                     </CardContent>
                 </Card>
 
+                 {/* --- Micro-Loan Section --- */}
+                 <Card className="shadow-md border-blue-500">
+                     <CardHeader>
+                         <CardTitle className="flex items-center gap-2 text-blue-700">
+                            <HandCoins className="h-5 w-5"/> Micro-Loans & SNPL
+                         </CardTitle>
+                         <CardDescription>Short-term loans for students, including "Study Now, Pay Later".</CardDescription>
+                     </CardHeader>
+                     <CardContent className="space-y-4">
+                         {loanStatus && loanStatus.hasActiveLoan ? (
+                             // Active Loan View
+                             <div>
+                                 <p className="text-sm font-medium">Active Loan:</p>
+                                 <div className="p-3 border rounded-md bg-muted/50 mt-1 space-y-1">
+                                     <p>Amount Due: <span className="font-semibold">₹{loanStatus.amountDue?.toFixed(2)}</span></p>
+                                     <p>Due Date: {format(loanStatus.dueDate!, 'PPP')} ({differenceInDays(loanStatus.dueDate!, new Date())} days left)</p>
+                                     <p className="text-xs text-muted-foreground">Loan ID: {loanStatus.loanId}</p>
+                                 </div>
+                                 <div className="mt-3 space-y-2">
+                                      <Label htmlFor="repayAmount">Repay Amount (₹)</Label>
+                                      <div className="flex gap-2">
+                                          <Input id="repayAmount" type="number" placeholder="Enter amount" value={repayAmount} onChange={(e) => setRepayAmount(e.target.value)} min="1" max={loanStatus.amountDue} />
+                                          <Button onClick={handleRepayLoan} disabled={isRepayingLoan || !repayAmount || Number(repayAmount) <= 0}>
+                                               {isRepayingLoan ? <Loader2 className="h-4 w-4 animate-spin" /> : "Repay"}
+                                           </Button>
+                                      </div>
+                                 </div>
+                             </div>
+                         ) : (
+                             // No Active Loan View
+                             <div>
+                                 {!loanEligibility && (
+                                     <Button onClick={handleCheckEligibility} disabled={isCheckingEligibility} className="w-full">
+                                         {isCheckingEligibility ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Percent className="mr-2 h-4 w-4"/>}
+                                         Check Micro-Loan Eligibility
+                                     </Button>
+                                 )}
+                                 {loanEligibility && loanEligibility.eligible && (
+                                     <div className="space-y-3">
+                                         <p className="text-sm text-green-600 font-medium">✅ Eligible for micro-loan up to ₹{loanEligibility.limit}!</p>
+                                         <div className="space-y-1">
+                                              <Label htmlFor="loanAmountApply">Amount to Apply (₹)</Label>
+                                             <Input id="loanAmountApply" type="number" placeholder="Enter amount" value={loanAmountToApply} onChange={(e) => setLoanAmountToApply(e.target.value)} min="500" max={loanEligibility.limit} />
+                                         </div>
+                                         <Button onClick={() => handleApplyLoan()} disabled={isApplyingLoan || !loanAmountToApply || Number(loanAmountToApply) <= 0} className="w-full">
+                                              {isApplyingLoan ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <HandCoins className="mr-2 h-4 w-4"/>}
+                                             Apply for ₹{loanAmountToApply || 'Loan'} (0% interest if paid in 7 days)
+                                         </Button>
+                                          <Button variant="outline" onClick={() => handleApplyLoan('Education')} disabled={isApplyingLoan || !loanAmountToApply || Number(loanAmountToApply) <= 0} className="w-full">
+                                             <GraduationCap className="mr-2 h-4 w-4"/> Apply as Study Now, Pay Later
+                                          </Button>
+                                     </div>
+                                 )}
+                                  {loanEligibility && !loanEligibility.eligible && (
+                                     <p className="text-sm text-destructive">{loanEligibility.message || "Not eligible for micro-loans currently."}</p>
+                                 )}
+                             </div>
+                         )}
+                     </CardContent>
+                 </Card>
+
+
                  {/* Settings Dialog */}
                  <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-                    <DialogContent>
-                        <DialogHeader>
+                     <DialogContent>
+                         <DialogHeader>
                              <DialogTitle>Pocket Money Settings for {selectedChild.name}</DialogTitle>
                              <DialogDescription>Manage allowance and spending controls.</DialogDescription>
-                        </DialogHeader>
+                         </DialogHeader>
                          <div className="py-4 space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="child-name">Child's Name</Label>
+                                <Input id="child-name" placeholder="Enter name" value={currentSettings.name || ''} onChange={e => setCurrentSettings({...currentSettings, name: e.target.value })} required/>
+                            </div>
                              <div className="space-y-2">
                                 <Label htmlFor="allowance-amount">Automatic Allowance Amount (₹)</Label>
                                 <Input id="allowance-amount" type="number" min="0" value={currentSettings.allowanceAmount || ''} onChange={e => setCurrentSettings({...currentSettings, allowanceAmount: Number(e.target.value) || 0})}/>
@@ -346,18 +540,19 @@ export default function DigitalPocketMoneyPage() {
                                 <Label htmlFor="spending-limit">Spending Limit per Transaction (₹) (0 for no limit)</Label>
                                 <Input id="spending-limit" type="number" min="0" value={currentSettings.spendingLimitPerTxn || ''} onChange={e => setCurrentSettings({...currentSettings, spendingLimitPerTxn: Number(e.target.value) || 0})}/>
                             </div>
-                             {/* TODO: Add School Fee Biller Linking */}
+                              <div className="space-y-2">
+                                <Label htmlFor="school-biller">Linked School Biller ID (Optional)</Label>
+                                <Input id="school-biller" placeholder="Enter School Biller ID for Fee Payment" value={currentSettings.linkedSchoolBillerId || ''} onChange={e => setCurrentSettings({...currentSettings, linkedSchoolBillerId: e.target.value || undefined })}/>
+                            </div>
                          </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                             <Button onClick={handleSaveSettings}>Save Settings</Button>
-                        </DialogFooter>
-                    </DialogContent>
+                         <DialogFooter>
+                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                             <Button onClick={handleSaveSettings} disabled={isLoading}>Save Settings</Button>
+                         </DialogFooter>
+                     </DialogContent>
                  </Dialog>
 
             </main>
         </div>
     );
 }
-
-    
