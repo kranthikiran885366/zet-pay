@@ -71,7 +71,7 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    Car as CarWashIcon, // Corrected icon
+    Car as CarWashIcon, // Use alias
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -84,6 +84,7 @@ import {
     TrendingUp, // Added for Stock Market
     BookUser, // Placeholder for Mobile Postpaid
     Receipt, // Added for Traffic Challan
+    WandSparkles, // Added for Travel Assistant
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -103,6 +104,7 @@ const templeServices = [
 ];
 
 const travelServices = [
+    { name: "Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel" }, // Added Travel Assistant
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel" },
     { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel" },
     { name: "Book Bus Tickets", icon: Bus, href: "/travels/bus", category: "Travel"},
@@ -177,7 +179,7 @@ const otherServices = [
     { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Vouchers & More" },
     { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" },
 
-    // Other Payments
+    // Payments Category
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Payments" },
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Payments" }, // Smart Parking
@@ -189,7 +191,7 @@ const otherServices = [
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
     // Define order, ensuring all categories are included
-    const categoryOrder = ["Recharge & Bills", "Travel", "Temple Services", "Healthcare", "Entertainment", "Hyperlocal Services", "Financial Services", "Utilities & Tools", "Vouchers & More", "Payments"]; // Updated Order
+    const categoryOrder = ["Recharge & Bills", "Payments", "Travel", "Temple Services", "Healthcare", "Entertainment", "Hyperlocal Services", "Financial Services", "Utilities & Tools", "Vouchers & More"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
