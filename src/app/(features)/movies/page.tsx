@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, ChevronUp, Armchair, X, Loader2, Plane } from 'lucide-react'; // Added Plane, ChevronUp
+import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, ChevronUp, Armchair, X, Loader2, Plane, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils";
 import { format, addDays, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import React from 'react';
+import { confirmBooking } from '@/services/booking'; // Import the booking service
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 // Mock Data (Replace with actual API calls)
 interface Movie {
@@ -151,6 +153,7 @@ export default function MovieBookingPage() {
     const [showSeatSelection, setShowSeatSelection] = useState(false);
     const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
+    const router = useRouter(); // Initialize router
 
     // Fetch Movies on Load
     useEffect(() => {
@@ -249,24 +252,50 @@ export default function MovieBookingPage() {
     const totalFare = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
 
      const handleConfirmBooking = async () => {
-         if (selectedSeats.length === 0) {
-             toast({ variant: "destructive", title: "Select Seats" });
+         if (selectedSeats.length === 0 || !selectedMovie || !selectedCinema || !selectedShowtime) {
+             toast({ variant: "destructive", title: "Selection Incomplete", description: "Please select seats first." });
              return;
          }
          setIsBooking(true);
          try {
-             console.log("Confirming movie booking:", { selectedMovie, selectedCinema, selectedShowtime, selectedSeats });
-             // Simulate API call for booking
-             await new Promise(resolve => setTimeout(resolve, 2000));
-             toast({ title: "Booking Confirmed!", description: `Your tickets for ${selectedMovie?.title} at ${selectedCinema?.name} (${selectedShowtime?.time}) are booked. Total Fare: ₹${totalFare}` });
-             // Reset state or navigate away
-             setShowSeatSelection(false);
-             // Optionally reset movie/cinema/date selection too
-             // setSelectedMovie(null);
-             // setCinemas([]);
-         } catch (error) {
+            const bookingData = {
+                movieId: selectedMovie.id,
+                movieName: selectedMovie.title, // Include name for logging/display
+                cinemaId: selectedCinema.id,
+                cinemaName: selectedCinema.name, // Include name for logging/display
+                showtime: selectedShowtime.time,
+                format: selectedShowtime.format,
+                seats: selectedSeats.map(s => s.id),
+                totalAmount: totalFare,
+                // TODO: Add payment method selection if needed (e.g., 'wallet', 'upi')
+                paymentMethod: 'wallet' // Default to wallet for now
+            };
+             console.log("Confirming movie booking via API:", bookingData);
+              // Call the booking service API
+             const result = await confirmBooking('movie', bookingData);
+
+             if (result.status === 'Completed') {
+                 toast({
+                     title: "Booking Confirmed!",
+                     description: `Your tickets for ${selectedMovie.title} are booked. Booking ID: ${result.bookingDetails?.bookingId || 'N/A'}. Total Fare: ₹${totalFare.toFixed(2)}`
+                 });
+                 // Reset state or navigate away
+                 setShowSeatSelection(false);
+                 setSelectedSeats([]);
+                 // Optionally navigate to a tickets page or history
+                 // router.push('/history');
+             } else {
+                  // Handle Pending or Failed status from backend
+                 toast({
+                    variant: "destructive",
+                    title: `Booking ${result.status || 'Failed'}`,
+                    description: result.message || "Could not confirm your booking."
+                 });
+             }
+
+         } catch (error: any) {
              console.error("Movie booking failed:", error);
-             toast({ variant: "destructive", title: "Booking Failed", description: "Could not confirm your booking." });
+             toast({ variant: "destructive", title: "Booking Failed", description: error.message || "An unexpected error occurred." });
          } finally {
              setIsBooking(false);
          }
@@ -345,7 +374,7 @@ export default function MovieBookingPage() {
                 </div>
 
                 {/* Cinema & Showtime List (Right Side or Full Width on Mobile when movie selected) */}
-                 <div className={cn("w-full md:flex-1 space-y-4", !selectedMovie ? "hidden md:block" : "block")}>
+                 <div className={cn("w-full md:flex-1 space-y-4 p-4 md:p-0", !selectedMovie ? "hidden md:block" : "block")}>
                     {selectedMovie ? (
                          <>
                             <Card className="shadow-md">
@@ -515,7 +544,7 @@ export default function MovieBookingPage() {
                              <Button
                                  className="w-full sm:w-auto bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
                                  disabled={selectedSeats.length === 0 || isBooking}
-                                 onClick={handleConfirmBooking}
+                                 onClick={handleConfirmBooking} // Trigger booking on click
                             >
                                 {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                                 {isBooking ? 'Processing...' : `Pay ₹${totalFare.toFixed(2)}`}
