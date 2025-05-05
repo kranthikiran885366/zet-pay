@@ -6,10 +6,11 @@
 
 import { db, auth } from '@/lib/firebase'; // Import Firebase instances
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
-import { sendToUser } from '@/lib/websocket'; // Import WebSocket sender
 import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
 import type { Transaction } from './types'; // Import shared Transaction type
 import { apiClient } from '@/lib/apiClient'; // Import API client
+import { sendToUser } from '@/lib/websocket'; // Import WebSocket sender
+
 
 /**
  * Adds a new transaction record via the backend API.
@@ -44,16 +45,8 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             avatarSeed: resultTransaction.avatarSeed || (transactionData.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
         };
 
-        // Send real-time update via WebSocket ONLY if user ID matches logged-in user
-        if (currentUserId && finalTransaction.userId === currentUserId) {
-             const sent = sendToUser(currentUserId, { type: 'transaction_update', payload: finalTransaction });
-             if (!sent) {
-                 console.warn(`Client-side WS update skipped for tx ${finalTransaction.id}.`);
-             }
-         } else {
-             console.log(`Skipping WS update for tx ${finalTransaction.id}, different user.`);
-         }
-
+        // WebSocket update is now handled by the BACKEND after successful logging.
+        // Removed client-side sendToUser call.
 
         // Blockchain logging is handled by the backend
 
@@ -68,3 +61,5 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
 
 // Blockchain logging function (if needed client-side, unlikely now)
 // export async function logTransactionToBlockchain(...) { ... }
+
+    

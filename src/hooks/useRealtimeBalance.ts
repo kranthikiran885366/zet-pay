@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { subscribeToWebSocketMessages, ensureWebSocketConnection, requestInitialData } from '@/lib/websocket';
-import { getWalletBalance } from '@/services/wallet'; // For initial fetch fallback if needed
+// Removed: import { getWalletBalance } from '@/services/wallet';
 import { auth } from '@/lib/firebase'; // To check auth state
 
 export function useRealtimeBalance(): [number | null, boolean, () => void] {
@@ -10,112 +11,98 @@ export function useRealtimeBalance(): [number | null, boolean, () => void] {
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Renamed function to avoid conflict, now requests via WS
+    // Function to request balance update via WebSocket
     const requestBalanceUpdate = useCallback(() => {
         console.log("[Balance Hook] Requesting balance update via WS...");
-        setIsLoading(true);
+        setIsLoading(true); // Set loading when requesting
         setError(null);
         requestInitialData('balance'); // Request balance via WebSocket
     }, []);
 
-    // Fallback: Fetch initial balance via API if WS doesn't provide it quickly
-    const fetchInitialBalanceFallback = useCallback(async () => {
-        // Avoid fetching if already fetched or currently loading
-        if (balance !== null || isLoading) return;
-
-        const user = auth.currentUser;
-        if (!user) {
-            // console.log("[Balance Hook] Fallback fetch skipped: No user.");
-            setBalance(0); // Default to 0 if not logged in
-            setIsLoading(false);
-            return;
-        }
-
-        console.log("[Balance Hook] Executing API fallback for initial balance...");
-        setIsLoading(true); // Ensure loading state is set
-        setError(null);
-        try {
-            const initialBalance = await getWalletBalance(user.uid);
-            // Only set if balance hasn't been updated by WS in the meantime
-            setBalance(prev => prev === null ? initialBalance : prev);
-            console.log("[Balance Hook] Initial balance fetched via API fallback:", initialBalance);
-        } catch (err: any) {
-            console.error("[Balance Hook] Error fetching initial balance via API fallback:", err);
-            setError(err.message || "Could not fetch balance.");
-            setBalance(prev => prev === null ? null : prev); // Keep existing balance if WS update happened
-        } finally {
-            // Only stop loading if balance hasn't been set by WS
-            setIsLoading(prevLoading => balance === null ? false : prevLoading);
-        }
-    }, [balance, isLoading]); // Depend on balance and isLoading
-
-
     useEffect(() => {
-        let unsubscribe: (() => void) | null = null;
-        let authUnsubscribe: (() => void) | null = null;
-        let initialFetchTimeout: NodeJS.Timeout | null = null;
+        let unsubscribeWs: (() => void) | null = null;
+        let unsubscribeAuth: (() => void) | null = null;
+        let isMounted = true;
 
         const setupSubscription = () => {
-            ensureWebSocketConnection(); // Make sure WS is connected or connecting
+            if (!isMounted) return;
+            ensureWebSocketConnection(); // Ensure connection attempt
 
-            unsubscribe = subscribeToWebSocketMessages('balance_update', (payload) => {
+            console.log("[Balance Hook] Setting up WebSocket subscription for balance_update.");
+            unsubscribeWs = subscribeToWebSocketMessages('balance_update', (payload) => {
+                 if (!isMounted) return;
                 console.log("[Balance Hook] Received balance_update via WS:", payload);
-                 if (initialFetchTimeout) clearTimeout(initialFetchTimeout); // Cancel fallback if WS provides data
                 if (typeof payload?.balance === 'number') {
                     setBalance(payload.balance);
                     setIsLoading(false); // Update received, no longer loading
-                    setError(null); // Clear previous errors on successful update
+                    setError(null); // Clear previous errors
                 } else {
                     console.warn("[Balance Hook] Invalid balance update payload:", payload);
+                    // Optionally set error state or keep loading until valid data arrives
+                    // setIsLoading(false); // Decide if invalid payload stops loading
+                    // setError("Received invalid balance data.");
                 }
             });
-             // Request initial balance via WebSocket after setting up listener
+
+            // Request initial balance via WebSocket after setting up listener
             requestBalanceUpdate();
-            // Set a timeout for the API fallback
-             initialFetchTimeout = setTimeout(fetchInitialBalanceFallback, 3000); // e.g., wait 3 seconds
         };
 
         // Handle Authentication State Changes
-        authUnsubscribe = auth.onAuthStateChanged(user => {
+        console.log("[Balance Hook] Setting up auth listener.");
+        unsubscribeAuth = auth.onAuthStateChanged(user => {
+             if (!isMounted) return;
+             console.log(`[Balance Hook] Auth state changed. User: ${user ? 'Present' : 'Absent'}`);
             if (user) {
-                console.log("[Balance Hook] User detected, setting up subscription & requesting data.");
-                // Reset state before setting up for new user
+                // Reset state before setting up for new user or on initial login
                 setBalance(null);
                 setIsLoading(true);
                 setError(null);
-                if (unsubscribe) unsubscribe(); // Clean up old subscription first
-                 if (initialFetchTimeout) clearTimeout(initialFetchTimeout); // Clear old timeout
+                if (unsubscribeWs) unsubscribeWs(); // Clean up old WebSocket subscription first
                 setupSubscription();
             } else {
-                console.log("[Balance Hook] User logged out, clearing balance and unsubscribing.");
-                if (unsubscribe) unsubscribe();
-                 if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
-                unsubscribe = null;
-                initialFetchTimeout = null;
-                setBalance(0); // Reset balance on logout
+                // User logged out
+                if (unsubscribeWs) unsubscribeWs();
+                unsubscribeWs = null;
+                setBalance(0); // Reset balance to 0 on logout
                 setIsLoading(false);
                 setError(null);
             }
         });
 
+        // Initial check in case auth state is already available
+        if (auth.currentUser) {
+             console.log("[Balance Hook] Initial user found, setting up subscription.");
+             setupSubscription();
+        } else {
+             console.log("[Balance Hook] No initial user found, waiting for auth state change.");
+             setIsLoading(false); // Not loading if no user initially
+             setBalance(0);
+        }
+
+
         // Cleanup function
         return () => {
+            isMounted = false;
             console.log("[Balance Hook] Cleaning up WebSocket subscription and auth listener.");
-            if (unsubscribe) unsubscribe();
-            if (authUnsubscribe) authUnsubscribe();
-            if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
+            if (unsubscribeWs) unsubscribeWs();
+            if (unsubscribeAuth) unsubscribeAuth();
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Re-run setup only on mount/unmount
+    }, []); // Run only on mount/unmount
 
     // Manual refresh function requests update via WS
     const refreshBalance = useCallback(() => {
         console.log("[Balance Hook] Manual refresh requested.");
-        requestBalanceUpdate();
-         // Optionally trigger API fallback immediately if needed
-         // fetchInitialBalanceFallback();
+        if (auth.currentUser) {
+             requestBalanceUpdate();
+        } else {
+             console.log("[Balance Hook] Manual refresh skipped: No user logged in.");
+        }
     }, [requestBalanceUpdate]);
 
     // Return balance, loading state, and refresh function
     return [balance, isLoading, refreshBalance];
 }
+
+    

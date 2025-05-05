@@ -19,7 +19,7 @@ export interface UserProfile {
     appLockEnabled?: boolean;
     isSmartWalletBridgeEnabled?: boolean;
     smartWalletBridgeLimit?: number;
-    defaultPaymentMethod?: 'upi' | 'wallet' | string; // Allow any string for card tokens etc.
+    defaultPaymentMethod?: 'upi' | 'wallet' | string;
     isSeniorCitizenMode?: boolean;
     familyGroupIds?: string[];
 }
@@ -234,14 +234,14 @@ export interface ZetAgent {
     id: string;
     name: string;
     address: string;
-    distanceKm: number;
+    distanceKm: number; // Calculated distance
     operatingHours: string;
 }
 export interface WithdrawalDetails {
-    id?: string;
+    id?: string; // Firestore document ID for the withdrawal request
     userId: string;
     agentId: string;
-    agentName?: string;
+    agentName?: string; // Optional denormalized agent name
     amount: number;
     otp: string;
     qrData: string;
@@ -250,7 +250,14 @@ export interface WithdrawalDetails {
     expiresAt: Timestamp | Date | string;
     completedAt?: Timestamp | Date | string;
     failureReason?: string;
+    // Added from backend
+    transactionId?: string; // ID of the final transaction log entry
+    updatedAt?: Timestamp | Date | string; // Allow multiple types
+    expiresInSeconds?: number; // Calculated on client potentially
 }
+
 
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
+
+    

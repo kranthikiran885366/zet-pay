@@ -94,7 +94,8 @@ export async function payViaWallet(
 
      try {
         // Backend infers user from token
-        const result = await apiClient<WalletTransactionResult>('/wallet/pay', { // Assuming a new '/wallet/pay' endpoint
+        // Use the backend payViaWalletController which calls payViaWalletInternal
+        const result = await apiClient<WalletTransactionResult>('/wallet/pay', {
             method: 'POST',
             body: JSON.stringify({ recipientIdentifier, amount, note: note || undefined }),
         });
@@ -126,63 +127,37 @@ export async function payViaWalletInternal(
     amount: number,
     note?: string
 ): Promise<WalletTransactionResult> {
-    console.warn("payViaWalletInternal is intended for internal use or backend. Using client-side simulation.");
-    // Simulate the API call and transaction logging for now
-    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
+    // This function is now primarily handled by the backend controller (`payViaWalletController`)
+    // which in turn calls the backend `payViaWalletInternal`.
+    // The client-side simulation is removed to avoid duplication and rely on the API call.
+    console.warn("payViaWalletInternal called client-side. Use payViaWallet to trigger the backend logic.");
+
+    // For compatibility with client-side simulations (like in UPI fallback), we can keep a simple simulation
+    // but it won't reflect the true backend state or trigger backend logs/WS updates.
+    // If a true internal client-side update is needed (highly discouraged), it needs careful state management.
+
+    // Simulate basic success/failure for client-side flows that might still call this temporarily
+    await new Promise(resolve => setTimeout(resolve, 100)); // Minimal delay
     const isCredit = amount < 0;
-    const absoluteAmount = Math.abs(amount);
-    let loggedTxId: string | undefined;
+    const success = Math.random() > 0.1; // 90% success simulation
 
-    try {
-        // Simulate success (replace with actual backend call logic if possible)
-        const success = true;
-        const message = `Internal wallet ${isCredit ? 'credit' : 'payment'} successful (Simulated)`;
-        const newBalance = 5000; // Mock balance
-
-        if (success) {
-             // Log successful transaction
-            const logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
-                // Determine type based on operation
-                type: isCredit ? 'Received' : 'Sent',
-                name: identifier, // Use identifier
-                description: `${isCredit ? 'Credited via Wallet' : 'Paid via Wallet'} ${note ? `- ${note}` : ''}`,
-                amount: amount, // Store the original amount (positive for debit, negative for credit)
-                status: 'Completed',
-                userId: userId,
-                upiId: identifier.includes('@') ? identifier : undefined,
-                paymentMethodUsed: 'Wallet', // Indicate payment method
-            };
-            const loggedTx = await addTransaction(logData);
-            loggedTxId = loggedTx.id;
-
-             // Blockchain logging is handled by backend
-
-        } else {
-             throw new Error("Internal wallet operation failed (Simulated).");
-        }
-
-        return { success, transactionId: loggedTxId, newBalance, message };
-
-    } catch (error: any) {
-        console.error(`Internal wallet ${isCredit ? 'credit' : 'payment'} failed for ${userId} to ${identifier}:`, error);
-        // Log failed attempt
-        const failLogData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
-            type: 'Failed',
-            name: identifier,
-            description: `Wallet ${isCredit ? 'Credit' : 'Payment'} Failed - ${error.message}`,
-            amount: amount,
-            status: 'Failed',
-            userId: userId,
-            upiId: identifier.includes('@') ? identifier : undefined,
-            paymentMethodUsed: 'Wallet',
-        };
-         let failedTxId;
-         try {
-            const failedTx = await addTransaction(failLogData);
-            failedTxId = failedTx.id;
-         } catch (logError) {
-             console.error("Failed to log failed internal wallet transaction:", logError);
-         }
-        return { success: false, transactionId: failedTxId, message: error.message || `Internal wallet ${isCredit ? 'credit' : 'payment'} failed.` };
+    if (!success) {
+         console.error(`Simulated Internal wallet ${isCredit ? 'credit' : 'payment'} failed for ${userId}.`);
+         return { success: false, message: `Simulated internal wallet ${isCredit ? 'credit' : 'payment'} failed.` };
     }
+
+     console.log(`Simulated Internal wallet ${isCredit ? 'credit' : 'payment'} successful for ${userId}.`);
+     // Return a mock successful response without transaction ID or balance update
+     // Logging and balance update should happen via backend API call.
+     return { success: true, message: `Simulated internal wallet ${isCredit ? 'credit' : 'payment'} successful.` };
+
+
+    // **Removed the previous client-side simulation logic including:**
+    // - runTransaction calls
+    // - addTransaction calls
+    // - sendBalanceUpdate calls (backend handles this)
+    // - Blockchain logging calls (backend handles this)
 }
+
+
+    
