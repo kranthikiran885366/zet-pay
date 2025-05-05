@@ -62,7 +62,7 @@ import {
     Database, // For Deposits
     Gauge, // For Credit Score
     Coins, // For Gold
-    Building2, // For Zet Bank / Municipal
+    Building2, // For Zet Bank
     Zap, // For EV Charging
     Siren, // For Emergency Assistance
     Store, // For Rest Stop (placeholder)
@@ -71,7 +71,6 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    // CarWash icon doesn't exist, using Car again or Droplet/SprayCan
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -100,6 +99,9 @@ import {
     BadgePercent, // Health Offers
     BedSingle, // Added BedSingle icon
     Play, // Added Play icon
+    BellRing, // Added BellRing icon
+    Target, // Added Target icon
+    Wallet, // Added Wallet icon
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -214,7 +216,7 @@ const municipalServices = [
 
 const utilityToolsServices = [
    { name: "Education Fees", icon: GraduationCap, href: "/bills/education", category: "Utilities & Tools" },
-   { name: "Club Fees", icon: HandCoins, href: "/club-fees", category: "Utilities & Tools" },
+   { name: "Club Fees", icon: HeartHandshake, href: "/club-fees", category: "Utilities & Tools" }, // Used HeartHandshake as substitute for HandCoins
    { name: "General Donations", icon: Heart, href: "/donations/general", category: "Utilities & Tools" },
    { name: "Secure Vault", icon: FolderLock, href: "/vault", category: "Utilities & Tools" },
    { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Utilities & Tools" },
@@ -241,10 +243,10 @@ const healthcareServices = [
     { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness" },
     { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness" },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness" },
-    { name: "Emergency Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness" },
-    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness" },
-    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness" },
-    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness" },
+    { name: "Emergency Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Emergency" },
+    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Wellness" },
+    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Records" },
+    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Offers" },
 ];
 
 const aiAndToolsServices = [
@@ -256,21 +258,22 @@ const aiAndToolsServices = [
 // --- Combine All Services ---
 const allServices = [
     ...rechargeBillPayServices,
-    ...loanRepaymentServices,
-    ...financialServices,
+    ...paymentsServices, // Moved Payments higher
     ...travelServices,
-    ...transitTollServices,
     ...foodAndShoppingServices,
     ...entertainmentServices,
-    ...templeServices,
+    ...healthcareServices, // Moved Healthcare higher
     ...hyperlocalServices,
+    ...templeServices,
+    ...transitTollServices,
+    ...financialServices,
+    ...loanRepaymentServices,
     ...municipalServices,
     ...utilityToolsServices,
     ...vouchersMoreServices,
-    ...paymentsServices,
-    ...healthcareServices,
-    ...aiAndToolsServices, // Added AI & Tools
+    ...aiAndToolsServices,
 ];
+
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
@@ -278,7 +281,6 @@ const groupServicesByCategory = (services: any[]) => {
     const categoryOrder = [
         "Recharge & Bills",
         "Payments", // Group pure payment actions
-        "Financial Services",
         "Travel",
         "Food & Shopping",
         "Entertainment & Gaming",
@@ -286,11 +288,18 @@ const groupServicesByCategory = (services: any[]) => {
         "Hyperlocal Services",
         "Temple Services",
         "Transit & Toll",
+        "Financial Services",
+        "Loan Repayment", // Moved lower maybe?
         "Municipal Services",
         "AI & Tools", // Added AI & Tools category
         "Utilities & Tools",
         "Vouchers & More",
-        "Loan Repayment", // Moved lower maybe?
+        "Emergency", // Added Emergency category
+        "Wellness", // Added Wellness category
+        "Records", // Added Records category
+        "Offers", // Added Offers category
+
+
         // Add more categories as needed
     ];
 
@@ -312,7 +321,7 @@ const groupServicesByCategory = (services: any[]) => {
          if (grouped[cat] && grouped[cat].length > 0) {
              finalGrouped[cat] = grouped[cat];
          }
-     }
+      }
       // Add any dynamically created categories (those not in categoryOrder) at the end
       for (const cat in grouped) {
          if (!finalGrouped[cat] && grouped[cat].length > 0) {
