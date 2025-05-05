@@ -11,11 +11,12 @@ import { ArrowLeft, User, Landmark, Loader2, Send, X, UserPlus } from 'lucide-re
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { suggestFrequentContacts, SmartPayeeSuggestionInput } from '@/ai/flows/smart-payee-suggestion';
-import { subscribeToContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface
+import { getContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface, removed subscribeToContacts
 import { processUpiPayment, verifyUpiId } from '@/services/upi'; // Import processUpiPayment
 // Transaction import not needed here as processUpiPayment handles logging internally
 import { auth } from '@/lib/firebase'; // Import Firebase auth instance
-import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe
+// Removed Unsubscribe import as it's no longer needed
+// import type { Unsubscribe } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger
 import { AlertDialogTrigger } from "@radix-ui/react-alert-dialog"; // Import trigger separately if needed
 
@@ -43,7 +44,7 @@ export default function SendMoneyPage() {
   const [selectedPayee, setSelectedPayee] = useState<Payee | null>(null);
   const [manualIdentifier, setManualIdentifier] = useState('');
   const [manualPayeeName, setManualPayeeName] = useState(''); // For saving new payee
-  const [allUserContacts, setAllUserContacts] = useState<Payee[]>([]); // Store all contacts from subscription
+  const [allUserContacts, setAllUserContacts] = useState<Payee[]>([]); // Store all fetched contacts
   const [suggestedPayees, setSuggestedPayees] = useState<Payee[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(true); // Manage contact loading state
@@ -68,63 +69,54 @@ export default function SendMoneyPage() {
                 setIsLoadingContacts(false);
                 setAllUserContacts([]);
                 setSuggestedPayees([]);
+            } else {
+                // Fetch contacts when user logs in
+                fetchContacts();
             }
         });
         return () => unsubscribeAuth(); // Cleanup listener
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run only on mount
 
 
-  // Subscribe to contacts
-    useEffect(() => {
-        let unsubscribe: Unsubscribe | null = null; // Define unsubscribe variable
-        if (!isLoggedIn) {
-            setIsLoadingContacts(false);
-            setAllUserContacts([]); // Clear contacts if not logged in
-            return; // Don't subscribe if not logged in
-        }
-
+  // Function to fetch contacts
+  const fetchContacts = useCallback(async (term?: string) => {
+        if (!auth.currentUser) return; // Don't fetch if not logged in
         setIsLoadingContacts(true);
-        console.log("Setting up contacts subscription...");
-        unsubscribe = subscribeToContacts( // Assign the result of subscribeToContacts
-            (contacts) => {
-                 console.log("Received contacts update:", contacts.length);
-                setAllUserContacts(contacts);
-                setIsLoadingContacts(false);
-                // Refresh suggestions when contacts change (optional, depends on desired behavior)
-                // fetchSuggestions(contacts);
-            },
-            (error) => {
-                console.error("Error subscribing to contacts:", error);
-                if (error.message !== "User not logged in.") { // Avoid duplicate if handled by auth state
-                    toast({ variant: "destructive", title: "Error Loading Contacts" });
-                }
-                setIsLoadingContacts(false);
-                setAllUserContacts([]); // Clear contacts on error
+        try {
+            const contacts = await getContacts(term); // Use getContacts
+            setAllUserContacts(contacts);
+             // If not searching, update suggestions
+            if (!term) {
+                fetchSuggestions(contacts);
             }
-            // Pass searchTerm here ONLY if you want server-side filtering (requires index setup)
-            // For client-side filtering, handle it in useMemo below
-        );
+        } catch (error) {
+            console.error("Error fetching contacts:", error);
+            toast({ variant: "destructive", title: "Error Loading Contacts" });
+            setAllUserContacts([]);
+        } finally {
+            setIsLoadingContacts(false);
+        }
+    }, [toast]); // Removed fetchSuggestions from deps, it's called conditionally
 
-        // Cleanup function
-        return () => {
-            if (unsubscribe) {
-                console.log("Unsubscribing from contacts");
-                unsubscribe();
-            }
-        };
-    }, [isLoggedIn, toast]); // Add toast as dependency
-
-  // Fetch AI-powered suggestions (only once on mount if logged in and contacts available)
+  // Fetch initial contacts (no search term)
   useEffect(() => {
-      if (!isLoggedIn || isLoadingContacts || allUserContacts.length === 0) return; // Wait for login, contacts load, and ensure contacts exist
+    if (isLoggedIn) {
+        fetchContacts();
+    }
+  }, [isLoggedIn, fetchContacts]); // Fetch when login status is confirmed
 
-      const fetchSuggestions = async (currentContacts: Payee[]) => {
+  // Fetch AI-powered suggestions (only once when contacts are loaded initially)
+  const fetchSuggestions = useCallback(async (currentContacts: Payee[]) => {
+          if (currentContacts.length === 0) {
+              setSuggestedPayees([]);
+              return; // No contacts, no suggestions
+          }
           setIsLoadingSuggestions(true);
           try {
               const currentUserId = auth.currentUser?.uid;
-              // Only fetch if contacts exist
-              if (!currentUserId) { // Removed check for currentContacts.length as it's checked above
-                   setIsLoadingSuggestions(false); // Stop loading if no user ID
+              if (!currentUserId) {
+                   setIsLoadingSuggestions(false);
                    return;
                }
 
@@ -140,17 +132,11 @@ export default function SendMoneyPage() {
               setSuggestedPayees(suggestions);
           } catch (error) {
               console.error("Failed to fetch suggestions:", error);
-              // Optionally inform user that suggestions failed
-               toast({ description: "Could not load suggestions.", duration: 3000 });
+              toast({ description: "Could not load suggestions.", duration: 3000 });
           } finally {
               setIsLoadingSuggestions(false);
           }
-      };
-
-      // Fetch suggestions once contacts are loaded
-      fetchSuggestions(allUserContacts);
-
-   }, [isLoggedIn, isLoadingContacts, allUserContacts, toast]); // Added toast
+      }, [toast]);
 
 
    // Filter contacts based on search term (client-side filtering)
@@ -244,7 +230,7 @@ export default function SendMoneyPage() {
          const newPayeeData: Omit<Payee, 'id' | 'userId' | 'avatarSeed' | 'createdAt' | 'updatedAt'> = {
              name: manualPayeeName,
              identifier: manualIdentifier,
-             type: type, // Use current page type
+             type: type === 'mobile' ? 'mobile' : 'bank', // Simplified type mapping
              // Optionally add upiId, accountNumber, ifsc based on input type
              upiId: type === 'bank' && manualIdentifier.includes('@') ? manualIdentifier : undefined,
              accountNumber: type === 'bank' && !manualIdentifier.includes('@') ? manualIdentifier : undefined,
@@ -252,6 +238,8 @@ export default function SendMoneyPage() {
          };
          const saved = await savePayee(newPayeeData);
          toast({ title: "Payee Saved", description: `${saved.name} added to your contacts.` });
+         // Optimistically add to local state to avoid immediate refetch delay
+         setAllUserContacts(prev => [...prev, saved]);
          setShowSavePayeeDialog(false);
          handleSelectPayee(saved); // Auto-select the newly saved payee
      } catch (error: any) {
@@ -268,7 +256,7 @@ export default function SendMoneyPage() {
     // For mobile type, ASSUME the identifier IS the UPI ID.
     // In a real app, backend/PSP would map mobile# to primary UPI ID.
     const targetIdentifier = selectedPayee ? selectedPayee.identifier : manualIdentifier.trim();
-    const targetUPIAddress = targetIdentifier; // **ASSUMPTION**: identifier holds the UPI address
+    let targetUPIAddress = targetIdentifier; // **ASSUMPTION**: identifier holds the UPI address for bank or mobile
 
     // Use verified name if manual, otherwise selected payee name, fallback to identifier
     const targetPayeeName = selectedPayee ? selectedPayee.name : (verifiedManualName || manualPayeeName || targetIdentifier || 'Recipient');
@@ -283,11 +271,6 @@ export default function SendMoneyPage() {
         toast({ variant: "destructive", title: "Invalid Mobile Number" });
         return;
      }
-     // Basic check for UPI ID (@) or Account Number (digits) - now handled by processUpiPayment
-     // if (type === 'bank' && !targetUPIAddress.includes('@') && !targetUPIAddress.match(/^\d{9,18}$/)) {
-     //     toast({ variant: "destructive", title: "Invalid UPI ID or Account Number" });
-     //     return;
-     // }
       if (type === 'bank' && !selectedPayee && !verifiedManualName) {
           toast({ variant: "destructive", title: "Recipient Not Verified", description:"Please enter a valid ID and wait for verification." });
           return;
@@ -311,8 +294,8 @@ export default function SendMoneyPage() {
             Number(amount),
             enteredPin,
             `Payment to ${targetPayeeName}`, // Pass note
-            auth.currentUser?.uid, // Pass user ID if needed by backend for checks/logging
-            undefined // Let backend select default source account or implement UI selection
+            auth.currentUser?.uid // Pass user ID if needed by backend for checks/logging
+            // Let backend select default source account or implement UI selection
         );
 
         if (paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess') {
@@ -321,21 +304,16 @@ export default function SendMoneyPage() {
              setTimeout(() => router.push('/'), 500); // Slight delay before redirect
          } else {
              // Error handling for failed payments (including ticket info)
+             let errorDescription = paymentResult.message || 'Unknown error';
              if (paymentResult.ticketId) {
-                  toast({
-                     variant: "destructive",
-                     title: `Payment Failed (Ticket: ${paymentResult.ticketId})`,
-                     description: `${paymentResult.message}. ${paymentResult.refundEta ? `Refund ETA: ${paymentResult.refundEta}` : ''}`,
-                     duration: 10000
-                 });
-             } else {
-                 toast({
-                     variant: "destructive",
-                     title: "Payment Failed",
-                     description: paymentResult.message || 'Unknown error',
-                     duration: 7000
-                 });
+                  errorDescription += `. ${paymentResult.refundEta ? `Refund ETA: ${paymentResult.refundEta}` : ''}`;
              }
+             toast({
+                 variant: "destructive",
+                 title: `Payment Failed ${paymentResult.ticketId ? `(Ticket: ${paymentResult.ticketId})` : ''}`,
+                 description: errorDescription,
+                 duration: paymentResult.ticketId ? 10000 : 7000
+             });
          }
 
     } catch (error: any) {
@@ -347,7 +325,7 @@ export default function SendMoneyPage() {
     }
   };
 
-  // Display either suggestions or filtered results based on search term
+  // Display logic remains largely the same, using allUserContacts now
   const displayList = searchTerm.trim() === '' && !selectedPayee ? suggestedPayees : filteredPayees;
   const showSuggestions = searchTerm.trim() === '' && !selectedPayee && suggestedPayees.length > 0;
   const showSearchResults = searchTerm.trim() !== '' && !selectedPayee && filteredPayees.length > 0;
