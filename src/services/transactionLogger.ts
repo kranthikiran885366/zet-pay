@@ -7,8 +7,7 @@
 import { db, auth } from '@/lib/firebase'; // Import Firebase instances
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { sendToUser } from '@/lib/websocket'; // Import WebSocket sender
-// REMOVED: Direct import of backend blockchain logger
-// import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
+import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
 import type { Transaction } from './types'; // Import shared Transaction type
 import { apiClient } from '@/lib/apiClient'; // Import API client
 
@@ -42,17 +41,21 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             ...resultTransaction,
             date: new Date(resultTransaction.date),
              // Ensure avatar seed client-side if needed immediately after logging
-            avatarSeed: resultTransaction.avatarSeed || (resultTransaction.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
+            avatarSeed: resultTransaction.avatarSeed || (transactionData.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
         };
 
-        // Optional: Send WebSocket update from client *if* backend doesn't guarantee it.
-        // Usually, the backend should send the update after successful DB write.
-        // const sent = sendToUser(userId, { type: 'transaction_update', payload: finalTransaction });
-        // if (!sent) {
-        //     console.warn(`Client-side WS update skipped for tx ${finalTransaction.id}.`);
-        // }
+        // Send real-time update via WebSocket ONLY if user ID matches logged-in user
+        if (currentUserId && finalTransaction.userId === currentUserId) {
+             const sent = sendToUser(currentUserId, { type: 'transaction_update', payload: finalTransaction });
+             if (!sent) {
+                 console.warn(`Client-side WS update skipped for tx ${finalTransaction.id}.`);
+             }
+         } else {
+             console.log(`Skipping WS update for tx ${finalTransaction.id}, different user.`);
+         }
 
-        // Blockchain logging is now handled by the backend within the POST /api/transactions endpoint
+
+        // Blockchain logging is handled by the backend
 
         return finalTransaction;
 
@@ -63,5 +66,5 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
     }
 }
 
-// REMOVED: Client-side blockchain logging function
+// Blockchain logging function (if needed client-side, unlikely now)
 // export async function logTransactionToBlockchain(...) { ... }

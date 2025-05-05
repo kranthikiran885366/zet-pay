@@ -15,8 +15,9 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { searchDarshanSlots as searchSlotsApi, bookDarshanSlot as bookSlotApi } from '@/services/temple'; // Use API service
 
-// Mock Data (Replace with actual API calls)
+// Mock Data (Keep for fallback or UI structure, API is primary)
 const mockTemples = [
     { id: 'tirupati', name: 'Tirumala Tirupati Devasthanams (TTD)' },
     { id: 'shirdi', name: 'Shirdi Saibaba Sansthan Trust' },
@@ -24,35 +25,12 @@ const mockTemples = [
     { id: 'sabarimala', name: 'Sabarimala Temple' },
 ];
 
-interface DarshanSlot {
+export interface DarshanSlot { // Export interface for API service consistency
     time: string; // e.g., "08:00 AM - 09:00 AM"
     availability: 'Available' | 'Filling Fast' | 'Full';
-    quota: 'Free' | 'Special Entry (₹300)' | 'VIP';
+    quota: string; // e.g., "Free", "Special Entry (₹300)", "VIP"
     ticketsLeft?: number;
 }
-
-const mockSlots: { [templeId: string]: { [date: string]: DarshanSlot[] } } = {
-    'tirupati': {
-        [format(new Date(), 'yyyy-MM-dd')]: [
-            { time: '08:00 - 09:00', availability: 'Full', quota: 'Free' },
-            { time: '09:00 - 10:00', availability: 'Available', quota: 'Special Entry (₹300)', ticketsLeft: 150 },
-            { time: '10:00 - 11:00', availability: 'Filling Fast', quota: 'Special Entry (₹300)', ticketsLeft: 35 },
-            { time: '11:00 - 12:00', availability: 'Available', quota: 'Special Entry (₹300)', ticketsLeft: 200 },
-            { time: '14:00 - 15:00', availability: 'VIP', quota: 'VIP', ticketsLeft: 10 },
-        ],
-        [format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')]: [ // Tomorrow
-            { time: '08:00 - 09:00', availability: 'Available', quota: 'Free', ticketsLeft: 500 },
-            { time: '09:00 - 10:00', availability: 'Available', quota: 'Special Entry (₹300)', ticketsLeft: 300 },
-        ]
-    },
-    'shirdi': {
-         [format(new Date(), 'yyyy-MM-dd')]: [
-            { time: '07:00 - 08:00', availability: 'Available', quota: 'Free', ticketsLeft: 200 },
-            { time: '10:00 - 11:00', availability: 'Filling Fast', quota: 'Paid Darshan (₹200)', ticketsLeft: 50 },
-            { time: '16:00 - 17:00', availability: 'Available', quota: 'Paid Darshan (₹200)', ticketsLeft: 150 },
-        ],
-    }
-};
 
 export default function DarshanBookingPage() {
     const [selectedTemple, setSelectedTemple] = useState<string>('');
@@ -73,19 +51,17 @@ export default function DarshanBookingPage() {
         setIsLoading(true);
         setSelectedSlot(null); // Reset selection
         setAvailableSlots([]); // Clear previous slots
-        console.log("Searching slots:", { selectedTemple, date: format(selectedDate, 'yyyy-MM-dd') });
+        const dateString = format(selectedDate, 'yyyy-MM-dd');
+        console.log("Searching slots via API:", { selectedTemple, date: dateString });
         try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const dateKey = format(selectedDate, 'yyyy-MM-dd');
-            const slots = mockSlots[selectedTemple]?.[dateKey] || [];
+            const slots = await searchSlotsApi(selectedTemple, dateString);
             setAvailableSlots(slots);
             if (slots.length === 0) {
                 toast({ description: "No darshan slots found for the selected date." });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Slot search failed:", error);
-            toast({ variant: "destructive", title: "Search Failed", description: "Could not fetch available slots." });
+            toast({ variant: "destructive", title: "Search Failed", description: error.message || "Could not fetch available slots." });
         } finally {
             setIsLoading(false);
         }
@@ -109,27 +85,34 @@ export default function DarshanBookingPage() {
         const quotaPriceMatch = selectedSlot.quota.match(/₹(\d+)/);
         const pricePerPerson = quotaPriceMatch ? parseInt(quotaPriceMatch[1], 10) : 0;
         const totalAmount = pricePerPerson * numberOfPersons;
+        const templeName = mockTemples.find(t => t.id === selectedTemple)?.name || selectedTemple; // Get temple name for API
 
         setIsBooking(true);
-        console.log("Confirming Darshan Booking:", {
-            temple: selectedTemple,
+        const bookingDetails = {
+            templeId: selectedTemple,
+            templeName: templeName,
             date: format(selectedDate, 'yyyy-MM-dd'),
-            slot: selectedSlot.time,
+            slotTime: selectedSlot.time,
             quota: selectedSlot.quota,
             persons: numberOfPersons,
             totalAmount
-        });
+        };
+        console.log("Confirming Darshan Booking via API:", bookingDetails);
         try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            toast({ title: "Booking Confirmed!", description: `Booked ${numberOfPersons} slot(s) for ${selectedSlot.time} (${selectedSlot.quota}). Total: ₹${totalAmount}` });
-            // Reset or navigate
-            setSelectedSlot(null);
-            setAvailableSlots([]);
-            // router.push('/temple/bookings');
-        } catch (error) {
+            // Use the imported API function
+            const result = await bookSlotApi(bookingDetails);
+            if (result.success) {
+                toast({ title: "Booking Confirmed!", description: `Booked ${numberOfPersons} slot(s) for ${selectedSlot.time} (${selectedSlot.quota}). Total: ₹${totalAmount}` });
+                // Reset or navigate
+                setSelectedSlot(null);
+                setAvailableSlots([]);
+                // router.push(`/temple/access?bookingId=${result.bookingId}`); // Example redirect to access pass page
+            } else {
+                 throw new Error(result.message || "Booking failed on server.");
+            }
+        } catch (error: any) {
             console.error("Booking failed:", error);
-            toast({ variant: "destructive", title: "Booking Failed" });
+            toast({ variant: "destructive", title: "Booking Failed", description: error.message || "Could not complete booking." });
         } finally {
             setIsBooking(false);
         }
@@ -186,7 +169,7 @@ export default function DarshanBookingPage() {
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0">
-                                        <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus disabled={(date) => date &lt; new Date(new Date().setHours(0,0,0,0))}/>
+                                        <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}/>
                                     </PopoverContent>
                                 </Popover>
                             </div>
@@ -278,3 +261,4 @@ export default function DarshanBookingPage() {
         </div>
     );
 }
+

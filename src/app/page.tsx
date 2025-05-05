@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation'; // Import useRouter
 import { useRealtimeBalance } from '@/hooks/useRealtimeBalance'; // Import the balance hook
+import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions'; // Import the transaction hook
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -43,28 +44,25 @@ const quickLinks = [
 ];
 
 export default function Home() {
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]); // Holds data from subscription
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
+  const [recentTransactions, isLoadingTransactions, refreshTransactions] = useRealtimeTransactions({ limit: 5 }); // Use the hook
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Track login state
   const [walletBalance, isLoadingBalance, refreshBalance] = useRealtimeBalance(); // Use the balance hook
   const { toast } = useToast();
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the voice hook
   const router = useRouter();
 
-  // Handle voice command results (placeholder)
+  // Handle voice command results
   useEffect(() => {
     if (transcript) {
-      toast({ title: "Voice Command (Simulated)", description: `Recognized: "${transcript}". Processing... (Not Implemented)` });
-      // TODO: Add NLP processing and action dispatching here
-       // Example: if (transcript.includes('recharge')) router.push('/recharge/mobile');
-       // Use the new conversational flow
+      toast({ title: "Voice Command Received", description: `Processing: "${transcript}"...` });
        if (transcript.trim()) {
+          // Navigate to conversational UI with the query
           router.push(`/conversation?query=${encodeURIComponent(transcript)}`);
        }
     }
-  }, [transcript, toast, router]); // Added router dependency
+  }, [transcript, toast, router]);
 
-  // Handle voice command errors (placeholder)
+  // Handle voice command errors
   useEffect(() => {
     if (voiceError) {
       toast({ variant: "destructive", title: "Voice Command Error", description: voiceError });
@@ -72,83 +70,27 @@ export default function Home() {
   }, [voiceError, toast]);
 
 
-  // Check auth state and subscribe/unsubscribe to transactions
+  // Check auth state on mount
   useEffect(() => {
-    setIsLoadingTransactions(true);
-    let cleanupSubscription: (() => void) | null = null;
-
+    setIsLoadingTransactions(true); // Set loading true initially
     console.log("Setting up auth listener for homepage...");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
         const loggedIn = !!user;
-        setIsLoggedIn(loggedIn); // Update login state
-
-        if (user) {
-            console.log("User logged in on homepage, subscribing to transactions...");
-             // If already subscribed, clean up first (shouldn't happen often here, but good practice)
-             if (cleanupSubscription) {
-                 cleanupSubscription();
-                 cleanupSubscription = null;
-             }
-
-            // Subscribe using the service function which handles WS/polling
-            cleanupSubscription = subscribeToTransactionHistory(
-                (transactions) => {
-                    // Handle full list or single update
-                     if (transactions.length === 1 && recentTransactions.length > 0) {
-                         // Single update: Merge intelligently
-                         setRecentTransactions(prev => {
-                             const existingIndex = prev.findIndex(t => t.id === transactions[0].id);
-                             let updatedList;
-                             if (existingIndex > -1) {
-                                 // Update existing
-                                 updatedList = [...prev];
-                                 updatedList[existingIndex] = transactions[0];
-                             } else {
-                                 // Prepend new
-                                 updatedList = [transactions[0], ...prev];
-                             }
-                             // Sort and slice
-                             return updatedList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-                         });
-                     } else {
-                         // Initial load or full refresh
-                         setRecentTransactions(transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5));
-                     }
-                    setIsLoadingTransactions(false);
-                },
-                (error) => {
-                    console.error("Error in transaction subscription (Home):", error);
-                     if (error.message !== "User not logged in.") {
-                        toast({ variant: "destructive", title: "Transaction Update Error", description: error.message });
-                    }
-                    setIsLoadingTransactions(false);
-                    setRecentTransactions([]);
-                },
-                undefined, // No specific filters needed for home page recents
-                5 // Limit to 5 recent transactions
-            );
-
-        } else {
-            console.log("User logged out on homepage. Clearing transactions and cleaning up.");
-            if (cleanupSubscription) {
-                cleanupSubscription();
-                cleanupSubscription = null;
-            }
-            setRecentTransactions([]);
-            setIsLoadingTransactions(false);
+        console.log(`Auth state changed on homepage. User ${loggedIn ? 'logged in' : 'logged out'}.`);
+        setIsLoggedIn(loggedIn);
+        if (!loggedIn) {
+             setIsLoadingTransactions(false); // Stop loading if logged out
         }
+        // Transaction subscription is handled by the useRealtimeTransactions hook
     });
 
-    // Cleanup auth listener and any active transaction subscription on unmount
+    // Cleanup auth listener
     return () => {
-      console.log("Cleaning up homepage auth listener and transaction subscription.");
+      console.log("Cleaning up homepage auth listener.");
       unsubscribeAuth();
-      if (cleanupSubscription) {
-        cleanupSubscription();
-      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); // Keep dependencies minimal, transaction state is managed internally now
+  }, []); // Run only on mount
 
 
   const handleVoiceButtonClick = () => {
