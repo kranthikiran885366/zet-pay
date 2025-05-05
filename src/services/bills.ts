@@ -3,8 +3,8 @@
  * @fileOverview Service functions for processing bill payments.
  */
 
-import type { Transaction } from './transactions'; // Use the common Transaction interface
-import { addTransaction } from './transactions'; // Import function to add transaction to Firestore
+import type { Transaction } from './types'; // Use the common Transaction interface
+import { addTransaction } from './transactionLogger'; // Import function to add transaction to Firestore
 
 export interface BillPaymentDetails {
     billerId: string;
@@ -18,16 +18,15 @@ export interface BillPaymentDetails {
  * Asynchronously fetches the outstanding amount for a specific biller and identifier.
  * SIMULATED - Actual implementation depends on BBPS or direct biller integration APIs.
  *
- * @param billerId The ID of the biller.
- * @param identifier The consumer number, policy number, etc.
- * @returns A promise that resolves to the outstanding bill amount, or null if not applicable/found.
+ * @param {string} billerId Biller ID from BBPS or aggregator.
+ * @param {string} identifier Consumer number, account ID, policy number, etc.
+ * @returns {Promise<object|null>} Bill details or null if not found/applicable.
  */
 export async function fetchBillAmount(billerId: string, identifier: string): Promise<number | null> {
-    console.log(`Fetching bill amount for biller: ${billerId}, identifier: ${identifier}`);
-    // TODO: Implement actual API call to BBPS/biller to fetch bill details
+    console.log(`[Bill Provider Sim] Fetching bill for Biller: ${billerId}, Identifier: ${identifier}`);
     await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
 
-    // Mock fetching logic based on examples
+    // Mock data based on controller examples
     if ((billerId === 'bescom' || billerId === 'mock-prepaid-bescom') && identifier === '12345') {
         return 1350.75;
     }
@@ -37,14 +36,14 @@ export async function fetchBillAmount(billerId: string, identifier: string): Pro
      if ((billerId === 'mock-school-1') && identifier === 'S101') { // Example education fee
          return 5000.00;
      }
-     if ((billerId === 'hdfc-cc') && identifier === '4111********1111') { // Example credit card
+      if ((billerId === 'hdfc-cc') && identifier === '4111********1111') { // Example credit card
           return 12345.67;
       }
 
 
     // Return null if amount fetching is not supported or no bill found for mock data
-    console.log(`No mock bill amount found for biller ${billerId}, identifier ${identifier}.`);
-    return null;
+    console.log(`[Bill Provider Sim] No mock bill amount found for biller ${billerId}, identifier ${identifier}.`);
+    return null; // Bill fetch not supported or not found
 }
 
 /**
@@ -52,8 +51,8 @@ export async function fetchBillAmount(billerId: string, identifier: string): Pro
  * SIMULATED - Actual implementation depends on payment gateway and biller integration.
  * Logs the transaction outcome to Firestore via addTransaction.
  *
- * @param paymentDetails Details of the bill payment.
- * @returns A promise that resolves to a Transaction object representing the payment outcome.
+ * @param {object} details Payment details { billerId, identifier, amount, type, transactionId }.
+ * @returns {Promise<object>} Result status and messages.
  */
 export async function processBillPayment(paymentDetails: BillPaymentDetails): Promise<Transaction> {
     console.log("Processing bill payment:", paymentDetails);
@@ -95,7 +94,7 @@ export async function processBillPayment(paymentDetails: BillPaymentDetails): Pr
         // Create a temporary Transaction object to return
         const fallbackTransaction: Transaction = {
             id: `local_${Date.now()}`,
-            userId: auth.currentUser?.uid || 'unknown', // Use current user or fallback
+            userId: 'unknown', // User ID not available in this scope without auth context
             type: 'Bill Payment',
             name: paymentDetails.billerName || paymentDetails.billerType,
             description: `${description} (Logging Failed)`,
