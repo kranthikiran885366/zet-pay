@@ -49,6 +49,7 @@ const bnplRoutes = require('./routes/bnplRoutes');
 const bankStatusRoutes = require('./routes/bankStatusRoutes');
 const serviceRoutes = require('./routes/serviceRoutes'); // Generic service routes if any
 const supportRoutes = require('./routes/supportRoutes'); // Add support routes if created
+const entertainmentRoutes = require('./routes/entertainmentRoutes'); // Import entertainment routes
 
 const app = express();
 const server = http.createServer(app);
@@ -303,6 +304,7 @@ app.use('/api/cash-withdrawal', authMiddleware, cashWithdrawalRoutes);
 app.use('/api/bnpl', authMiddleware, bnplRoutes);
 app.use('/api/services', authMiddleware, serviceRoutes); // Generic services
 app.use('/api/support', authMiddleware, supportRoutes); // Support endpoint
+app.use('/api/entertainment', authMiddleware, entertainmentRoutes); // Add entertainment routes
 
 // --- Error Handling ---
 // 404 Handler (after all other routes)
