@@ -16,6 +16,7 @@ const authMiddleware = require('./middleware/authMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
 
 // Import routes
+const authRoutes = require('./routes/authRoutes'); // Added auth routes
 const userRoutes = require('./routes/userRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const upiRoutes = require('./routes/upiRoutes');
@@ -24,12 +25,19 @@ const walletRoutes = require('./routes/walletRoutes');
 const offerRoutes = require('./routes/offerRoutes');
 const passesRoutes = require('./routes/passesRoutes');
 const templeRoutes = require('./routes/templeRoutes');
-const contactsRoutes = require('./routes/contactsRoutes'); // Import contacts routes
-const cardsRoutes = require('./routes/cardsRoutes'); // Import cards routes
-const autopayRoutes = require('./routes/autopayRoutes'); // Import autopay routes
-// Add other route imports here as needed
-// const travelRoutes = require('./routes/travelRoutes');
-// const etc...
+const contactsRoutes = require('./routes/contactsRoutes');
+const cardsRoutes = require('./routes/cardsRoutes');
+const autopayRoutes = require('./routes/autopayRoutes');
+const billsRoutes = require('./routes/billsRoutes'); // Added bills routes
+const bookingRoutes = require('./routes/bookingRoutes'); // Added booking routes
+const hyperlocalRoutes = require('./routes/hyperlocalRoutes'); // Added hyperlocal routes
+const investmentRoutes = require('./routes/investmentRoutes'); // Added investment routes
+const paymentRoutes = require('./routes/paymentRoutes'); // Added payment routes
+const liveTrackingRoutes = require('./routes/liveTrackingRoutes'); // Added live tracking routes
+const blockchainRoutes = require('./routes/blockchainRoutes'); // Added blockchain routes
+// Add other route imports here as needed (e.g., loans, pocket money)
+// const loanRoutes = require('./routes/loanRoutes');
+// const pocketMoneyRoutes = require('./routes/pocketMoneyRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -56,12 +64,12 @@ app.use(limiter);
 const clients = new Map(); // Store clients with user IDs
 
 wss.on('connection', (ws, req) => {
-  console.log('Client connected');
+  console.log('Client connected via WebSocket');
   // TODO: Implement secure WebSocket authentication (e.g., using tokens passed via query params or initial message)
   // For now, just storing the connection
   const clientId = `ws-${Date.now()}`; // Simple temporary ID
   clients.set(clientId, ws);
-  console.log(`Client assigned ID: ${clientId}`);
+  console.log(`WebSocket client assigned temporary ID: ${clientId}`);
 
   ws.on('message', (message) => {
     try {
@@ -73,12 +81,20 @@ wss.on('connection', (ws, req) => {
           // firebaseAdmin.auth().verifyIdToken(parsedMessage.token)...
           console.log(`Client ${clientId} attempted authentication (verification TBD)`);
           // Example: Associate user ID after verification
-          // clients.set(verifiedUserId, ws); // Replace clientId with userId
-          // clients.delete(clientId); // Remove temporary ID
+          // const userId = await verifyWsToken(parsedMessage.token);
+          // if (userId) {
+          //    clients.set(userId, ws); // Replace clientId with userId
+          //    clients.delete(clientId); // Remove temporary ID
+          //    ws.send(JSON.stringify({ type: 'auth_success', userId }));
+          // } else {
+          //     ws.send(JSON.stringify({ type: 'auth_failed' }));
+          // }
       }
       // Example: Send periodic balance update
       if (parsedMessage.type === 'request_balance_update') {
           // Fetch balance for authenticated user and send
+           // const userId = getUserIdFromWs(ws); // Need a way to map ws back to userId
+           // if (userId) sendBalanceUpdate(userId);
       }
     } catch (e) {
         console.error('Failed to parse WebSocket message or invalid message format:', message.toString());
@@ -86,24 +102,23 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    console.log(`Client ${clientId} disconnected`);
     // Remove the specific clientId or associated userId if implemented
-    let deletedKey = clientId;
+    let deletedKey = clientId; // Start assuming it's the temporary ID
     for (let [key, value] of clients.entries()) {
         if (value === ws) {
             clients.delete(key);
-            deletedKey = key;
+            deletedKey = key; // Found the actual key (might be userId or temp ID)
             break;
         }
     }
-     console.log(`Removed client mapping for key: ${deletedKey}`);
+     console.log(`WebSocket client disconnected. Removed mapping for key: ${deletedKey}`);
   });
 
   ws.on('error', (error) => {
-      console.error(`WebSocket error for client ${clientId}:`, error);
+      console.error(`WebSocket error associated with key ${clientId}:`, error);
       // Clean up on error, similar to close
       let deletedKey = clientId;
-      for (let [key, value] of clients.entries()) {
+       for (let [key, value] of clients.entries()) {
         if (value === ws) {
             clients.delete(key);
             deletedKey = key;
@@ -119,7 +134,7 @@ wss.on('connection', (ws, req) => {
 // Function to broadcast messages (e.g., system-wide announcements)
 function broadcast(message) {
     const data = JSON.stringify(message);
-    console.log(`Broadcasting message to ${clients.size} clients:`, message);
+    console.log(`Broadcasting WebSocket message to ${clients.size} clients:`, message);
     clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(data, (err) => {
@@ -134,19 +149,19 @@ function broadcast(message) {
 
 // Function to send message to a specific user
 function sendToUser(userId, message) {
-    const clientWs = clients.get(userId);
+    const clientWs = clients.get(userId); // Assumes map key is userId after auth
     if (clientWs && clientWs.readyState === WebSocket.OPEN) {
          const data = JSON.stringify(message);
-         console.log(`Sending message to user ${userId}:`, message);
+         console.log(`Sending WebSocket message to user ${userId}:`, message);
          clientWs.send(data, (err) => {
              if (err) {
-                 console.error(`Error sending message to user ${userId}:`, err);
+                 console.error(`Error sending WebSocket message to user ${userId}:`, err);
                  // Handle error, potentially remove client mapping
              }
          });
          return true; // Message sent (or attempted)
     } else {
-         console.log(`User ${userId} not connected or WebSocket not open.`);
+         console.log(`WebSocket client for user ${userId} not connected or not open.`);
          return false; // User not connected
     }
 }
@@ -154,24 +169,40 @@ function sendToUser(userId, message) {
 // --- API Routes ---
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
+// Public or non-user specific routes
+app.use('/api/live', liveTrackingRoutes); // Public tracking routes
+
 // Apply auth middleware to protected routes
+app.use('/api/auth', authRoutes); // Auth routes (might have public/protected within)
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/upi', authMiddleware, upiRoutes);
 app.use('/api/recharge', authMiddleware, rechargeRoutes);
+app.use('/api/bills', authMiddleware, billsRoutes); // Added bills routes
 app.use('/api/wallet', authMiddleware, walletRoutes);
 app.use('/api/offers', authMiddleware, offerRoutes);
 app.use('/api/passes', authMiddleware, passesRoutes);
 app.use('/api/temple', authMiddleware, templeRoutes);
-app.use('/api/contacts', authMiddleware, contactsRoutes); // Mount contacts routes
-app.use('/api/cards', authMiddleware, cardsRoutes); // Mount cards routes
-app.use('/api/autopay', authMiddleware, autopayRoutes); // Mount autopay routes
-
-// Mount other routes (add authMiddleware if they need protection)
-// app.use('/api/travel', authMiddleware, travelRoutes);
+app.use('/api/contacts', authMiddleware, contactsRoutes);
+app.use('/api/cards', authMiddleware, cardsRoutes);
+app.use('/api/autopay', authMiddleware, autopayRoutes);
+app.use('/api/bookings', authMiddleware, bookingRoutes); // Added booking routes
+app.use('/api/hyperlocal', authMiddleware, hyperlocalRoutes); // Added hyperlocal routes
+app.use('/api/invest', authMiddleware, investmentRoutes); // Added investment routes
+app.use('/api/payments', authMiddleware, paymentRoutes); // Added payment routes
+app.use('/api/blockchain', authMiddleware, blockchainRoutes); // Added blockchain routes (protected example)
+// app.use('/api/loans', authMiddleware, loanRoutes); // Mount loan routes
+// app.use('/api/pocket-money', authMiddleware, pocketMoneyRoutes); // Mount pocket money routes
 
 // --- Error Handling ---
-app.use(errorMiddleware); // Centralized error handler
+// Catch 404 and forward to error handler
+app.use((req, res, next) => {
+    const error = new Error(`Not Found - ${req.originalUrl}`);
+    error.status = 404;
+    next(error);
+});
+// Centralized error handler (ensure it's the last middleware)
+app.use(errorMiddleware);
 
 // --- Start Server ---
 const PORT = process.env.PORT || 9003;
