@@ -4,7 +4,8 @@
 const admin = require('firebase-admin');
 const db = admin.firestore();
 const blockchainLogger = require('./blockchainLogger'); // Import the blockchain service
-const { sendToUser } = require('../server'); // Import WebSocket sender
+// Correctly require the exported functions from server.js
+const { sendToUser } = require('../server');
 
 // Use shared type definition
 import type { Transaction } from './types';
@@ -65,11 +66,15 @@ async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 
             date: (savedData.date as admin.firestore.Timestamp).toDate(), // Convert timestamp
         };
 
-         // Send real-time update via WebSocket
-        sendToUser(userId, {
+         // Send real-time update via WebSocket AFTER successful Firestore save
+         // Use the sendToUser function imported from server.js
+        const sent = sendToUser(userId, {
             type: 'transaction_update',
             payload: finalTransaction, // Send the complete transaction data
         });
+        if (!sent) {
+            console.warn(`WebSocket not connected for user ${userId}. Transaction update not sent in real-time.`);
+        }
 
 
         // Optional: Log to blockchain asynchronously (don't block response)

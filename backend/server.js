@@ -47,20 +47,20 @@ const wss = new WebSocket.Server({ server });
 
 // --- Middleware ---
 app.use(cors());
-app.use(helmet());
+app.use(helmet()); // Basic security headers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+app.use(morgan('dev')); // Logging HTTP requests
 
 // Rate Limiting
 const limiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
-	max: 200,
-	standardHeaders: true,
-	legacyHeaders: false,
+	max: 200, // Limit each IP to 200 requests per windowMs
+	standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+	legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   message: 'Too many requests from this IP, please try again after 15 minutes',
 });
-app.use(limiter);
+app.use(limiter); // Apply rate limiting to all requests
 
 // --- WebSocket Setup ---
 // Store clients mapped by authenticated userId -> WebSocket connection
@@ -81,6 +81,12 @@ async function verifyWsToken(token) {
 wss.on('connection', (ws) => {
     console.log('Client connected via WebSocket');
     let userId = null; // Initially unauthenticated
+    let isAlive = true;
+
+    // Heartbeat mechanism
+    ws.on('pong', () => {
+        isAlive = true;
+    });
 
     ws.on('message', async (message) => {
         let parsedMessage;
@@ -102,7 +108,7 @@ wss.on('connection', (ws) => {
                 const existingWs = authenticatedClients.get(userId);
                  if (existingWs && existingWs !== ws) {
                      console.log(`Closing previous WebSocket connection for user ${userId}`);
-                     existingWs.close(1000, 'New connection established');
+                     existingWs.terminate(); // Use terminate for forceful closure
                  }
                 authenticatedClients.set(userId, ws);
                 console.log(`WebSocket client authenticated and mapped to user: ${userId}`);
@@ -121,9 +127,10 @@ wss.on('connection', (ws) => {
                 console.log(`Balance update requested by user ${userId}`);
                 // Trigger sending the current balance back (implementation in walletController/service)
                  // sendBalanceUpdate(userId);
-                 ws.send(JSON.stringify({ type: 'info', message: 'Balance update triggered (if backend logic exists).' }));
+                 // For now, just acknowledge
+                 ws.send(JSON.stringify({ type: 'info', message: 'Balance update acknowledged. Will push updates.' }));
             }
-            // Add handlers for other message types here
+            // Add handlers for other message types here (e.g., subscribe to specific notifications)
             else {
                  ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type or not authenticated.' }));
             }
@@ -158,13 +165,31 @@ wss.on('connection', (ws) => {
      ws.send(JSON.stringify({ type: 'system', message: 'Connected. Please authenticate.' }));
 });
 
+// Heartbeat interval to check for dead connections
+const interval = setInterval(() => {
+    authenticatedClients.forEach((ws, userId) => {
+        if (ws.isAlive === false) {
+            console.log(`Terminating inactive WebSocket connection for user: ${userId}`);
+            authenticatedClients.delete(userId);
+            return ws.terminate();
+        }
+        ws.isAlive = false; // Mark as potentially dead, will be marked alive on pong
+        ws.ping(() => {}); // Send ping
+    });
+}, 30000); // Check every 30 seconds
+
+wss.on('close', () => {
+    clearInterval(interval); // Clear interval when server closes
+});
+
+
 // Function to broadcast messages to ALL authenticated clients (use sparingly)
 function broadcast(message) {
     const data = JSON.stringify(message);
     console.log(`Broadcasting WebSocket message to ${authenticatedClients.size} authenticated clients:`, message);
-    authenticatedClients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(data, (err) => {
+    authenticatedClients.forEach((clientWs) => {
+        if (clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(data, (err) => {
                 if (err) console.error('Error sending broadcast message to a client:', err);
             });
         }
@@ -178,7 +203,11 @@ function sendToUser(targetUserId, message) {
         const data = JSON.stringify(message);
         console.log(`Sending WebSocket message to user ${targetUserId}:`, message);
         clientWs.send(data, (err) => {
-            if (err) console.error(`Error sending WebSocket message to user ${targetUserId}:`, err);
+            if (err) {
+                console.error(`Error sending WebSocket message to user ${targetUserId}:`, err);
+                // Optional: Attempt removal if send fails? Could be temporary issue.
+                // authenticatedClients.delete(targetUserId);
+            }
         });
         return true; // Message sent (or attempted)
     } else {
@@ -189,7 +218,7 @@ function sendToUser(targetUserId, message) {
 
 
 // --- API Routes ---
-app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() }));
 
 // Public or non-user specific routes
 app.use('/api/live', liveTrackingRoutes);
@@ -221,17 +250,18 @@ app.use('/api/cash-withdrawal', authMiddleware, cashWithdrawalRoutes); // Added 
 app.use('/api/bnpl', authMiddleware, bnplRoutes); // Added BNPL routes
 
 // --- Error Handling ---
+// 404 Handler
 app.use((req, res, next) => {
-    const error = new Error(`Not Found - ${req.originalUrl}`);
-    error.status = 404;
-    next(error);
+    res.status(404).json({ message: `Not Found - ${req.originalUrl}` });
 });
+// Central Error Handler
 app.use(errorMiddleware);
 
 // --- Start Server ---
 const PORT = process.env.PORT || 9003;
 server.listen(PORT, () => {
   console.log(`PayFriend Backend Server listening on port ${PORT}`);
+  console.log(`WebSocket server started on the same port.`);
 });
 
 // Export WebSocket functions for use in controllers/services

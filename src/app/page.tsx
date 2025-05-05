@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2 } from "lucide-react"; // Removed unused icons, added Loader2, Wallet, Mic, MessageSquare
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle } from "lucide-react"; // Added HelpCircle
 import Image from 'next/image';
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use service with subscription
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +43,7 @@ const quickLinks = [
 ];
 
 export default function Home() {
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]); // Holds data from subscription
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Track login state
   const { toast } = useToast();
@@ -87,8 +87,26 @@ export default function Home() {
             // Subscribe using the service function which handles WS/polling
             cleanupSubscription = subscribeToTransactionHistory(
                 (transactions) => {
-                    console.log("Received transactions update (Home):", transactions.length);
-                    setRecentTransactions(transactions); // Already limited to 5 by service
+                    // console.log("Received transactions update (Home):", transactions.length);
+                     // Handle potential single transaction updates from WS
+                     if (transactions.length === 1 && !isLoadingTransactions) {
+                          // Check if it's truly a new transaction not already present
+                          setRecentTransactions(prev => {
+                              const existingIndex = prev.findIndex(t => t.id === transactions[0].id);
+                              if (existingIndex > -1) {
+                                  // Update existing
+                                  const updated = [...prev];
+                                  updated[existingIndex] = transactions[0];
+                                  return updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+                              } else {
+                                  // Prepend new and sort/slice
+                                   return [transactions[0], ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+                              }
+                          });
+                     } else {
+                          // Initial load or full update from polling/WS initial
+                          setRecentTransactions(transactions); // Already limited by service/fetch
+                     }
                     setIsLoadingTransactions(false);
                 },
                 (error) => {
@@ -99,8 +117,8 @@ export default function Home() {
                     setIsLoadingTransactions(false);
                     setRecentTransactions([]);
                 },
-                undefined, // No specific filters
-                5 // Limit to 5
+                undefined, // No specific filters needed for home page recents
+                5 // Limit to 5 recent transactions
             );
 
         } else {
@@ -122,7 +140,7 @@ export default function Home() {
         cleanupSubscription();
       }
     };
-  }, [toast]); // Effect depends only on toast
+  }, [toast, isLoadingTransactions]); // Rerun based on toast, add isLoadingTransactions to dependency for single update logic
 
 
   const handleVoiceButtonClick = () => {
@@ -158,6 +176,12 @@ export default function Home() {
               <QrCode className="h-5 w-5" />
             </Button>
           </Link>
+           {/* Help Button */}
+          <Link href="/support" passHref>
+            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9">
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </Link>
           {/* Voice Command Button */}
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-9 w-9" onClick={handleVoiceButtonClick}>
              <Mic className={cn("h-5 w-5", isListening ? "text-red-400 animate-pulse" : "")} />
@@ -169,7 +193,7 @@ export default function Home() {
       <main className="flex-grow p-4 space-y-4 pb-20"> {/* Adjusted padding */}
         {/* Send Money Section */}
         <Card className="shadow-md">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 pt-3 px-3"> {/* Adjusted padding */}
             <CardTitle className="text-base font-semibold text-primary">Send Money</CardTitle> {/* Adjusted size */}
           </CardHeader>
           <CardContent className="grid grid-cols-4 gap-x-2 gap-y-4 text-center p-3"> {/* Adjusted padding and gap */}
@@ -226,9 +250,9 @@ export default function Home() {
             </a>
         </Link>
 
-        {/* Quick Links: Recharge, Bills, Tickets Section */}
+        {/* Quick Links: Recharge, Bills & More Section */}
         <Card className="shadow-md">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 pt-3 px-3"> {/* Adjusted padding */}
             <CardTitle className="text-base font-semibold text-primary">Recharge, Bills & More</CardTitle> {/* Adjusted size */}
           </CardHeader>
           <CardContent className="grid grid-cols-4 gap-x-2 gap-y-4 text-center p-3"> {/* Adjusted padding and gap */}
@@ -247,7 +271,7 @@ export default function Home() {
 
          {/* Offers Section */}
         <Card className="shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-3 px-3"> {/* Adjusted padding */}
             <CardTitle className="text-base font-semibold text-primary">Offers For You</CardTitle> {/* Adjusted size */}
             <Link href="/offers" passHref legacyBehavior>
               <a className="text-xs text-primary hover:underline">View All</a>
@@ -278,7 +302,7 @@ export default function Home() {
 
         {/* Switch Section */}
         <Card className="shadow-md">
-           <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+           <CardHeader className="flex flex-row items-center justify-between pb-2 pt-3 px-3"> {/* Adjusted padding */}
             <CardTitle className="text-base font-semibold text-primary">PayFriend Switch</CardTitle> {/* Adjusted size */}
             {/* Link to a dedicated Switch page if needed */}
            </CardHeader>
@@ -298,7 +322,7 @@ export default function Home() {
 
          {/* Recent Transactions Section */}
          <Card className="shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-3 px-3"> {/* Adjusted padding */}
             <CardTitle className="text-base font-semibold text-primary">Recent Activity</CardTitle> {/* Adjusted size */}
              <Link href="/history" passHref legacyBehavior>
                 <a className="text-xs text-primary hover:underline">View All</a>
@@ -323,7 +347,8 @@ export default function Home() {
                      </Avatar>
                      <div className="overflow-hidden">
                        <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
-                       <p className="text-xs text-muted-foreground">{format(new Date(tx.date), "PP HH:mm")}</p> {/* Ensure date is Date object */}
+                       {/* Ensure tx.date is a Date object before formatting */}
+                       <p className="text-xs text-muted-foreground">{format(new Date(tx.date), "PP HH:mm")}</p>
                      </div>
                    </div>
                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>

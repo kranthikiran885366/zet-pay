@@ -78,6 +78,7 @@ export function subscribeToTransactionHistory(
 ): () => void {
     const currentUser = auth.currentUser;
     if (!currentUser) {
+        console.log("No user logged in to subscribe to transaction history.");
         onError(new Error("User not logged in."));
         return () => {}; // No-op cleanup
     }
@@ -105,15 +106,16 @@ export function subscribeToTransactionHistory(
             currentUser.getIdToken().then(token => {
                 if (token && ws?.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'authenticate', token }));
-                     // Optionally request initial data after auth
-                     // ws.send(JSON.stringify({ type: 'request_initial_transactions', limit: limit || 5 }));
+                     // Request initial data after auth
+                     console.log("WebSocket authenticated, requesting initial transactions...");
+                     ws.send(JSON.stringify({ type: 'request_initial_transactions', filters: updatedFilters }));
                 }
             }).catch(tokenError => {
                  console.error("Error getting token for WS auth:", tokenError);
                  onError(new Error("WebSocket authentication failed."));
                  ws?.close();
             });
-             // Fetch initial data via API while WS connects/authenticates
+             // Fetch initial data via API while WS connects/authenticates (as a backup/faster initial load)
              fetchAndPoll();
         };
 
@@ -131,17 +133,27 @@ export function subscribeToTransactionHistory(
                              avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
                          }));
                     } else if (message.payload && typeof message.payload === 'object') {
-                         // Handle single transaction update - more complex state management needed here
-                         // For simplicity, we'll refetch the whole list on single update via WS for now
-                         console.log("Received single transaction update via WS, refetching list...");
-                         fetchAndPoll(); // Refetch list on single update
-                         return; // Avoid calling onUpdate with single item for now
+                         // Handle single transaction update: Prepend to current list or refetch full list
+                         console.log("Received single transaction update via WS, prepending...");
+                         const newTransaction = {
+                             ...message.payload,
+                             date: new Date(message.payload.date),
+                             avatarSeed: message.payload.avatarSeed || message.payload.name?.toLowerCase().replace(/\s+/g, '') || message.payload.id,
+                         };
+                          // Update state by prepending new/updated transaction (requires access to previous state)
+                          // This logic should ideally be in the component using this service.
+                          // For now, we call onUpdate with the single new transaction.
+                          // Components should handle merging this into their state.
+                          onUpdate([newTransaction]); // Pass only the new one, let component handle merge/update
+                          return;
                     }
                     onUpdate(updatedTransactions);
                 } else if (message.type === 'auth_success') {
                     console.log("Transaction WebSocket authenticated.");
                     // If not already fetched, request initial transactions
-                    // ws?.send(JSON.stringify({ type: 'request_initial_transactions', limit: limit || 5 }));
+                    if (ws?.readyState === WebSocket.OPEN) { // Check again before sending
+                        ws.send(JSON.stringify({ type: 'request_initial_transactions', filters: updatedFilters }));
+                    }
                 }
             } catch (e) {
                 console.error("Error processing WebSocket message for transactions:", e);
@@ -179,11 +191,19 @@ export function subscribeToTransactionHistory(
                  console.log("Starting polling for transaction updates (interval: 30s)");
                  pollingIntervalId = setInterval(async () => {
                      try {
+                         // If WebSocket has reconnected in the meantime, stop polling
+                         if (ws && ws.readyState === WebSocket.OPEN) {
+                             clearInterval(pollingIntervalId!);
+                             pollingIntervalId = null;
+                             console.log("WebSocket reconnected, stopping polling.");
+                             return;
+                         }
                          const polledTransactions = await getTransactionHistory(updatedFilters);
                          onUpdate(polledTransactions);
                      } catch (pollError) {
                          console.error("Polling error:", pollError);
                          onError(new Error("Failed to update transactions."));
+                         // Keep polling unless it's a fatal error?
                      }
                  }, 30000); // Poll every 30 seconds
              }
@@ -210,11 +230,8 @@ export function subscribeToTransactionHistory(
 }
 
 
-// **REMOVE or COMMENT OUT** the client-side `addTransaction`
-// It's handled by the backend now.
-/*
-export async function addTransaction(...) { ... }
-*/
+// **REMOVE** client-side `addTransaction` function as backend handles it.
+// export async function addTransaction(...) { ... }
 
 /**
  * Attempts to cancel a recently completed or processing recharge transaction via the backend API.
@@ -238,11 +255,8 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
 }
 
 
-// **IMPORTANT**: Blockchain logging should be handled securely on the backend.
-// Remove the client-side `logTransactionToBlockchain` function.
-/*
-export async function logTransactionToBlockchain(...) { ... }
-*/
+// **REMOVE** client-side blockchain logging.
+// export async function logTransactionToBlockchain(...) { ... }
 
 // Keep TransactionFilters interface if used by components
 export type { TransactionFilters };
