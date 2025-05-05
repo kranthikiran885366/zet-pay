@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
@@ -6,9 +5,9 @@
 import admin from 'firebase-admin'; // Use admin SDK
 const db = admin.firestore();
 import blockchainLogger from './blockchainLogger'; // Correct import path for backend service
-import { sendToUser } from '../server'; // Import backend WebSocket sender using relative path
+import { sendToUser } from '../lib/websocket'; // Corrected path for backend WS sender
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
-import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
+import { Timestamp, FieldValue, Firestore } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
 
 /**
  * Adds a new transaction record to Firestore and logs it to the blockchain (backend context).
@@ -32,15 +31,19 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             date: FieldValue.serverTimestamp(), // Use Firestore server timestamp
             // Generate avatarSeed if not provided
             avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
-            // Set default nulls for optional fields if not provided
-            billerId: rest.billerId || null,
-            upiId: rest.upiId || null,
-            loanId: rest.loanId || null,
-            ticketId: rest.ticketId || null,
-            refundEta: rest.refundEta || null,
-            blockchainHash: rest.blockchainHash || null, // Will be updated after logging
-            paymentMethodUsed: rest.paymentMethodUsed || null,
-            originalTransactionId: rest.originalTransactionId || null,
+            // Ensure optional fields are explicitly set to null if not provided
+            billerId: rest.billerId ?? null,
+            upiId: rest.upiId ?? null,
+            loanId: rest.loanId ?? null,
+            ticketId: rest.ticketId ?? null,
+            refundEta: rest.refundEta ?? null,
+            blockchainHash: rest.blockchainHash ?? null, // Will be updated after logging
+            paymentMethodUsed: rest.paymentMethodUsed ?? null,
+            originalTransactionId: rest.originalTransactionId ?? null,
+            operatorReferenceId: (rest as any).operatorReferenceId ?? null, // Add operatorReferenceId if present
+            billerReferenceId: (rest as any).billerReferenceId ?? null, // Add billerReferenceId if present
+            planId: (rest as any).planId ?? null, // Add planId if present
+            identifier: (rest as any).identifier ?? null, // Add identifier if present
         };
 
         // Remove keys with undefined values before saving (Firestore doesn't like undefined)
@@ -62,11 +65,14 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             throw new Error("Failed to retrieve saved transaction data or timestamp.");
         }
 
-        // Convert Firestore Timestamp to JS Date for WebSocket payload
+        // Convert Firestore Timestamp to JS Date for return value and WebSocket payload
         const finalTransaction: Transaction = {
             id: docRef.id,
             ...savedData,
             date: (savedData.date as Timestamp).toDate(), // Convert timestamp
+            // Ensure other potential Timestamp fields are converted if necessary
+             createdAt: savedData.createdAt ? (savedData.createdAt as Timestamp).toDate() : undefined,
+             updatedAt: savedData.updatedAt ? (savedData.updatedAt as Timestamp).toDate() : undefined,
         } as Transaction; // Assert type
 
 
@@ -127,3 +133,4 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
         return null;
     }
 }
+

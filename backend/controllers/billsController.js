@@ -9,9 +9,10 @@ const { processUpiPaymentInternal } = require('../services/upi'); // Simulated U
 const { processCardPaymentInternal } = require('../services/paymentGatewayService'); // Simulated Card payment
 const { scheduleRecovery } = require('../services/recoveryService'); // For fallback recovery
 const { sendToUser } = require('../server'); // Import WebSocket sender
+import type { Transaction } from '../services/types'; // Adjust path as needed
 
 // Types of bills this controller handles (can be extended)
-const SUPPORTED_BILL_TYPES = ['Electricity', 'Water', 'Insurance', 'Credit Card', 'Loan', 'Gas', 'Broadband', 'Education', 'Mobile Postpaid', 'Cable TV', 'Housing Society', 'Club Fee', 'Donation', 'Property Tax']; // Added Property Tax
+const SUPPORTED_BILL_TYPES = ['Electricity', 'Water', 'Insurance', 'Credit Card', 'Loan', 'Gas', 'Broadband', 'Education', 'Mobile Postpaid', 'Cable TV', 'Housing Society', 'Club Fee', 'Donation', 'Property Tax', 'FASTag']; // Added FASTag
 
 // Fetch Bill Amount (if supported by provider)
 exports.fetchBillDetails = async (req, res, next) => {
@@ -20,7 +21,8 @@ exports.fetchBillDetails = async (req, res, next) => {
 
     // Validate type param
     const formattedType = type?.toLowerCase().replace(/\s+/g, '-');
-    if (!type || !SUPPORTED_BILL_TYPES.map(t => t.toLowerCase().replace(/\s+/g, '-')).includes(formattedType)) {
+    const validBillTypes = SUPPORTED_BILL_TYPES.map(t => t.toLowerCase().replace(/\s+/g, '-'));
+    if (!type || !validBillTypes.includes(formattedType)) {
         return res.status(400).json({ message: 'Invalid bill type specified.' });
     }
 
@@ -31,11 +33,11 @@ exports.fetchBillDetails = async (req, res, next) => {
     try {
         const billDetails = await billProviderService.fetchBill(billerId, identifier, type);
 
-        if (billDetails && billDetails.success === false) {
+        if (!billDetails || billDetails.success === false) {
             // Biller doesn't support fetch or details not found, allow manual entry
-             return res.status(200).json({ success: false, message: billDetails.message || 'Bill details not found. Manual entry required.', amount: null });
+            return res.status(200).json({ success: false, message: billDetails?.message || 'Bill details not found. Manual entry required.', amount: null });
         }
-        if (billDetails && billDetails.amount !== undefined && billDetails.amount !== null) {
+        if (billDetails.amount !== undefined && billDetails.amount !== null) {
             // Include success flag and potentially convert dueDate
             const responseData = {
                 success: true,
@@ -63,7 +65,8 @@ exports.processBillPayment = async (req, res, next) => {
 
     // Validate type param
      const formattedType = type?.toLowerCase().replace(/\s+/g, '-');
-     if (!type || !SUPPORTED_BILL_TYPES.map(t => t.toLowerCase().replace(/\s+/g, '-')).includes(formattedType)) {
+     const validBillTypes = SUPPORTED_BILL_TYPES.map(t => t.toLowerCase().replace(/\s+/g, '-'));
+     if (!type || !validBillTypes.includes(formattedType)) {
          return res.status(400).json({ message: 'Invalid bill type specified.' });
      }
 
@@ -73,8 +76,8 @@ exports.processBillPayment = async (req, res, next) => {
     let paymentResult: any = { success: false, transactionId: null, message: 'Payment processing failed initially.', usedWalletFallback: false };
     let finalStatus: Transaction['status'] = 'Failed';
     let failureReason = 'Payment or bill processing failed.';
-    const transactionType = type === 'donation' ? 'Donation' : 'Bill Payment'; // Specific type for Donations
-    const transactionName = `${billerName || capitalize(type)}`;
+    const transactionType = type === 'donation' ? 'Donation' : type === 'fastag' ? 'Recharge' : 'Bill Payment'; // Specific type for Donations/FASTag
+    const transactionName = `${billerName || capitalize(type.replace('-', ' '))}`; // Format name correctly
     let paymentMethodUsed = paymentMethod; // Initial payment method
 
     // Prepare base log data - this will be updated or replaced by specific payment method logs
@@ -129,31 +132,32 @@ exports.processBillPayment = async (req, res, next) => {
          }
          console.log(`[Bill Ctrl] Payment successful/fallback. Payment Tx ID: ${paymentTransactionId}. Proceeding to biller API.`);
 
-        // --- Step 2: Bill Payment / Donation Execution with Biller/Provider ---
+        // --- Step 2: Bill Payment / Donation / Recharge Execution with Biller/Provider ---
          // Call the appropriate provider service
-         const providerBillType = type === 'donation' ? 'Donation' : capitalize(type.replace(/-/g, ' ')); // Example mapping: 'credit-card' -> 'Credit Card'
-         // Map specific types if needed by provider service (e.g., mobile-postpaid)
-         const finalProviderType = type === 'mobile-postpaid' ? 'Mobile Postpaid' : providerBillType;
+         const providerBillType = type === 'donation' ? 'Donation' : capitalize(type.replace(/-/g, ' '));
+         // Map specific types if needed by provider service
+         const finalProviderType = type === 'mobile-postpaid' ? 'Mobile Postpaid' : type === 'fastag' ? 'FASTag' : providerBillType; // Added FASTag
 
          let executionResult;
          if (finalProviderType === 'Donation') {
              // Assume donation to a recognized charity is always 'completed' on payment
              executionResult = { status: 'Completed', message: 'Donation successful.' };
          } else {
-             // For other bills, call the bill provider service
+             // For other bills/recharges, call the bill provider service
              executionResult = await billProviderService.payBill({
                  billerId, identifier, amount, type: finalProviderType, transactionId: paymentTransactionId // Pass payment transaction ID
              });
          }
 
          // Check provider execution status
-         if (executionResult.status === 'Completed' || executionResult.status === 'Pending') {
+         if (executionResult.status === 'Completed' || executionResult.status === 'Pending' || executionResult.status === 'Processing Activation') {
              finalStatus = executionResult.status;
              failureReason = '';
-             paymentResult.message = executionResult.message || 'Bill/Donation processed successfully/pending.';
+             paymentResult.message = executionResult.message || `${finalProviderType} processed successfully/pending.`;
              // Update the original transaction log created by the payment method
              const originalTxRef = doc(db, 'transactions', paymentTransactionId);
-             const currentTxData = (await getDoc(originalTxRef)).data(); // Get current data before updating
+             const currentTxDataSnap = await getDoc(originalTxRef); // Get current data before updating
+             const currentTxData = currentTxDataSnap.data();
              const updatePayload = {
                  status: finalStatus,
                  description: `${currentTxData?.description || logData.description} - Biller Status: ${finalStatus}${executionResult.operatorMessage ? ` (${executionResult.operatorMessage})` : ''}`, // Append status
@@ -169,11 +173,12 @@ exports.processBillPayment = async (req, res, next) => {
          } else {
              // Payment succeeded but execution failed -> Requires Refund/Reversal
              finalStatus = 'Failed';
-             failureReason = executionResult.message || 'Bill/Donation processing failed after payment deduction.';
-             console.error(`[Bill Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but bill/donation execution failed for user ${userId}. Reason: ${failureReason}. Initiating refund simulation.`);
+             failureReason = executionResult.message || `${finalProviderType} processing failed after payment deduction.`;
+             console.error(`[Bill Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but ${finalProviderType} execution failed for user ${userId}. Reason: ${failureReason}. Initiating refund simulation.`);
              // Update the original transaction log to 'Failed'
               const originalTxRefFailed = doc(db, 'transactions', paymentTransactionId);
-              const currentTxDataFailed = (await getDoc(originalTxRefFailed)).data();
+              const currentTxDataFailedSnap = await getDoc(originalTxRefFailed);
+              const currentTxDataFailed = currentTxDataFailedSnap.data();
              await updateDoc(originalTxRefFailed, {
                  status: 'Failed',
                  description: `${currentTxDataFailed?.description || logData.description} - Execution Failed: ${failureReason}`,
@@ -181,18 +186,17 @@ exports.processBillPayment = async (req, res, next) => {
              });
              logData.status = 'Failed';
              logData.description = `${currentTxDataFailed?.description || logData.description} - Execution Failed: ${failureReason}`; // Update description for blockchain
-             // --- Refund Logic ---
+             // --- Refund Logic Simulation ---
              if (paymentMethodUsed === 'Wallet') { // Check the actual method used
                  console.log(`[Bill Ctrl] Attempting wallet refund for failed execution...`);
-                  await payViaWalletInternal(userId, `REFUND_${paymentTransactionId}`, -amount, `Refund: Failed ${type} Bill Payment`); // Use negative amount for credit
+                 // Use negative amount for credit
+                  await payViaWalletInternal(userId, `REFUND_${paymentTransactionId}`, -amount, `Refund: Failed ${type} ${transactionType}`);
              } else if (paymentMethodUsed === 'UPI') {
-                 // TODO: Implement UPI refund logic via PSP
                   console.warn(`[Bill Ctrl] UPI Refund required for Tx ${paymentTransactionId} but not implemented.`);
              } else if (paymentMethodUsed === 'Card') {
-                 // TODO: Implement Card refund logic via Payment Gateway
                   console.warn(`[Bill Ctrl] Card Refund required for Tx ${paymentTransactionId} but not implemented.`);
              }
-             // --- End Refund Logic ---
+             // --- End Refund Logic Simulation ---
              paymentResult.message = failureReason + " Refund initiated.";
              throw new Error(failureReason); // Throw error to trigger the catch block and send failure response
          }
@@ -261,11 +265,9 @@ exports.getBillers = async (req, res, next) => {
 };
 
 
-// --- Type Imports ---
-// Make sure these align with your actual type definitions
-import type { Transaction } from '../services/types'; // Adjust path as needed
 // Helper function to convert Firestore doc to Transaction type
 function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnapshot): Transaction {
+    if (!docSnap.exists) return null; // Handle case where doc might not exist
     const data = docSnap.data()!;
     return {
         id: docSnap.id,
@@ -278,3 +280,4 @@ function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnaps
         avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || docSnap.id,
     } as Transaction;
 }
+

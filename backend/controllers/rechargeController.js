@@ -1,4 +1,4 @@
-
+// backend/controllers/rechargeController.js
 const admin = require('firebase-admin');
 const db = admin.firestore();
 const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger');
@@ -9,7 +9,11 @@ const { processCardPaymentInternal } = require('../services/paymentGatewayServic
 const { scheduleRecovery } = require('../services/recoveryService'); // For fallback recovery
 const rechargeProviderService = require('../services/rechargeProviderService');
 const { sendToUser } = require('../server'); // For WebSocket updates
-const { collection, query, where, orderBy, limit, getDocs, addDoc, updateDoc, doc, Timestamp } = require('firebase/firestore'); // Firestore functions
+const { collection, query, where, orderBy, limit, getDocs, addDoc, updateDoc, doc, Timestamp, serverTimestamp, getDoc } = require('firebase/firestore'); // Firestore functions
+import type { Transaction } from '../services/types'; // Import shared Transaction type
+
+// Supported recharge types (align with frontend/services)
+const SUPPORTED_RECHARGE_TYPES = ['mobile', 'dth', 'fastag', 'datacard', 'metro', 'isd', 'buspass', 'subscription', 'google-play']; // Add more as needed
 
 // Get Billers (cached or fetched from provider)
 exports.getBillers = async (req, res, next) => {
@@ -18,8 +22,12 @@ exports.getBillers = async (req, res, next) => {
         return res.status(400).json({ message: 'Biller type is required.' });
     }
     // Fetch from a dedicated service that might cache results
-    const billers = await rechargeProviderService.fetchBillers(type);
-    res.status(200).json(billers);
+    try {
+        const billers = await rechargeProviderService.fetchBillers(type);
+        res.status(200).json(billers);
+    } catch (error) {
+        next(error);
+    }
 };
 
 // Get Recharge Plans (fetched from provider)
@@ -28,14 +36,24 @@ exports.getRechargePlans = async (req, res, next) => {
      if (!billerId || typeof billerId !== 'string' || !type || typeof type !== 'string') {
          return res.status(400).json({ message: 'Biller ID and type are required.' });
      }
-     const plans = await rechargeProviderService.fetchPlans(billerId, type, identifier);
-     res.status(200).json(plans);
+     try {
+         const plans = await rechargeProviderService.fetchPlans(billerId, type, identifier);
+         res.status(200).json(plans);
+     } catch(error) {
+         next(error);
+     }
  };
 
 // Process Recharge
 exports.processRecharge = async (req, res, next) => {
     const userId = req.user.uid;
     const { type, identifier, amount, billerId, planId, paymentMethod = 'wallet', sourceAccountUpiId, pin, cardToken, cvv } = req.body; // Extract all potential payment details
+
+    // Validate type param
+     const formattedType = type?.toLowerCase().replace(/\s+/g, '-');
+     if (!type || !SUPPORTED_RECHARGE_TYPES.includes(formattedType)) {
+         return res.status(400).json({ message: 'Invalid recharge type specified.' });
+     }
 
     // Basic validation already handled by router
     let paymentSuccess = false;
@@ -46,7 +64,7 @@ exports.processRecharge = async (req, res, next) => {
     const rechargeName = `${capitalize(type)} Recharge: ${billerId || identifier}`;
     let logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = { // Prepare data for Firestore logging
         userId,
-        type: 'Recharge',
+        type: 'Recharge', // Use generic 'Recharge' type for logging, backend knows details
         name: rechargeName,
         description: `For ${identifier}${planId ? ` (Plan: ${planId})` : ''}`,
         amount: -amount,
@@ -106,9 +124,11 @@ exports.processRecharge = async (req, res, next) => {
 
               // Update the original transaction log created by the payment method
              const originalTxRef = doc(db, 'transactions', paymentTransactionId);
+             const currentTxDataSnap = await getDoc(originalTxRef);
+             const currentTxData = currentTxDataSnap.data();
              const updatePayload = {
                  status: finalStatus,
-                 description: `${(await getDoc(originalTxRef)).data()?.description} - Operator Status: ${finalStatus}${rechargeExecutionResult.operatorMessage ? ` (${rechargeExecutionResult.operatorMessage})` : ''}`,
+                 description: `${currentTxData?.description || logData.description} - Operator Status: ${finalStatus}${rechargeExecutionResult.operatorMessage ? ` (${rechargeExecutionResult.operatorMessage})` : ''}`,
                  operatorReferenceId: rechargeExecutionResult.operatorReferenceId || null, // Store operator ref if available
                  updatedAt: serverTimestamp()
              };
@@ -129,9 +149,11 @@ exports.processRecharge = async (req, res, next) => {
 
              // Update the original transaction log to 'Failed'
              const originalTxRefFailed = doc(db, 'transactions', paymentTransactionId);
+             const currentTxDataFailedSnap = await getDoc(originalTxRefFailed);
+             const currentTxDataFailed = currentTxDataFailedSnap.data();
              await updateDoc(originalTxRefFailed, {
                  status: 'Failed',
-                 description: `${(await getDoc(originalTxRefFailed)).data()?.description} - Execution Failed: ${failureReason}`,
+                 description: `${currentTxDataFailed?.description || logData.description} - Execution Failed: ${failureReason}`,
                  updatedAt: serverTimestamp()
              });
 
@@ -171,17 +193,20 @@ exports.processRecharge = async (req, res, next) => {
             try {
                 const failedTx = await addTransaction(logData as any);
                 paymentResult.transactionId = failedTx.id; // Store ID for response
-                sendToUser(userId, { type: 'transaction_update', payload: failedTx }); // Send WS update for failure
+                sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(await getDoc(doc(db, 'transactions', failedTx.id))) }); // Send WS update for failure
             } catch (logError) {
                 console.error("[Recharge Ctrl] Failed to log failed recharge transaction:", logError);
             }
-        } else if (finalStatus !== 'Failed') { // Ensure existing log reflects final failure
+        } else { // Ensure existing log reflects final failure
              try {
                  const existingTxRef = doc(db, 'transactions', paymentTxId);
-                 await updateDoc(existingTxRef, { status: 'Failed', description: `${(await getDoc(existingTxRef)).data()?.description} - Error: ${error.message}`, updatedAt: serverTimestamp() });
-                 const updatedTxDoc = await getDoc(existingTxRef);
-                 if(updatedTxDoc.exists()) {
-                    sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(updatedTxDoc) });
+                 const txSnap = await getDoc(existingTxRef);
+                 if(txSnap.exists() && txSnap.data().status !== 'Failed') { // Update only if not already marked as failed
+                     await updateDoc(existingTxRef, { status: 'Failed', description: `${txSnap.data()?.description || logData.description} - Error: ${error.message}`, updatedAt: serverTimestamp() });
+                     const updatedTxDoc = await getDoc(existingTxRef);
+                     if(updatedTxDoc.exists()) {
+                        sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(updatedTxDoc) });
+                     }
                  }
              } catch(updateError) {
                   console.error(`[Recharge Ctrl] Failed to update existing transaction ${paymentTxId} to Failed:`, updateError);
@@ -260,18 +285,24 @@ exports.checkActivationStatus = async (req, res, next) => {
     // Validation done by router
 
     try {
+        // 1. Check External Provider First
         const status = await rechargeProviderService.getActivationStatus(transactionId);
         res.status(200).json({ status });
-    } catch (error) {
-         // Fallback: Check Firestore transaction status
+    } catch (providerError) {
+         console.warn(`Provider status check failed for ${transactionId}:`, providerError.message);
+        // 2. Fallback: Check Firestore transaction status
         try {
-            const txDoc = await doc(db, 'transactions', transactionId).get();
+            const txDocRef = doc(db, 'transactions', transactionId);
+            const txDoc = await txDocRef.get();
             if(txDoc.exists()) {
+                // Return the status stored in Firestore
                 res.status(200).json({ status: txDoc.data().status || 'Unknown' });
             } else {
+                 // Transaction not even found in Firestore
                  res.status(404).json({ message: 'Transaction not found.' });
             }
         } catch (dbError) {
+             console.error(`Firestore status check failed for ${transactionId}:`, dbError);
             next(dbError); // Pass DB error if it occurs
         }
     }
@@ -291,8 +322,8 @@ exports.cancelRecharge = async (req, res, next) => {
             return res.status(404).json({ message: 'Transaction not found or permission denied.' });
         }
 
-        const txData = txDoc.data();
-        if (txData.type !== 'Recharge') {
+        const txData = convertFirestoreDocToTransaction(txDoc); // Use helper
+        if (!txData || txData.type !== 'Recharge') {
              return res.status(400).json({ message: 'Only recharge transactions can be cancelled.' });
         }
         // Add stricter status check if needed (e.g., cannot cancel 'Failed' or 'Cancelled')
@@ -301,7 +332,7 @@ exports.cancelRecharge = async (req, res, next) => {
         }
 
         // Check cancellation window (e.g., 30 mins)
-        const transactionDate = (txData.date as Timestamp).toDate(); // Convert Firestore Timestamp
+        const transactionDate = txData.date; // Already a Date object
         const now = new Date();
         const minutesPassed = (now.getTime() - transactionDate.getTime()) / 60000;
         const CANCELLATION_WINDOW_MINUTES = 30; // Example window
@@ -342,9 +373,8 @@ function capitalize(s) {
 }
 
 // Helper function to convert Firestore doc to Transaction type
-import type { Transaction } from '../services/types'; // Import shared Transaction type
-
-function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnapshot): Transaction {
+function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnapshot): Transaction | null {
+    if (!docSnap.exists) return null;
     const data = docSnap.data()!;
     return {
         id: docSnap.id,
@@ -355,3 +385,4 @@ function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnaps
         updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : undefined,
     } as Transaction;
 }
+

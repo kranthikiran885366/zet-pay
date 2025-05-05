@@ -4,6 +4,7 @@ const { collection, query, where, orderBy, limit, getDocs, getDoc, addDoc, updat
 const db = admin.firestore();
 const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger'); // Use centralized logger
 const upiProviderService = require('../services/upiProviderService'); // Assume PSP functions are here
+const { sendToUser } = require('../server'); // For WebSocket updates
 
 // Get User's Mandates
 exports.getMandates = async (req, res, next) => {
@@ -83,8 +84,7 @@ exports.setupMandate = async (req, res, next) => {
         const docRef = await addDoc(mandatesColRef, mandateData);
         console.log(`[Autopay Ctrl] Mandate record created (ID: ${docRef.id}) with status: ${mandateData.status}`);
 
-        // Log transaction if there's a setup fee (unlikely for UPI mandate setup)
-        // await addTransaction({...});
+        // No transaction log needed for setup itself unless there's a fee
 
         res.status(201).json({
             success: true,
@@ -138,7 +138,10 @@ exports.pauseMandate = async (req, res, next) => {
             status: 'Paused',
             updatedAt: serverTimestamp()
         });
-         console.log(`[Autopay Ctrl] Mandate ${mandateId} paused successfully.`);
+        console.log(`[Autopay Ctrl] Mandate ${mandateId} paused successfully.`);
+
+        // Send WebSocket update
+        sendToUser(userId, { type: 'autopay_update', payload: { mandateId, status: 'Paused' } });
 
         res.status(200).json({ success: true, message: 'Mandate paused successfully.' });
     } catch (error) {
@@ -185,6 +188,9 @@ exports.resumeMandate = async (req, res, next) => {
             updatedAt: serverTimestamp()
         });
         console.log(`[Autopay Ctrl] Mandate ${mandateId} resumed successfully.`);
+
+        // Send WebSocket update
+        sendToUser(userId, { type: 'autopay_update', payload: { mandateId, status: 'Active' } });
 
         res.status(200).json({ success: true, message: 'Mandate resumed successfully.' });
     } catch (error) {
@@ -236,9 +242,13 @@ exports.cancelMandate = async (req, res, next) => {
         });
         console.log(`[Autopay Ctrl] Mandate ${mandateId} marked as cancelled in Firestore.`);
 
+        // Send WebSocket update
+        sendToUser(userId, { type: 'autopay_update', payload: { mandateId, status: 'Cancelled' } });
+
         res.status(200).json({ success: true, message: 'Mandate cancellation request processed.' });
     } catch (error) {
         console.error("[Autopay Ctrl] Error cancelling mandate:", error);
         next(error);
     }
 };
+
