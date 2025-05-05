@@ -22,12 +22,12 @@ const handleValidationErrors = (req, res, next) => {
 router.get('/billers',
     query('type').isString().trim().notEmpty().withMessage('Biller type query parameter is required.'),
     handleValidationErrors,
-    asyncHandler(billsController.getBillers) // Use the new controller function
+    asyncHandler(billsController.getBillers) // Use the correct controller function name
 );
 
 
-// GET /api/bills/:type/details/:identifier - Fetch bill details for a specific type and identifier
-router.get('/:type/details/:identifier', // Combined type and identifier in path
+// GET /api/bills/details/:type/:identifier - Fetch bill details for a specific type and identifier
+router.get('/details/:type/:identifier', // Keep original structure for simplicity
     param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'), // Validate type param
     param('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number) parameter is required.'), // Validate identifier param
     query('billerId').isString().trim().notEmpty().withMessage('Biller ID query parameter is required.'), // Biller ID from query
@@ -35,8 +35,8 @@ router.get('/:type/details/:identifier', // Combined type and identifier in path
     asyncHandler(billsController.fetchBillDetails)
 );
 
-// POST /api/bills/:type - Process a bill payment for a specific type
-router.post('/:type',
+// POST /api/bills/pay/:type - Process a bill payment for a specific type
+router.post('/pay/:type', // Keep original structure
     param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'), // Validate type param
     body('billerId').isString().trim().notEmpty().withMessage('Biller ID is required.'),
     body('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number) is required.'),
@@ -44,11 +44,13 @@ router.post('/:type',
     body('billerName').optional().isString().trim(),
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
     // Add validation for UPI/Card details if method is selected
+    body('sourceAccountUpiId').if(body('paymentMethod').equals('upi')).isString().trim().notEmpty().contains('@').withMessage('Valid Source Account UPI ID is required for UPI payment.'),
+    body('pin').if(body('paymentMethod').equals('upi')).isString().isLength({ min: 4, max: 6 }).isNumeric().withMessage('UPI PIN must be 4 or 6 digits for UPI payment.'),
+    // Add card detail validation if needed (e.g., cardToken, cvv)
+    body('cardToken').if(body('paymentMethod').equals('card')).isString().trim().notEmpty().withMessage('Card token is required for Card payment.'),
+    body('cvv').if(body('paymentMethod').equals('card')).isString().isLength({ min: 3, max: 4 }).isNumeric().withMessage('CVV is required for Card payment.'),
     handleValidationErrors,
     asyncHandler(billsController.processBillPayment)
 );
 
 module.exports = router;
-
-
-    

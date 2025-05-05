@@ -31,7 +31,7 @@ router.get('/plans',
     asyncHandler(rechargeController.getRechargePlans)
 );
 
-// POST /api/recharge - Process a recharge or bill payment
+// POST /api/recharge - Process a recharge
 router.post('/',
     body('type').isString().trim().notEmpty().withMessage('Recharge type is required.'),
     body('identifier').isString().trim().notEmpty().withMessage('Identifier (number/ID) is required.'),
@@ -40,6 +40,9 @@ router.post('/',
     body('planId').optional().isString().trim(),
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
     // Add validation for UPI/Card details if method is selected
+    body('sourceAccountUpiId').if(body('paymentMethod').equals('upi')).isString().trim().notEmpty().contains('@').withMessage('Valid Source Account UPI ID is required for UPI payment.'),
+    body('pin').if(body('paymentMethod').equals('upi')).isString().isLength({ min: 4, max: 6 }).isNumeric().withMessage('UPI PIN must be 4 or 6 digits for UPI payment.'),
+    // Add card detail validation if needed
     handleValidationErrors,
     asyncHandler(rechargeController.processRecharge)
 );
@@ -59,21 +62,24 @@ router.post('/schedule',
 
 // DELETE /api/recharge/schedule/:scheduleId - Cancel a scheduled recharge
 router.delete('/schedule/:scheduleId',
-    param('scheduleId').isMongoId().withMessage('Invalid schedule ID format.'), // Example validation
+    // Example validation using MongoID, adjust if needed
+    param('scheduleId').isString().trim().notEmpty().withMessage('Schedule ID parameter is required.'), // Simplified validation
     handleValidationErrors,
     asyncHandler(rechargeController.cancelScheduledRecharge)
 );
 
 // GET /api/recharge/status/:transactionId - Check activation status of a recharge
 router.get('/status/:transactionId',
-    param('transactionId').isMongoId().withMessage('Invalid transaction ID format.'), // Example validation
+    // Example validation using MongoID, adjust if needed
+    param('transactionId').isString().trim().notEmpty().withMessage('Transaction ID parameter is required.'), // Simplified validation
     handleValidationErrors,
     asyncHandler(rechargeController.checkActivationStatus)
 );
 
 // POST /api/recharge/cancel/:transactionId - Request cancellation of a recent recharge
 router.post('/cancel/:transactionId',
-    param('transactionId').isMongoId().withMessage('Invalid transaction ID format.'),
+    // Example validation using MongoID, adjust if needed
+    param('transactionId').isString().trim().notEmpty().withMessage('Transaction ID parameter is required.'), // Simplified validation
     handleValidationErrors,
     asyncHandler(rechargeController.cancelRecharge)
 );
