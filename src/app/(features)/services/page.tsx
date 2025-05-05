@@ -1,7 +1,12 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -41,14 +46,14 @@ import {
   Fuel, // Corrected icon
   CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
-    Plane,
-    ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home, // Added Temple icon (using Home as placeholder)
-    Car,
-    Bike as Motorbike, // Use alias
-    CalendarCheck,
-    Video,
+  Plane,
+  ShoppingBag,
+  Gift as GiftIcon, //Alias Gift to avoid conflict
+  Home as HomeIcon, // Alias Home
+  Car,
+  Bike as Motorbike, // Use alias
+  CalendarCheck,
+  Video,
     Sparkles,
   ShoppingBasket,
   HeartHandshake,
@@ -71,7 +76,6 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    Car as CarWashIcon, // Use alias
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -85,6 +89,12 @@ import {
     BookUser, // Placeholder for Mobile Postpaid
     Receipt, // Added for Traffic Challan
     WandSparkles, // Added for Travel Assistant
+    Heart, // General Donations
+    Bike, // Bike Insurance
+    Home, // Rent Payment, Property Tax (Using Home for both)
+    Flame, // LPG Cylinder
+    Building, // Housing Society
+    HandCoins, // Placeholder for Club Fees
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -94,7 +104,7 @@ const templeServices = [
   { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Temple Services" },
   { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services" },
   { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Temple Services" },
-  { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
+  { name: "Temple Donations", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
   { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services" },
   { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services" },
   { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services" },
@@ -119,7 +129,10 @@ const travelServices = [
 
 const financialServices = [
     { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Financial Services"},
-    { name: "Insurance Premium", icon: ShieldCheck, href: "/bills/insurance", category: "Financial Services"},
+    { name: "Bike Insurance", icon: Bike, href: "/insurance/bike", category: "Financial Services"},
+    { name: "Car Insurance", icon: Car, href: "/insurance/car", category: "Financial Services"},
+    { name: "Health Insurance", icon: HeartPulse, href: "/insurance/health", category: "Financial Services"},
+    { name: "Life Insurance", icon: ShieldCheck, href: "/insurance/life", category: "Financial Services"},
     { name: "Mutual Funds", icon: Briefcase, href: "/mutual-funds", category: "Financial Services" },
     { name: "Deposits (FD/RD)", icon: Database, href: "/deposits", category: "Financial Services" },
     { name: "Check Credit Score", icon: Gauge, href: "/credit-score", category: "Financial Services" },
@@ -144,7 +157,7 @@ const hyperlocalServices = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry Pickup", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring Services", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
-    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Use Car icon
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Use Car icon
     { name: "Courier Service", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
@@ -173,6 +186,14 @@ const otherServices = [
     { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Recharge & Bills" },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Recharge & Bills" },
     { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Recharge & Bills"}, // Added Challan
+    { name: "Rent Payment", icon: Home, href: "/rent-payment", category: "Recharge & Bills" },
+    { name: "LPG Cylinder", icon: Flame, href: "/lpg-booking", category: "Recharge & Bills" },
+    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills" },
+    { name: "Property Tax", icon: Home, href: "/property-tax", category: "Recharge & Bills" },
+    { name: "Housing Society", icon: Building, href: "/housing-society", category: "Recharge & Bills" },
+    { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills" },
+    { name: "Club Fees", icon: HandCoins, href: "/club-fees", category: "Recharge & Bills" },
+    { name: "General Donations", icon: Heart, href: "/donations/general", category: "Recharge & Bills" }, // General donation
 
     // Vouchers & More
     { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
@@ -185,13 +206,12 @@ const otherServices = [
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Payments" }, // Smart Parking
     { name: "Cab/Taxi Bill Payments", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments" }, // Added Cardless Cash
-
 ];
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
     // Define order, ensuring all categories are included
-    const categoryOrder = ["Recharge & Bills", "Payments", "Travel", "Temple Services", "Healthcare", "Entertainment", "Hyperlocal Services", "Financial Services", "Utilities & Tools", "Vouchers & More"]; // Updated Order
+    const categoryOrder = ["Recharge & Bills", "Payments", "Travel", "Financial Services", "Temple Services", "Healthcare", "Entertainment", "Hyperlocal Services", "Utilities & Tools", "Vouchers & More"]; // Updated Order
 
     // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
