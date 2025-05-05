@@ -2,13 +2,11 @@
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
-import admin from 'firebase-admin'; // Use admin SDK
-const db = admin.firestore();
-// Correct the import path for blockchainLogger - assuming it's in the same directory
-import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
-import { sendToUser } from '@/lib/websocket'; // Import backend WebSocket sender using alias
+import { db } from '@/lib/firebase/firebaseAdmin'; // Use Admin SDK DB instance
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
+import blockchainLogger from './blockchainLogger'; // Corrected import path for backend service
+import { sendToUser } from '@/lib/websocket'; // Corrected path for backend WS sender
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
-import { Timestamp } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp
 
 /**
  * Adds a new transaction record to Firestore and logs it to the blockchain (backend context).
@@ -25,11 +23,11 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
     console.log(`[Backend Logger] Logging transaction for user ${userId}:`, rest.type);
 
     try {
-        const transactionsColRef = db.collection('transactions');
+        const transactionsColRef = collection(db, 'transactions');
         const dataToSave = {
             ...rest,
             userId: userId,
-            date: Timestamp.now(), // Use server timestamp directly
+            date: serverTimestamp(), // Use Firestore server timestamp
             // Generate avatarSeed if not provided
             avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
             // Set default nulls for optional fields if not provided
@@ -51,7 +49,7 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         });
 
 
-        const docRef = await transactionsColRef.add(dataToSave);
+        const docRef = await addDoc(transactionsColRef, dataToSave);
         console.log("[Backend Logger] Transaction logged to Firestore with ID:", docRef.id);
 
         // Fetch the newly created doc to get the server timestamp resolved
