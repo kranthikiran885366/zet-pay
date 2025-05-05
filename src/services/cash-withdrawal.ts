@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Service functions for cardless cash withdrawal at Zet Agents using Firestore.
  * Note: Actual agent verification, secure OTP/QR handling, and fund movement require backend integration.
@@ -6,7 +5,7 @@
 
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc, runTransaction } from 'firebase/firestore';
-import { addTransaction } from '@/services/transactionLogger'; // For logging the withdrawal/hold
+import { addTransaction } from './transactionLogger'; // For logging the withdrawal/hold
 import { getWalletBalance, payViaWallet } from './wallet'; // To check/hold balance potentially
 import { addDays, differenceInMinutes } from 'date-fns'; // For expiry calculation
 

@@ -1,10 +1,9 @@
-
 /**
  * @fileOverview Service functions for managing temple bookings and donations via the backend API.
  */
 
 import { apiClient } from '@/lib/apiClient';
-import { addTransaction } from '@/services/transactionLogger'; // Import centralized logger
+import { addTransaction } from './transactionLogger'; // Import centralized logger
 import type { Transaction } from './types'; // Import Transaction type
 import { format } from "date-fns";
 
@@ -30,7 +29,7 @@ export interface PrasadamItem {
     id: string;
     name: string;
     description: string;
-    price: number;
+    price: number; // Price per unit/packet
     imageUrl: string;
     minQuantity?: number;
     maxQuantity?: number;
@@ -251,4 +250,3 @@ export async function getMyTempleBookings(): Promise<TempleBooking[]> {
 // export async function getLiveDarshanUrl(templeId: string): Promise<string | null> { ... }
 // export async function getTempleAudio(templeId?: string, category?: string): Promise<AudioTrack[]> { ... }
 // ... and so on
-

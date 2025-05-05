@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Service functions for scheduling and processing wallet recovery deductions using Firestore.
  */
@@ -20,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { getLinkedAccounts, BankAccount } from './upi'; // To get user's default bank account
 import { topUpWallet } from './wallet'; // To credit back to the wallet
-import { addTransaction, logTransactionToBlockchain } from '@/services/transactionLogger'; // To log recovery transaction
+import { addTransaction, logTransactionToBlockchain } from './transactionLogger'; // To log recovery transaction
 
 interface RecoveryTask {
     id?: string; // Firestore document ID

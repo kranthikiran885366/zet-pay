@@ -1,10 +1,9 @@
-
 /**
  * @fileOverview Service functions for managing Digital Pocket Money feature.
  */
 import { db, auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, getDocs, addDoc, Timestamp, serverTimestamp, limit } from 'firebase/firestore';
-import { addTransaction } from '@/services/transactionLogger'; // For logging transactions
+import { addTransaction } from './transactionLogger'; // For logging transactions
 
 // Interface for individual child settings within the parent's config
 export interface ChildAccountConfig {

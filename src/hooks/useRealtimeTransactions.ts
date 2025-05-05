@@ -21,13 +21,13 @@ export function useRealtimeTransactions(
     const fetchInitialTransactionsFallback = useCallback(async (filters?: TransactionFilters) => {
         // Avoid fetching if already fetched (initialLoadComplete is true) or currently loading
         if (initialLoadComplete || isLoading) {
-             // console.log("[Tx Hook] Fallback fetch skipped: Load complete or already loading.");
+             console.log("[Tx Hook] Fallback fetch skipped: Load complete or already loading.");
              return;
         }
 
         const user = auth.currentUser;
         if (!user) {
-            // console.log("[Tx Hook] Fallback fetch skipped: No user.");
+            console.log("[Tx Hook] Fallback fetch skipped: No user.");
             setTransactions([]);
             setIsLoading(false);
             setInitialLoadComplete(true); // Mark initial load attempt as complete even if no user
@@ -97,9 +97,11 @@ export function useRealtimeTransactions(
                      }));
                      setTransactions(newTransactions.slice(0, MAX_TRANSACTIONS_CLIENT_SIDE));
                      setInitialLoadComplete(true); // Mark initial load complete
+                     console.log("[Tx Hook] Updated state with initial/full list via WS:", newTransactions.length);
                  } else if (payload && typeof payload === 'object' && payload.id && payload.date) {
                       // Handle single transaction update only AFTER initial load is complete
                       if (initialLoadComplete) {
+                          console.log("[Tx Hook] Processing single transaction update:", payload.id);
                           const newTransaction = {
                               ...payload,
                               date: new Date(payload.date),
@@ -111,17 +113,20 @@ export function useRealtimeTransactions(
                               let updatedList;
                               if (existingIndex > -1) {
                                   // Update existing
+                                  console.log(`[Tx Hook] Updating existing transaction ${newTransaction.id}`);
                                   updatedList = [...prev];
                                   updatedList[existingIndex] = newTransaction;
                               } else {
                                   // Prepend new
+                                  console.log(`[Tx Hook] Prepending new transaction ${newTransaction.id}`);
                                   updatedList = [newTransaction, ...prev];
                               }
                               // Sort and slice
                                return updatedList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, MAX_TRANSACTIONS_CLIENT_SIDE);
                           });
                       } else {
-                           console.log("[Tx Hook] Received single update before initial list, ignoring until initial load completes.");
+                           console.log("[Tx Hook] Received single update before initial list, queueing/ignoring until initial load completes.");
+                           // Optionally queue single updates received before initial load
                       }
                  } else {
                      console.warn("[Tx Hook] Received unexpected payload format for transaction update:", payload);
@@ -133,10 +138,14 @@ export function useRealtimeTransactions(
             unsubscribeInitialWs = subscribeToWebSocketMessages('initial_transactions', handleTransactionUpdate);
 
             // Request initial data via WebSocket
+            console.log("[Tx Hook] Requesting initial transactions via WS with filters:", filters);
             requestInitialData('transactions', filters);
 
-            // Set a timeout for the API fallback
-            initialFetchTimeout = setTimeout(() => fetchInitialTransactionsFallback(filters), 5000); // e.g., wait 5 seconds
+            // Set a timeout for the API fallback in case WS fails to provide initial data
+            initialFetchTimeout = setTimeout(() => {
+                 console.log("[Tx Hook] WebSocket initial data timeout reached. Attempting API fallback.");
+                 fetchInitialTransactionsFallback(filters);
+             }, 7000); // e.g., wait 7 seconds
 
             // Return cleanup function for this specific subscription setup
              return () => {
@@ -185,7 +194,8 @@ export function useRealtimeTransactions(
             if (unsubscribeInitialWs) unsubscribeInitialWs();
             if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
         };
-    }, [currentFilters, fetchInitialTransactionsFallback, isSubscribed]); // Rerun if filters change
+    // Only re-run if filters change, fetchInitialTransactionsFallback is memoized
+    }, [currentFilters, fetchInitialTransactionsFallback]);
 
     // Function to manually refresh or apply new filters
     const refreshTransactions = useCallback((newFilters?: TransactionFilters) => {

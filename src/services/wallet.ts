@@ -3,7 +3,7 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-import { addTransaction } from '@/services/transactionLogger'; // Use centralized logger
+import { addTransaction } from './transactionLogger'; // Use centralized logger
 import type { Transaction } from './types'; // For internal logging if needed
 
 // Define the expected result structure from the backend API
@@ -158,6 +158,3 @@ export async function payViaWalletInternal(
     // - sendBalanceUpdate calls (backend handles this)
     // - Blockchain logging calls (backend handles this)
 }
-
-
-    
