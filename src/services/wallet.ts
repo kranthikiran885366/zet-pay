@@ -1,10 +1,9 @@
-
 /**
  * @fileOverview Service functions for managing the Zet Pay Wallet via the backend API.
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-import { addTransaction, logTransactionToBlockchain } from '@/services/transactionLogger'; // Use centralized logger
+import { addTransaction } from '@/services/transactionLogger'; // Use centralized logger
 import type { Transaction } from './types'; // For internal logging if needed
 
 // Define the expected result structure from the backend API
@@ -156,9 +155,8 @@ export async function payViaWalletInternal(
             const loggedTx = await addTransaction(logData);
             loggedTxId = loggedTx.id;
 
-             // Log to blockchain (optional, non-blocking)
-             logTransactionToBlockchain(loggedTx.id, { ...loggedTx, date: new Date() } as Transaction) // Cast might be needed
-                 .catch(err => console.error("Blockchain log failed:", err));
+             // Blockchain logging is handled by backend
+
         } else {
              throw new Error("Internal wallet operation failed (Simulated).");
         }

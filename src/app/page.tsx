@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +5,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle } from "lucide-react"; // Added HelpCircle
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle, RefreshCw } from "lucide-react"; // Added RefreshCw
 import Image from 'next/image';
 import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use service with subscription
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +14,7 @@ import { format } from 'date-fns';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRealtimeBalance } from '@/hooks/useRealtimeBalance'; // Import the balance hook
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -46,8 +46,9 @@ export default function Home() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]); // Holds data from subscription
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Track login state
+  const [walletBalance, isLoadingBalance, refreshBalance] = useRealtimeBalance(); // Use the balance hook
   const { toast } = useToast();
-  const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the hook
+  const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the voice hook
   const router = useRouter();
 
   // Handle voice command results (placeholder)
@@ -55,9 +56,13 @@ export default function Home() {
     if (transcript) {
       toast({ title: "Voice Command (Simulated)", description: `Recognized: "${transcript}". Processing... (Not Implemented)` });
       // TODO: Add NLP processing and action dispatching here
-      // Example: if (transcript.includes('recharge')) router.push('/recharge/mobile');
+       // Example: if (transcript.includes('recharge')) router.push('/recharge/mobile');
+       // Use the new conversational flow
+       if (transcript.trim()) {
+          router.push(`/conversation?query=${encodeURIComponent(transcript)}`);
+       }
     }
-  }, [transcript, toast]);
+  }, [transcript, toast, router]); // Added router dependency
 
   // Handle voice command errors (placeholder)
   useEffect(() => {
@@ -74,7 +79,8 @@ export default function Home() {
 
     console.log("Setting up auth listener for homepage...");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
-        setIsLoggedIn(!!user); // Update login state
+        const loggedIn = !!user;
+        setIsLoggedIn(loggedIn); // Update login state
 
         if (user) {
             console.log("User logged in on homepage, subscribing to transactions...");
@@ -87,25 +93,26 @@ export default function Home() {
             // Subscribe using the service function which handles WS/polling
             cleanupSubscription = subscribeToTransactionHistory(
                 (transactions) => {
-                    // console.log("Received transactions update (Home):", transactions.length);
-                     // Handle potential single transaction updates from WS
-                     if (transactions.length === 1 && !isLoadingTransactions) {
-                          // Check if it's truly a new transaction not already present
-                          setRecentTransactions(prev => {
-                              const existingIndex = prev.findIndex(t => t.id === transactions[0].id);
-                              if (existingIndex > -1) {
-                                  // Update existing
-                                  const updated = [...prev];
-                                  updated[existingIndex] = transactions[0];
-                                  return updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-                              } else {
-                                  // Prepend new and sort/slice
-                                   return [transactions[0], ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-                              }
-                          });
+                    // Handle full list or single update
+                     if (transactions.length === 1 && recentTransactions.length > 0) {
+                         // Single update: Merge intelligently
+                         setRecentTransactions(prev => {
+                             const existingIndex = prev.findIndex(t => t.id === transactions[0].id);
+                             let updatedList;
+                             if (existingIndex > -1) {
+                                 // Update existing
+                                 updatedList = [...prev];
+                                 updatedList[existingIndex] = transactions[0];
+                             } else {
+                                 // Prepend new
+                                 updatedList = [transactions[0], ...prev];
+                             }
+                             // Sort and slice
+                             return updatedList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+                         });
                      } else {
-                          // Initial load or full update from polling/WS initial
-                          setRecentTransactions(transactions); // Already limited by service/fetch
+                         // Initial load or full refresh
+                         setRecentTransactions(transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5));
                      }
                     setIsLoadingTransactions(false);
                 },
@@ -140,7 +147,8 @@ export default function Home() {
         cleanupSubscription();
       }
     };
-  }, [toast, isLoadingTransactions]); // Rerun based on toast, add isLoadingTransactions to dependency for single update logic
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // Keep dependencies minimal, transaction state is managed internally now
 
 
   const handleVoiceButtonClick = () => {
@@ -163,7 +171,17 @@ export default function Home() {
               <AvatarFallback>{auth.currentUser?.displayName?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
           </Link>
-          {/* Location can be dynamic later */}
+           {/* Wallet Balance Display */}
+           <div className="text-xs flex items-center gap-1 cursor-pointer" onClick={refreshBalance}>
+                <Wallet size={14} />
+                 {isLoadingBalance ? (
+                    <Loader2 size={14} className="animate-spin"/>
+                 ) : (
+                    <span>₹{walletBalance?.toFixed(2) ?? '0.00'}</span>
+                 )}
+                  {/* Show refresh icon only when not loading */}
+                 {!isLoadingBalance && <RefreshCw size={10} className="opacity-60 hover:opacity-100"/>}
+            </div>
         </div>
         <div className="flex items-center gap-1"> {/* Reduced gap */}
           <Link href="/scan" passHref>
@@ -329,7 +347,7 @@ export default function Home() {
              </Link>
           </CardHeader>
           <CardContent className="space-y-2 p-3 divide-y divide-border"> {/* Adjusted padding */}
-            {isLoadingTransactions ? (
+            {isLoadingTransactions && isLoggedIn !== false ? ( // Show loader only if logged in or status unknown
                  <div className="flex justify-center items-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
                  </div>
@@ -392,4 +410,3 @@ export default function Home() {
     </div>
   );
 }
-        

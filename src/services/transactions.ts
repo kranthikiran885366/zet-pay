@@ -1,13 +1,12 @@
-
 /**
- * @fileOverview Service functions for managing transaction history via the backend API.
+ * @fileOverview Service functions for managing transaction history via the backend API and WebSockets.
  */
 import { apiClient } from '@/lib/apiClient';
 import type { Transaction } from './types'; // Import shared type
 import type { DateRange } from "react-day-picker";
 import { auth } from '@/lib/firebase'; // Keep auth for user ID if needed client-side
-import { Unsubscribe } from 'firebase/firestore'; // Keep type for potential fallback
-import { ensureWebSocketConnection, subscribeToWebSocketMessages, sendWebSocketMessage } from '@/lib/websocket'; // Import WebSocket utility
+// Removed Unsubscribe import as we return null now
+import { ensureWebSocketConnection, subscribeToWebSocketMessages, requestInitialData, sendWebSocketMessage } from '@/lib/websocket'; // Import WebSocket utility
 
 export type { Transaction }; // Re-export for convenience
 
@@ -20,7 +19,7 @@ export interface TransactionFilters {
 }
 
 /**
- * Fetches transaction history for the current user from the backend API.
+ * Fetches transaction history for the current user from the backend API (primarily for initial load or fallback).
  *
  * @param filters Optional filters for transaction type, status, date range, and search term.
  * @returns A promise that resolves to an array of Transaction objects.
@@ -63,109 +62,78 @@ export async function getTransactionHistory(filters?: TransactionFilters): Promi
 
 /**
  * Subscribes to real-time updates for the current user's transaction history using WebSockets.
- * Includes fallback to polling via `getTransactionHistory` if WebSocket connection fails.
+ * Requests initial data via WebSocket after connection/authentication.
  *
- * @param onUpdate Callback function triggered with the updated list of transactions.
+ * @param onUpdate Callback function triggered with the updated list of transactions (can be initial list or single update).
  * @param onError Callback function triggered on error.
- * @param filters Optional filters.
+ * @param filters Optional filters to apply for the subscription and initial request.
  * @param count Optional limit.
- * @returns A cleanup function to close the WebSocket connection and clear any polling interval.
+ * @returns A cleanup function to unsubscribe from WebSocket messages, or null if user is not logged in.
  */
 export function subscribeToTransactionHistory(
     onUpdate: (transactions: Transaction[]) => void,
     onError: (error: Error) => void,
     filters?: TransactionFilters,
     count?: number
-): () => void {
+): (() => void) | null { // Return type updated to include null
     const currentUser = auth.currentUser;
     if (!currentUser) {
         console.log("No user logged in to subscribe to transaction history.");
-        onError(new Error("User not logged in."));
-        return () => {}; // No-op cleanup
+        // Return null instead of calling onError here, let the component handle it
+        // onError(new Error("User not logged in."));
+        return null; // Return null if no user
     }
     const userId = currentUser.uid;
-    let pollingIntervalId: NodeJS.Timeout | null = null;
     const limit = filters?.limit || count;
-    const updatedFilters = { ...filters, limit };
+    const subscriptionFilters = { ...filters, limit };
+
+    console.log("Setting up transaction history subscription for user:", userId, "Filters:", subscriptionFilters);
 
     // Ensure WebSocket connection is attempted
     ensureWebSocketConnection();
 
-    // Define handler for transaction updates
+    // Define handler for incoming transaction updates
     const handleTransactionUpdate = (payload: any) => {
         let updatedTransactions: Transaction[] = [];
          if (Array.isArray(payload)) {
+             // Handle full list update (e.g., initial data)
+             console.log("Received initial/full transaction list update via WS.");
              updatedTransactions = payload.map((tx: any) => ({
                  ...tx,
                  date: new Date(tx.date),
                  avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
              }));
              onUpdate(updatedTransactions);
-         } else if (payload && typeof payload === 'object' && payload.id) {
-             // Handle single transaction update: Let the component merge it
+         } else if (payload && typeof payload === 'object' && payload.id && payload.date) {
+             // Handle single transaction update
+             console.log("Received single transaction update via WS:", payload.id);
              const newTransaction = {
                  ...payload,
                  date: new Date(payload.date),
                  avatarSeed: payload.avatarSeed || payload.name?.toLowerCase().replace(/\s+/g, '') || payload.id,
              };
-             onUpdate([newTransaction]); // Pass only the new one
+             onUpdate([newTransaction]); // Pass only the single updated/new transaction
          } else {
              console.warn("Received unexpected payload format for transaction update:", payload);
          }
     };
 
-    // Subscribe to WebSocket messages
+    // Subscribe to WebSocket messages for general updates and initial data response
     const wsUnsubscribe = subscribeToWebSocketMessages('transaction_update', handleTransactionUpdate);
     const wsInitialUnsubscribe = subscribeToWebSocketMessages('initial_transactions', handleTransactionUpdate);
 
-    // Function to fetch data via API and set up polling (used as fallback)
-    const fetchAndPoll = async (startPolling = false) => {
-        try {
-            console.log("Polling for transactions...");
-            const transactions = await getTransactionHistory(updatedFilters);
-            onUpdate(transactions);
-            // Set up polling only if specifically requested
-            if (startPolling && !pollingIntervalId) {
-                console.log("Starting polling interval (30s) for transactions...");
-                pollingIntervalId = setInterval(async () => {
-                    try {
-                        const polledTransactions = await getTransactionHistory(updatedFilters);
-                        onUpdate(polledTransactions);
-                    } catch (pollError) {
-                        console.error("Polling error:", pollError);
-                        onError(new Error("Failed to update transactions via polling."));
-                        // Consider stopping polling after too many errors?
-                        // clearInterval(pollingIntervalId!);
-                        // pollingIntervalId = null;
-                    }
-                }, 30000); // Poll every 30 seconds
-            }
-        } catch (error: any) {
-            onError(error);
-        }
-    };
+    // Request initial data once WebSocket is connected and authenticated
+     requestInitialData('transactions', subscriptionFilters);
 
-     // Fetch initial data via REST API immediately for faster loading
-     getTransactionHistory(updatedFilters).then(initialTxs => onUpdate(initialTxs)).catch(err => onError(err));
-     // Rely on WebSocket 'initial_transactions' or polling fallback for subsequent updates
 
     // Return cleanup function
     return () => {
-        console.log("Cleaning up transaction subscription (WebSocket and Polling)...");
-        wsUnsubscribe(); // Unsubscribe from WebSocket messages
-        wsInitialUnsubscribe(); // Unsubscribe from initial data message
-        if (pollingIntervalId) {
-            clearInterval(pollingIntervalId);
-            pollingIntervalId = null;
-        }
-        // Note: We don't close the WebSocket connection here, as it might be used by other subscriptions.
-        // Connection closure should be handled globally or when the app closes.
+        console.log("Cleaning up transaction subscription (WebSocket)...");
+        wsUnsubscribe(); // Unsubscribe from 'transaction_update'
+        wsInitialUnsubscribe(); // Unsubscribe from 'initial_transactions'
     };
 }
 
-
-// **REMOVE** client-side `addTransaction` function as backend handles it.
-// export async function addTransaction(...) { ... }
 
 /**
  * Attempts to cancel a recently completed or processing recharge transaction via the backend API.
@@ -180,6 +148,8 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
          const result = await apiClient<{ success: boolean; message: string }>(`/recharge/cancel/${transactionId}`, {
              method: 'POST',
          });
+         // Optional: Send a WS message to potentially trigger faster UI update if backend doesn't guarantee it
+         // sendWebSocketMessage({ type: 'request_refresh_transaction', payload: { transactionId } });
          return result;
      } catch (error: any) {
          console.error("Error cancelling recharge via API:", error);
@@ -187,10 +157,6 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
          return { success: false, message: error.message || "Could not cancel recharge." };
      }
 }
-
-
-// **REMOVE** client-side blockchain logging.
-// export async function logTransactionToBlockchain(...) { ... }
 
 // Keep TransactionFilters interface if used by components
 export type { TransactionFilters };

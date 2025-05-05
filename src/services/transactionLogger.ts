@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Centralized service for logging transactions to Firestore and Blockchain.
  * NOTE: This client-side logger primarily focuses on adding the transaction via API.
@@ -9,7 +8,7 @@ import { db, auth } from '@/lib/firebase'; // Import Firebase instances
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { sendToUser } from '@/lib/websocket'; // Import WebSocket sender
 // REMOVED: Direct import of backend blockchain logger
-// import blockchainLogger from '@/services/blockchainLogger';
+// import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
 import type { Transaction } from './types'; // Import shared Transaction type
 import { apiClient } from '@/lib/apiClient'; // Import API client
 
@@ -66,4 +65,3 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
 
 // REMOVED: Client-side blockchain logging function
 // export async function logTransactionToBlockchain(...) { ... }
-
