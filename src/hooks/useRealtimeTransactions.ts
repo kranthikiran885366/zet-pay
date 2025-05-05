@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -16,6 +17,7 @@ export function useRealtimeTransactions(
     const [currentFilters, setCurrentFilters] = useState<TransactionFilters | undefined>(initialFilters);
     const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
     const [initialLoadComplete, setInitialLoadComplete] = useState<boolean>(false); // Track initial load
+    const [userId, setUserId] = useState<string | null>(null); // Track current user ID
 
     // Function to fetch initial transactions via API (as fallback or initial load)
     const fetchInitialTransactionsFallback = useCallback(async (filters?: TransactionFilters) => {
@@ -25,8 +27,8 @@ export function useRealtimeTransactions(
              return;
         }
 
-        const user = auth.currentUser;
-        if (!user) {
+        const currentUserId = userId; // Use state userId
+        if (!currentUserId) {
             console.log("[Tx Hook] Fallback fetch skipped: No user.");
             setTransactions([]);
             setIsLoading(false);
@@ -41,7 +43,7 @@ export function useRealtimeTransactions(
             const initialTransactions = await getTransactionHistory(filters);
              // Only set if transactions haven't been updated by WS in the meantime AND initial load isn't marked complete
             if (!initialLoadComplete) {
-                 setTransactions(prev => prev.length === 0 ? initialTransactions : prev);
+                 setTransactions(prev => prev.length === 0 ? initialTransactions : prev); // Avoid overwriting WS data
                  setInitialLoadComplete(true); // Mark initial load complete after successful fetch
                  console.log("[Tx Hook] Initial transactions fetched via API fallback:", initialTransactions.length);
             } else {
@@ -55,12 +57,13 @@ export function useRealtimeTransactions(
                 setInitialLoadComplete(true); // Mark attempt complete even on error
              }
         } finally {
-             // Only stop loading if initial load is now marked complete
-            if (initialLoadComplete) {
+            // Only stop loading if initial load is now marked complete
+            // Check isLoading as well to prevent flicker if WS finishes first
+            if (initialLoadComplete && isLoading) {
                 setIsLoading(false);
             }
         }
-    }, [initialLoadComplete, isLoading]); // Depend on initialLoadComplete and isLoading
+    }, [userId, initialLoadComplete, isLoading]); // Depend on userId, initialLoadComplete and isLoading
 
 
     // Effect to handle subscriptions and initial data requests
@@ -71,8 +74,13 @@ export function useRealtimeTransactions(
         let initialFetchTimeout: NodeJS.Timeout | null = null;
         let isMounted = true; // Track mount status
 
-        const setupSubscription = (filters?: TransactionFilters) => {
-            if (!isMounted || isSubscribed) return; // Prevent setup if unmounted or already subscribed
+        const setupSubscription = (currentUserId: string, filters?: TransactionFilters) => {
+            if (!isMounted || !currentUserId) return; // Need user to subscribe
+
+            // Cleanup previous subscriptions before starting new ones
+            if (unsubscribeWs) unsubscribeWs();
+            if (unsubscribeInitialWs) unsubscribeInitialWs();
+            if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
 
             console.log("[Tx Hook] Setting up WS subscription with filters:", filters);
             ensureWebSocketConnection(); // Make sure WS is connected/connecting/authenticating
@@ -85,18 +93,22 @@ export function useRealtimeTransactions(
                 console.log("[Tx Hook] Received transaction update via WS. Type:", Array.isArray(payload) ? 'list' : 'single');
                  if (initialFetchTimeout) clearTimeout(initialFetchTimeout); // Cancel fallback if WS provides data
 
-                setIsLoading(false); // Got data, no longer loading initial
-                setError(null); // Clear errors
+                // Ensure loading is false *only* after the initial full list is processed
+                // Don't set loading false on single updates.
+
+                setError(null); // Clear errors on successful data receipt
 
                 if (Array.isArray(payload)) {
                      // Handle full list update (e.g., initial data)
                      const newTransactions = payload.map((tx: any) => ({
                          ...tx,
-                         date: new Date(tx.date),
+                         date: new Date(tx.date), // Convert timestamp string/object
                          avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
-                     }));
+                     })).sort((a, b) => b.date.getTime() - a.date.getTime()); // Sort immediately
+
                      setTransactions(newTransactions.slice(0, MAX_TRANSACTIONS_CLIENT_SIDE));
                      setInitialLoadComplete(true); // Mark initial load complete
+                     setIsLoading(false); // Stop loading *after* initial load
                      console.log("[Tx Hook] Updated state with initial/full list via WS:", newTransactions.length);
                  } else if (payload && typeof payload === 'object' && payload.id && payload.date) {
                       // Handle single transaction update only AFTER initial load is complete
@@ -160,27 +172,32 @@ export function useRealtimeTransactions(
         // Handle Authentication State Changes
         unsubscribeAuth = auth.onAuthStateChanged(user => {
              if (!isMounted) return;
-             let cleanupWs: (() => void) | null = null;
-             if (user) {
+             const currentUserId = user ? user.uid : null;
+             setUserId(currentUserId); // Update user ID state
+
+             // Cleanup previous subscriptions if user changes or logs out
+             if (unsubscribeWs) unsubscribeWs();
+             if (unsubscribeInitialWs) unsubscribeInitialWs();
+             if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
+             unsubscribeWs = null;
+             unsubscribeInitialWs = null;
+             initialFetchTimeout = null;
+             setIsSubscribed(false); // Reset subscription flag
+
+             if (currentUserId) {
                  console.log("[Tx Hook] User detected, setting up subscription & requesting data.");
                  // Reset state before setting up for new user or new filters
                  setTransactions([]);
                  setIsLoading(true);
                  setError(null);
                  setInitialLoadComplete(false); // Reset initial load flag
-                 setIsSubscribed(false); // Allow setupSubscription to run
-                 cleanupWs = setupSubscription(currentFilters); // Setup with current filters
+                 setupSubscription(currentUserId, currentFilters); // Setup with current filters
              } else {
-                 console.log("[Tx Hook] User logged out, clearing transactions and unsubscribing.");
+                 console.log("[Tx Hook] User logged out, clearing transactions.");
                  setTransactions([]);
                  setIsLoading(false);
                  setError(null);
                  setInitialLoadComplete(false); // Reset flag
-                 // Ensure any active WS subscriptions are cleaned up
-                 if (unsubscribeWs) unsubscribeWs();
-                 if (unsubscribeInitialWs) unsubscribeInitialWs();
-                 if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
-                 setIsSubscribed(false);
              }
         });
 

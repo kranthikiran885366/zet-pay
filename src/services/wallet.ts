@@ -3,8 +3,10 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-import { addTransaction } from '../../backend/services/transactionLogger'; // Use backend logger - Corrected Path
-import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
+import { addTransaction } from '@/services/transactionLogger'; // Use centralized logger
+// Removed unused import: logTransactionToBlockchain
+// Removed unused import: Transaction type specific to logger context
+import type { WalletTransactionResult } from './types'; // Use shared types
 
 // Define the expected result structure from the backend API (Already in types.ts)
 // export interface WalletTransactionResult { ... }
@@ -39,7 +41,7 @@ export async function getWalletBalance(userId?: string): Promise<number> {
  * @param userId Optional: The ID of the user. Backend typically infers from token.
  * @param amount The amount to add.
  * @param fundingSourceInfo Information about the funding source (e.g., Bank UPI ID, Card Token ID).
- * @returns A promise resolving to an object indicating success and potentially the new balance.
+ * @returns A promise resolving to an object indicating success and potentially the new balance and transaction ID.
  */
 export async function topUpWallet(userId: string | undefined, amount: number, fundingSourceInfo: string): Promise<WalletTransactionResult> {
      const currentUserId = userId || auth.currentUser?.uid;

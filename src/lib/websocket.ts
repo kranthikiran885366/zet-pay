@@ -20,7 +20,7 @@ const messageCallbacks: Record<string, Set<(payload: any) => void>> = {}; // Use
 function connectWebSocket() {
     // Prevent multiple concurrent connection attempts
     if (isConnecting || (ws && ws.readyState === WebSocket.OPEN)) {
-        console.log("[WS Client] Connection attempt skipped (already connecting or open).");
+        // console.log("[WS Client] Connection attempt skipped (already connecting or open).");
         return;
     }
 
@@ -33,7 +33,7 @@ function connectWebSocket() {
     // Reset state for new connection attempt
     isConnecting = true;
     isConnected = false;
-    isAuthenticated = false;
+    isAuthenticated = false; // Reset auth status on new connection attempt
 
     console.log(`[WS Client] Attempting connection to ${wsUrl}... (Attempt ${reconnectAttempts + 1})`);
     try {
@@ -100,7 +100,11 @@ function connectWebSocket() {
     ws.onerror = (error) => {
         console.error("[WS Client] Error event:", error);
         // Error handling is tricky here, onClose usually follows for cleanup/retry
-        isConnecting = false; // Allow retry attempt from onClose
+        // Ensure connecting flag is reset if an error occurs during connection attempt
+        if (isConnecting) {
+            isConnecting = false;
+        }
+        // The 'onclose' event will handle scheduling the reconnect.
     };
 
     ws.onclose = (event) => {
@@ -121,38 +125,52 @@ function scheduleReconnect(closeCode?: number) {
     if (closeCode !== 1000 && closeCode !== 1008 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         if (!reconnectTimeoutId) { // Prevent scheduling multiple reconnects
             reconnectAttempts++;
-            console.log(`[WS Client] Connection lost or failed. Retrying in ${RECONNECT_DELAY / 1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+            const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1); // Exponential backoff
+            console.log(`[WS Client] Connection lost or failed. Retrying in ${delay / 1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
             reconnectTimeoutId = setTimeout(() => {
                 reconnectTimeoutId = null; // Clear the timeout ID before attempting connection
                 connectWebSocket();
-            }, RECONNECT_DELAY);
+            }, delay);
         } else {
-            console.log("[WS Client] Reconnect already scheduled.");
+            // console.log("[WS Client] Reconnect already scheduled.");
         }
     } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
          console.error("[WS Client] Max reconnect attempts reached. Stopping retries.");
     } else {
-         console.log("[WS Client] Closed normally or due to unrecoverable error. Not retrying.");
+         console.log(`[WS Client] Closed with code ${closeCode}. Not retrying.`);
     }
 }
 
 async function authenticateWebSocket() {
     const currentUser = auth.currentUser;
-    if (!ws || ws.readyState !== WebSocket.OPEN || isAuthenticated || !currentUser) {
-        // console.log("[WS Client] Auth skipped (not open, already authed, or no user). State:", {wsReady: ws?.readyState, isAuthed: isAuthenticated, user: !!currentUser});
+    // Check WS state *before* getting token
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.log("[WS Client] Auth skipped: WS not open.");
         return;
     }
+    if (isAuthenticated) {
+         console.log("[WS Client] Auth skipped: Already authenticated.");
+         return;
+    }
+     if (!currentUser) {
+        console.log("[WS Client] Auth skipped: No user logged in.");
+        return;
+    }
+
 
     console.log("[WS Client] Attempting authentication...");
     try {
         const token = await getIdToken(true); // Force refresh token for auth
-        if (token && ws && ws.readyState === WebSocket.OPEN) { // Check again before sending
+        // Check WS state *again* before sending, as it might have closed
+        if (token && ws && ws.readyState === WebSocket.OPEN) {
             console.log("[WS Client] Sending auth token...");
             ws.send(JSON.stringify({ type: 'authenticate', token }));
         } else if (!token) {
              console.warn("[WS Client] Could not get auth token for WebSocket authentication.");
              // Maybe close the connection if auth token is essential?
              // ws?.close(1008, "Auth token unavailable");
+        } else {
+             console.log("[WS Client] Auth skipped: WS closed before token could be sent.");
         }
     } catch (error) {
         console.error("[WS Client] Error getting token for WebSocket auth:", error);
@@ -175,7 +193,7 @@ function sendQueuedMessages() {
                 ws?.send(msg);
             } catch (sendError) {
                 console.error("[WS Client] Error sending queued message:", sendError, "Message:", msg);
-                 messageQueue.push(msg); // Re-queue on error? Risky, could lead to loops.
+                 messageQueue.push(msg); // Re-queue on error? Risky, could lead to loops. Check error type.
             }
         });
         // Check if re-queued items exist
@@ -192,15 +210,20 @@ function setupAuthListener() {
     if (authUnsubscribe) return; // Setup only once
     authUnsubscribe = auth.onAuthStateChanged((user) => {
         console.log("[WS Client] Auth state changed. User:", user?.uid || 'null');
-        const wasAuthenticated = isAuthenticated;
-        isAuthenticated = false; // Reset auth status on change
-        if (user && ws && ws.readyState === WebSocket.OPEN) {
-            authenticateWebSocket();
-        } else if (!user) {
-             // Optional: Send logout message or close WS if user logs out?
-             // ws?.close(1000, "User logged out");
-             if(wasAuthenticated) console.log("[WS Client] User logged out, WS remains open but unauthenticated.");
-             messageQueue = []; // Clear queue if user logs out
+        const needsReAuth = isAuthenticated && !user; // If we were authed, but user is now null
+        const needsAuth = !isAuthenticated && user; // If we weren't authed, but user exists now
+
+        isAuthenticated = !!user; // Update auth status
+
+        if (needsReAuth) {
+            console.log("[WS Client] User logged out, WS remains open but unauthenticated.");
+            messageQueue = []; // Clear queue if user logs out
+            // Optional: Close connection on logout? ws?.close(1000, "User logged out");
+        } else if (needsAuth && ws && ws.readyState === WebSocket.OPEN) {
+            authenticateWebSocket(); // Authenticate if connection is open and user logged in
+        } else if (needsAuth && (!ws || ws.readyState !== WebSocket.OPEN)) {
+            console.log("[WS Client] User logged in, ensuring WS connection for authentication.");
+             ensureWebSocketConnection(); // Make sure connection attempt happens if not open
         }
     });
     console.log("[WS Client] Auth state listener set up.");
@@ -214,6 +237,7 @@ function setupAuthListener() {
  */
 export function sendWebSocketMessage(message: object): boolean {
     const messageString = JSON.stringify(message);
+    // Queue if not connected OR not authenticated
     if (!ws || ws.readyState !== WebSocket.OPEN || !isAuthenticated) {
         console.log("[WS Client] Not ready or not authenticated, queueing message:", (message as any)?.type);
         messageQueue.push(messageString);
@@ -223,7 +247,7 @@ export function sendWebSocketMessage(message: object): boolean {
     }
     try {
         ws.send(messageString);
-        // console.log("WebSocket message sent:", message); // Less verbose logging
+        // console.log("[WS Client] WebSocket message sent:", (message as any)?.type); // Less verbose logging
         return true;
     } catch (error) {
         console.error("[WS Client] Error sending message:", error, "Message:", messageString);
@@ -244,7 +268,7 @@ export function subscribeToWebSocketMessages(messageType: string, callback: (pay
         messageCallbacks[messageType] = new Set();
     }
     if (messageCallbacks[messageType].has(callback)) {
-        console.warn(`[WS Client] Callback already registered for message type: ${messageType}`);
+        // console.warn(`[WS Client] Callback already registered for message type: ${messageType}`);
         // Return a no-op unsubscribe function if already registered
         return () => {};
     }
@@ -272,14 +296,14 @@ export function subscribeToWebSocketMessages(messageType: string, callback: (pay
  * Sets up the auth listener if not already done.
  */
 export function ensureWebSocketConnection() {
-    if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
-        connectWebSocket();
-    }
     // Setup auth listener if needed (safe to call multiple times due to internal check)
     setupAuthListener();
 
+    if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        connectWebSocket();
+    }
     // Also try authenticating if connected but not authed (e.g., after page load before auth state change)
-    if (ws?.readyState === WebSocket.OPEN && !isAuthenticated && auth.currentUser) {
+    else if (ws?.readyState === WebSocket.OPEN && !isAuthenticated && auth.currentUser) {
          authenticateWebSocket();
     }
 }

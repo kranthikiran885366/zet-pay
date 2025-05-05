@@ -3,7 +3,9 @@
  */
 import { getIdToken } from './firebase';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9003/api'; // Use environment variable or default
+// Ensure the correct environment variable is used for the backend URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9003/api';
+console.log(`[API Client] Initialized with base URL: ${API_BASE_URL}`); // Log the base URL on initialization
 
 interface ApiClientOptions extends RequestInit {
   // Additional options if needed
@@ -20,8 +22,9 @@ interface ApiClientOptions extends RequestInit {
  * @throws Error if the user is not authenticated, the fetch fails, or the API returns an error status.
  */
 export async function apiClient<T = any>(endpoint: string, options: ApiClientOptions = {}): Promise<T> {
-    const token = await getIdToken();
+    const token = await getIdToken(); // Get token before making the request
     if (!token) {
+        console.error("[API Client] User not authenticated. Cannot make API call.");
         throw new Error("User not authenticated.");
     }
 
@@ -37,7 +40,7 @@ export async function apiClient<T = any>(endpoint: string, options: ApiClientOpt
     };
 
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log(`API Request: ${config.method || 'GET'} ${url}`);
+    console.log(`[API Client] Request: ${config.method || 'GET'} ${url}`);
 
     try {
         const response = await fetch(url, config);
@@ -45,27 +48,32 @@ export async function apiClient<T = any>(endpoint: string, options: ApiClientOpt
         if (!response.ok) {
             // Attempt to parse error response from backend
             let errorData;
+            const responseText = await response.text(); // Get text first to avoid parsing errors on empty/non-JSON bodies
             try {
-                errorData = await response.json();
+                errorData = JSON.parse(responseText);
             } catch (parseError) {
-                // If response is not JSON, use status text
+                // If response is not JSON, use status text or the raw text
+                console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Response: ${responseText}`);
                 throw new Error(`API request failed: ${response.status} ${response.statusText}`);
             }
             // Throw error with message from backend if available
+            console.error(`[API Client] Error response from ${url}:`, errorData);
             throw new Error(errorData?.message || `API request failed: ${response.status}`);
         }
 
         // Handle cases where response might be empty (e.g., 204 No Content)
         if (response.status === 204) {
+            console.log(`[API Client] Received 204 No Content for ${url}`);
             return null as T; // Or handle as appropriate for your use case
         }
 
         // Assume response is JSON for other successful statuses
         const data: T = await response.json();
+        console.log(`[API Client] Received successful response from ${url}`);
         return data;
 
     } catch (error: any) {
-        console.error(`API Client Error (${endpoint}):`, error);
+        console.error(`[API Client] Network/Fetch Error (${endpoint}):`, error);
         // Re-throw the error to be caught by the calling service/component
         throw new Error(error.message || "An unexpected network error occurred.");
     }
