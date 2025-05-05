@@ -1,10 +1,9 @@
-
 /**
  * @fileOverview Service functions for processing bill payments.
  */
 
 import type { Transaction } from './types'; // Use the common Transaction interface
-import { addTransaction } from './transactionLogger'; // Import function to add transaction to Firestore
+import { addTransaction } from '@/services/transactionLogger'; // Import function to add transaction to Firestore
 
 export interface BillPaymentDetails {
     billerId: string;
@@ -59,12 +58,12 @@ export async function processBillPayment(paymentDetails: BillPaymentDetails): Pr
     // TODO: Implement actual API call to backend for payment processing (via UPI, Wallet, Card).
     // This would involve selecting payment method, handling PIN/OTP, etc.
     await new Promise(resolve => setTimeout(resolve, 1800)); // Simulate payment processing delay
-
+    
     // Simulate different outcomes
     const randomStatus = Math.random();
     let status: Transaction['status'] = 'Completed';
     let descriptionSuffix = '';
-    if (randomStatus < 0.1) {
+    if (randomStatus < 0.08) {
         status = 'Failed';
         descriptionSuffix = ' - Payment Failed';
     } else if (randomStatus < 0.2) {
