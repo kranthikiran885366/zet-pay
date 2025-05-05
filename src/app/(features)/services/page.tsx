@@ -102,6 +102,7 @@ import {
     BellRing, // Added BellRing icon
     Target, // Added Target icon
     Wallet, // Added Wallet icon
+    Drama, // Import Drama icon
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -234,6 +235,7 @@ const vouchersMoreServices = [
 const paymentsServices = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments" },
+    { name: "Cab Bill Payment", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
 ];
 
 const healthcareServices = [
@@ -245,7 +247,7 @@ const healthcareServices = [
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness" },
     { name: "Emergency Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Emergency" },
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Wellness" },
-    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Records" },
+    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Records" },
     { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Offers" },
 ];
 
@@ -294,10 +296,11 @@ const groupServicesByCategory = (services: any[]) => {
         "AI & Tools", // Added AI & Tools category
         "Utilities & Tools",
         "Vouchers & More",
-        "Emergency", // Added Emergency category
-        "Wellness", // Added Wellness category
-        "Records", // Added Records category
-        "Offers", // Added Offers category
+        // Categories below might be empty depending on final service assignments
+        "Emergency",
+        "Wellness",
+        "Records",
+        "Offers",
 
 
         // Add more categories as needed
