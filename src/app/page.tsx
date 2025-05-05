@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle, RefreshCw } from "lucide-react"; // Added RefreshCw
 import Image from 'next/image';
-import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use service with subscription
+// Transaction imports are handled by the hook now
 import { useToast } from "@/hooks/use-toast";
 import { auth } from '@/lib/firebase';
 import { format } from 'date-fns';
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation'; // Import useRouter
 import { useRealtimeBalance } from '@/hooks/useRealtimeBalance'; // Import the balance hook
 import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions'; // Import the transaction hook
+import type { Transaction } from '@/services/types'; // Import Transaction type for display
 
 // Static data (can be fetched later if needed)
 const offers = [
@@ -72,15 +74,15 @@ export default function Home() {
 
   // Check auth state on mount
   useEffect(() => {
-    setIsLoadingTransactions(true); // Set loading true initially
+    // setIsLoadingTransactions(true); // No longer needed, hook handles it
     console.log("Setting up auth listener for homepage...");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
         const loggedIn = !!user;
         console.log(`Auth state changed on homepage. User ${loggedIn ? 'logged in' : 'logged out'}.`);
         setIsLoggedIn(loggedIn);
-        if (!loggedIn) {
-             setIsLoadingTransactions(false); // Stop loading if logged out
-        }
+        // if (!loggedIn) {
+        //      setIsLoadingTransactions(false); // No longer needed, hook handles it
+        // }
         // Transaction subscription is handled by the useRealtimeTransactions hook
     });
 
