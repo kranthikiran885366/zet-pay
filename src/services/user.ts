@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for managing user profile data via the backend API.
  */
@@ -69,8 +70,7 @@ export async function getUserProfileById(userId: string): Promise<UserProfileCli
 }
 
 /**
- * Updates specific settings fields (like bridge settings) via the backend API.
- * Combines previous update functions into one general update function.
+ * Updates specific settings fields via the backend API.
  *
  * @param settings Partial settings object containing fields to update.
  * @returns A promise that resolves when the update is complete.
@@ -88,7 +88,3 @@ export async function updateUserProfileSettings(settings: Partial<Pick<UserProfi
          throw error; // Re-throw error
      }
 }
-
-// Remove specific update functions as they are covered by the general one above
-// export async function updateSmartWalletBridgeSettings(...)
-// export async function updateGeneralSettings(...)

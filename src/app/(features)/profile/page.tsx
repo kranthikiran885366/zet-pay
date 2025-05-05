@@ -15,7 +15,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { logout } from '@/services/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { getCurrentUserProfile, UserProfile, updateSmartWalletBridgeSettings } from '@/services/user'; // Import user profile service & update function
+import { getCurrentUserProfile, UserProfile, updateUserProfileSettings } from '@/services/user'; // Import user profile service & CORRECT update function
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 export default function ProfilePage() {
@@ -90,8 +90,8 @@ export default function ProfilePage() {
                  setIsUpdating(false);
                  return;
             }
-
-            await updateSmartWalletBridgeSettings({ isSmartWalletBridgeEnabled: checked, smartWalletBridgeLimit: user.smartWalletBridgeLimit }); // Pass current limit
+            // Use the correct update function
+            await updateUserProfileSettings({ isSmartWalletBridgeEnabled: checked }); // Update only this setting
             toast({ title: `Smart Wallet Bridge ${checked ? 'Enabled' : 'Disabled'}` });
             // Update local user state if needed
             setUser(prev => prev ? { ...prev, isSmartWalletBridgeEnabled: checked } : null);
@@ -292,7 +292,7 @@ function SettingsSwitchItem({ icon: Icon, title, description, checked, onChecked
     const [isUpdating, setIsUpdating] = useState(false); // Local state for individual switch updates
 
     const handleChange = async (newChecked: boolean) => {
-        if (disabled) return;
+        if (disabled || isUpdating) return; // Prevent change if disabled or already updating
         setIsUpdating(true);
         try {
             await onCheckedChange(newChecked); // Call the async handler passed via props
