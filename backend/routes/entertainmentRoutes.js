@@ -38,13 +38,15 @@ router.get('/movies/:movieId/details',
 
 // POST /api/entertainment/movies/book - Book movie tickets
 router.post('/movies/book',
-    // Validation similar to bookingRoutes
-    body('movieId').isString().trim().notEmpty(),
-    body('cinemaId').isString().trim().notEmpty(),
-    body('showtime').isString().trim().notEmpty(),
-    body('seats').isArray({ min: 1 }),
-    body('totalAmount').isNumeric().toFloat().isFloat({ min: 0 }),
-    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']),
+    body('movieId').isString().trim().notEmpty().withMessage('Movie ID required.'),
+    body('cinemaId').isString().trim().notEmpty().withMessage('Cinema ID required.'),
+    body('showtime').isString().trim().notEmpty().withMessage('Showtime required.'),
+    body('seats').isArray({ min: 1 }).withMessage('At least one seat must be selected.'),
+    body('seats.*').isString().trim().notEmpty().withMessage('Invalid seat ID.'), // Validate individual seats
+    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'), // Ensure amount > 0
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('movieName').optional().isString().trim(), // Optional for logging/display
+    body('cinemaName').optional().isString().trim(), // Optional for logging/display
     handleValidationErrors,
     asyncHandler(entertainmentController.bookMovieTickets) // Use specific controller
 );
@@ -68,10 +70,11 @@ router.get('/events/:eventId/details',
 
 // POST /api/entertainment/events/book - Book event tickets
 router.post('/events/book',
-    body('eventId').isString().trim().notEmpty(),
-    body('quantity').isInt({ min: 1 }),
-    body('totalAmount').isNumeric().toFloat().isFloat({ min: 0 }),
-    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']),
+    body('eventId').isString().trim().notEmpty().withMessage('Event ID required.'),
+    body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1.'),
+    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'),
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('eventName').optional().isString().trim(), // Optional for logging
     handleValidationErrors,
     asyncHandler(entertainmentController.bookEventTickets)
 );
@@ -89,10 +92,11 @@ router.get('/vouchers/gaming/denominations',
 
 // POST /api/entertainment/vouchers/gaming/purchase - Purchase a gaming voucher
 router.post('/vouchers/gaming/purchase',
-    body('brandId').isString().trim().notEmpty(),
-    body('amount').isNumeric().toFloat().isFloat({ gt: 0 }),
-    body('playerId').optional().isString().trim(), // Optional player ID
-    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']),
+    body('brandId').isString().trim().notEmpty().withMessage('Brand ID required.'),
+    body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid amount required.'),
+    body('playerId').optional({ checkFalsy: true }).isString().trim(), // Optional player ID, allow empty string if provided but falsy
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('brandName').optional().isString().trim(), // Optional for logging
     handleValidationErrors,
     asyncHandler(entertainmentController.purchaseGamingVoucher)
 );

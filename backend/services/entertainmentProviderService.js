@@ -37,15 +37,16 @@ const mockGamingDenominations = {
 async function searchMovies({ city, date }) {
     console.log(`[Entertainment Provider Sim] Searching movies for City: ${city}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 500));
-    // Simulate filtering based on city/date
-    return mockMovies;
+    // Simulate filtering based on city/date (for demo, just return all non-upcoming)
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return mockMovies.filter(m => !m.isUpcoming || (m.releaseDate && m.releaseDate >= today));
 }
 
 async function getMovieDetails({ movieId, city, date }) {
     console.log(`[Entertainment Provider Sim] Getting details for Movie: ${movieId}, City: ${city}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 600));
     const movieDetails = mockMovies.find(m => m.id === movieId);
-    if (!movieDetails) return null;
+    if (!movieDetails || movieDetails.isUpcoming) return null; // Return null if upcoming or not found
 
     // Simulate fetching showtimes for this movie in the city/date
     const cinemasShowing = Object.keys(mockShowtimesData[movieId] || {})
@@ -54,25 +55,39 @@ async function getMovieDetails({ movieId, city, date }) {
 
     const cinemaShowtimes = cinemasShowing.map(cinema => ({
         ...cinema,
-        showtimes: mockShowtimesData[movieId]?.[cinema.id] || [],
+        // Simulate slightly different showtimes based on date for realism
+        showtimes: mockShowtimesData[movieId]?.[cinema.id]?.map(st => ({
+            ...st,
+            // Randomly make some shows almost full/filling fast based on date/time
+            isFillingFast: Math.random() < 0.2,
+            isAlmostFull: Math.random() < 0.1,
+        })) || [],
     }));
 
     return { movieDetails, cinemas: cinemaShowtimes };
 }
 
 async function confirmMovieBooking(bookingData) {
-    console.log(`[Entertainment Provider Sim] Confirming Movie Booking:`, bookingData);
+    const { userId, movieId, cinemaId, showtime, seats, totalAmount, paymentTransactionId } = bookingData;
+    console.log(`[Entertainment Provider Sim] Confirming Movie Booking: User ${userId}, Movie ${movieId}, Cinema ${cinemaId}, Time ${showtime}, Seats ${seats.join(',')}, Amount ${totalAmount}, PayRef ${paymentTransactionId}`);
     await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Simulate potential booking failures (e.g., seats became unavailable)
     const success = Math.random() > 0.1; // 90% success simulation
+
     if (success) {
+        const bookingId = `BMS_${Date.now()}_${userId.substring(0, 3)}`;
+        console.log(`[Entertainment Provider Sim] Movie booking SUCCESS. Booking ID: ${bookingId}`);
         return {
             status: 'Confirmed',
-            bookingId: `BMS_${Date.now()}`,
-            seatNumbers: bookingData.seats.join(', '),
+            bookingId: bookingId,
+            seatNumbers: seats.join(', '), // Return confirmed seat numbers
             message: 'Movie tickets booked successfully!',
+            providerConfirmationId: `CONF_${Math.random().toString(36).substring(2, 10).toUpperCase()}` // Example provider ref
         };
     } else {
-        return { status: 'Failed', message: 'Booking failed due to unavailable seats.' };
+        console.warn(`[Entertainment Provider Sim] Movie booking FAILED (Simulated).`);
+        return { status: 'Failed', message: 'Booking failed due to unavailable seats during final confirmation.' };
     }
 }
 
@@ -81,8 +96,8 @@ async function searchEvents({ city, category, date }) {
     console.log(`[Entertainment Provider Sim] Searching events for City: ${city}, Category: ${category}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 700));
     // Simulate filtering
-    let results = mockEvents.filter(ev => ev.city === city);
-    if (category) results = results.filter(ev => ev.category === category);
+    let results = mockEvents.filter(ev => ev.city.toLowerCase() === city.toLowerCase());
+    if (category) results = results.filter(ev => ev.category.toLowerCase() === category.toLowerCase());
     // Add date filtering if needed
     return results;
 }
@@ -98,12 +113,16 @@ async function confirmEventBooking(bookingData) {
      await new Promise(resolve => setTimeout(resolve, 1000));
      const success = Math.random() > 0.15; // 85% success simulation
      if (success) {
+         const bookingId = `EVT_${Date.now()}`;
+         console.log(`[Entertainment Provider Sim] Event booking SUCCESS. Booking ID: ${bookingId}`);
          return {
              status: 'Confirmed',
-             bookingId: `EVT_${Date.now()}`,
+             bookingId: bookingId,
              message: 'Event tickets booked successfully!',
+             ticketUrl: `/placeholder/event-ticket-${bookingId}.pdf` // Example ticket URL
          };
      } else {
+         console.warn(`[Entertainment Provider Sim] Event booking FAILED (Simulated).`);
          return { status: 'Failed', message: 'Event booking failed (e.g., sold out).' };
      }
 }
@@ -122,16 +141,21 @@ async function getGamingDenominations(brandId) {
 }
 
 async function purchaseGamingVoucher(purchaseData) {
-     console.log(`[Entertainment Provider Sim] Purchasing Gaming Voucher:`, purchaseData);
+     const { userId, brandId, amount, playerId } = purchaseData;
+     console.log(`[Entertainment Provider Sim] Purchasing Gaming Voucher: User ${userId}, Brand ${brandId}, Amt ${amount}, Player ${playerId || 'N/A'}`);
      await new Promise(resolve => setTimeout(resolve, 1200));
      const success = Math.random() > 0.05; // 95% success simulation
      if (success) {
+          const voucherCode = `ZETV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+         console.log(`[Entertainment Provider Sim] Voucher purchase SUCCESS. Code: ${voucherCode}`);
          return {
              success: true,
-             voucherCode: `VOUCHER_${Date.now()}`, // Simulate voucher code generation
+             voucherCode: voucherCode, // Simulate voucher code generation
              message: 'Voucher purchased successfully. Code sent via SMS/Email.',
+             receiptId: `REC_${Date.now()}`
          };
      } else {
+         console.warn(`[Entertainment Provider Sim] Voucher purchase FAILED (Simulated).`);
          return { success: false, message: 'Voucher purchase failed (e.g., provider error).' };
      }
 }
