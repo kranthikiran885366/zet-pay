@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -9,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X, Plane } from 'lucide-react'; // Added Plane
+import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X, Plane, UserCircle } from 'lucide-react'; // Added Plane, UserCircle
 import Link from 'next/link';
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -45,39 +44,58 @@ const mockBusRoutes: BusRoute[] = [
 ];
 
 interface Seat {
-    id: string; // e.g., L1, U5
-    number: string; // e.g., 1, 5
+    id: string; // e.g., L1, U5, LA1 (Lower Aisle 1), LSB1 (Lower Single Berth 1)
+    number?: string; // Display number, e.g., 1, 5, A1
     isLower: boolean;
-    isSleeper: boolean;
+    type: 'seater' | 'sleeper' | 'aisle';
     isAvailable: boolean;
     isWomenOnly?: boolean;
+    isGangway?: boolean; // Indicate if it's a gap/gangway rather than a seat
     price: number;
+    gridColumn: string; // CSS grid column position
+    gridRow: string; // CSS grid row position
 }
 
-// Generate a mock seat layout (simplified)
-const generateMockSeats = (busType: BusRoute['type'], basePrice: number): Seat[] => {
+// Generate a more realistic bus seat layout
+const generateBusSeats = (busType: BusRoute['type'], basePrice: number): Seat[] => {
     const seats: Seat[] = [];
-    const isSleeperLayout = busType.includes('Sleeper');
-    const rows = isSleeperLayout ? 10 : 12;
-    const cols = isSleeperLayout ? 3 : 4; // 1+2 for sleeper, 2+2 for seater
+    const isSleeper = busType.includes('Sleeper');
+    const rows = isSleeper ? 10 : 12;
+    const seaterCols = 5; // 2 seats + aisle + 2 seats
+    const sleeperCols = 4; // 1 berth + aisle + 2 berths
 
+    // --- Lower Deck ---
     for (let r = 1; r <= rows; r++) {
-        // Lower Deck
-        for (let c = 1; c <= cols; c++) {
-            const seatId = `L${r}${String.fromCharCode(64 + c)}`; // L1A, L1B, ...
-             const isSleeper = isSleeperLayout;
-             const isAvailable = Math.random() > 0.3; // 70% available
-             const isWomenOnly = isAvailable && Math.random() > 0.9; // 10% of available are women only
-            seats.push({ id: seatId, number: `${r}${String.fromCharCode(64 + c)}`, isLower: true, isSleeper, isAvailable, price: basePrice, isWomenOnly });
+        if (isSleeper) { // 1 + 2 Sleeper Layout
+            // Single Berth Side (Column 1)
+            seats.push({ id: `L${r}S`, number: `L${r}`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '1', gridRow: String(r) });
+            // Aisle (Column 2)
+            seats.push({ id: `LA${r}`, isLower: true, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '2', gridRow: String(r) });
+            // Double Berth Side (Column 3 & 4)
+            seats.push({ id: `L${r}DA`, number: `L${r}A`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '3', gridRow: String(r) });
+            seats.push({ id: `L${r}DB`, number: `L${r}B`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '4', gridRow: String(r) });
+        } else { // 2 + 2 Seater Layout
+            // Left Side (Columns 1 & 2)
+            seats.push({ id: `L${r}A`, number: `${r}A`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '1', gridRow: String(r) });
+            seats.push({ id: `L${r}B`, number: `${r}B`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '2', gridRow: String(r) });
+            // Aisle (Column 3)
+             seats.push({ id: `LA${r}`, isLower: true, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '3', gridRow: String(r) });
+             // Right Side (Columns 4 & 5)
+             seats.push({ id: `L${r}C`, number: `${r}C`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '4', gridRow: String(r) });
+             seats.push({ id: `L${r}D`, number: `${r}D`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '5', gridRow: String(r) });
         }
-        // Upper Deck (only if sleeper)
-        if (isSleeperLayout) {
-            for (let c = 1; c <= cols; c++) {
-                const seatId = `U${r}${String.fromCharCode(64 + c)}`; // U1A, U1B, ...
-                 const isAvailable = Math.random() > 0.4; // 60% available upper
-                 const isWomenOnly = isAvailable && Math.random() > 0.95; // 5% of available upper are women only
-                seats.push({ id: seatId, number: `${r}${String.fromCharCode(64 + c)}`, isLower: false, isSleeper: true, isAvailable, price: basePrice + 100, isWomenOnly }); // Upper deck slightly more expensive
-            }
+    }
+
+    // --- Upper Deck (Only if Sleeper) ---
+    if (isSleeper) {
+        for (let r = 1; r <= rows; r++) {
+             // Single Berth Side (Column 1)
+             seats.push({ id: `U${r}S`, number: `U${r}`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '1', gridRow: String(r) });
+             // Aisle (Column 2) - Marked as not lower deck
+             seats.push({ id: `UA${r}`, isLower: false, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '2', gridRow: String(r) });
+             // Double Berth Side (Column 3 & 4)
+             seats.push({ id: `U${r}DA`, number: `U${r}A`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '3', gridRow: String(r) });
+             seats.push({ id: `U${r}DB`, number: `U${r}B`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '4', gridRow: String(r) });
         }
     }
     return seats;
@@ -131,7 +149,7 @@ export default function BusBookingPage() {
 
     const handleSelectBus = (bus: BusRoute) => {
         setSelectedBus(bus);
-        const mockSeats = generateMockSeats(bus.type, bus.price);
+        const mockSeats = generateBusSeats(bus.type, bus.price);
         setSeatLayout(mockSeats);
         setSelectedSeats([]); // Clear previously selected seats
         setShowSeatSelection(true);
@@ -140,9 +158,9 @@ export default function BusBookingPage() {
     };
 
     const handleSeatSelect = (seat: Seat) => {
-        if (!seat.isAvailable) {
-            toast({ description: "Seat not available" });
-            return;
+        if (seat.type === 'aisle' || !seat.isAvailable) {
+             if (!seat.isAvailable) toast({ description: "Seat not available" });
+             return;
         }
         setSelectedSeats(prev => {
             const isSelected = prev.some(s => s.id === seat.id);
@@ -204,6 +222,11 @@ export default function BusBookingPage() {
         setFromCity(toCity);
         setToCity(fromCity);
     };
+
+    const lowerDeckSeats = seatLayout.filter(s => s.isLower);
+    const upperDeckSeats = seatLayout.filter(s => !s.isLower && s.type !== 'aisle'); // Exclude upper deck aisle placeholders
+    const isSleeperLayout = selectedBus?.type.includes('Sleeper');
+    const gridColsClass = isSleeperLayout ? 'grid-cols-4' : 'grid-cols-5'; // 4 for sleeper (1+A+2), 5 for seater (2+A+2)
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
@@ -324,110 +347,140 @@ export default function BusBookingPage() {
                 )}
 
                 {/* Seat Selection */}
-                {showSeatSelection && selectedBus && (
-                    <Dialog open={showSeatSelection} onOpenChange={(open) => { if (!open) { setShowSeatSelection(false); setSelectedBus(null); } }}>
-                         <DialogContent className="max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl p-0">
-                            <DialogHeader className="p-4 border-b">
-                                <DialogTitle className="flex items-center gap-2">
-                                    <Bus className="h-5 w-5"/> Select Seats - {selectedBus.operator}
-                                </DialogTitle>
-                                <DialogDescription>{fromCity} to {toCity} on {format(travelDate!, 'PPP')} ({selectedBus.type})</DialogDescription>
-                                 <Button variant="ghost" size="icon" className="absolute right-4 top-4 h-7 w-7" onClick={() => {setShowSeatSelection(false); setSelectedBus(null);}}>
-                                    <X className="h-4 w-4"/>
-                                </Button>
-                            </DialogHeader>
+                 <Dialog open={showSeatSelection} onOpenChange={(open) => { if (!open) { setShowSeatSelection(false); setSelectedBus(null); } }}>
+                     <DialogContent className="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl p-0"> {/* Responsive max-width */}
+                         <DialogHeader className="p-4 border-b">
+                             <DialogTitle className="flex items-center gap-2">
+                                 <Bus className="h-5 w-5"/> Select Seats - {selectedBus?.operator}
+                             </DialogTitle>
+                             <DialogDescription>{fromCity} to {toCity} on {format(travelDate!, 'PPP')} ({selectedBus?.type})</DialogDescription>
+                             <Button variant="ghost" size="icon" className="absolute right-4 top-4 h-7 w-7" onClick={() => {setShowSeatSelection(false); setSelectedBus(null);}}>
+                                 <X className="h-4 w-4"/>
+                             </Button>
+                         </DialogHeader>
+                         <div className="p-4 max-h-[65vh] overflow-y-auto"> {/* Max height and scroll */}
+                             {/* Legend */}
+                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs mb-3 border-b pb-2 justify-center">
+                                 <div className="flex items-center gap-1"><div className="w-4 h-4 border border-gray-400 rounded-sm"></div> Available</div>
+                                 <div className="flex items-center gap-1"><div className="w-4 h-4 bg-primary text-primary-foreground rounded-sm flex items-center justify-center text-[10px]">✓</div> Selected</div>
+                                 <div className="flex items-center gap-1"><div className="w-4 h-4 bg-gray-300 border border-gray-400 rounded-sm"></div> Booked</div>
+                                 <div className="flex items-center gap-1"><div className="w-4 h-4 border border-pink-400 bg-pink-100 rounded-sm"></div> Women Only</div>
+                             </div>
 
-                            <div className="p-4 max-h-[70vh] overflow-y-auto">
-                                {/* Seat Layout Grid */}
-                                <Card className="border-dashed p-4 mb-4">
-                                    <CardContent className="p-0">
-                                         {/* Legend */}
-                                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs mb-3">
-                                             <div className="flex items-center gap-1"><div className="w-4 h-4 border border-gray-400 rounded-sm"></div> Available</div>
-                                             <div className="flex items-center gap-1"><div className="w-4 h-4 bg-primary text-primary-foreground rounded-sm flex items-center justify-center">✓</div> Selected</div>
-                                             <div className="flex items-center gap-1"><div className="w-4 h-4 bg-gray-300 border border-gray-400 rounded-sm"></div> Booked</div>
-                                             <div className="flex items-center gap-1"><div className="w-4 h-4 border border-pink-400 bg-pink-100 rounded-sm"></div> Women Only</div>
-                                        </div>
-                                        <Separator className="mb-3"/>
+                              {/* Driver Position Indicator */}
+                             <div className="mb-2 text-right pr-4">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-steering-wheel inline-block h-5 w-5 text-muted-foreground"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 15.5V22"/><path d="M12 8.5V2"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                             </div>
 
-                                        <div className="grid grid-cols-5 gap-2 justify-center"> {/* Adjust cols based on layout */}
-                                             {seatLayout.map(seat => (
-                                                <Button
-                                                    key={seat.id}
-                                                    variant={selectedSeats.some(s => s.id === seat.id) ? "default" : seat.isWomenOnly ? "outline" : "outline"}
-                                                    size="icon"
-                                                    className={cn(
-                                                        "h-8 w-8 text-xs font-mono border",
-                                                        !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
-                                                        selectedSeats.some(s => s.id === seat.id) && "bg-primary text-primary-foreground",
-                                                        seat.isWomenOnly && !selectedSeats.some(s => s.id === seat.id) && "border-pink-400 bg-pink-100 text-pink-700 hover:bg-pink-200",
-                                                        seat.isSleeper && "h-8 w-12 rounded", // Wider for sleeper
-                                                    )}
-                                                    onClick={() => handleSeatSelect(seat)}
-                                                    disabled={!seat.isAvailable}
-                                                    title={seat.isSleeper ? 'Sleeper' : 'Seater'}
-                                                >
-                                                     <Armchair className={cn("h-4 w-4", seat.isSleeper ? "hidden" : "")}/>
-                                                      <span className={cn(seat.isSleeper ? "" : "hidden")}>{seat.isLower ? 'L' : 'U'}</span>
-                                                </Button>
-                                            ))}
-                                        </div>
-                                    </CardContent>
-                                </Card>
 
-                                {/* Boarding & Dropping Points */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                                    <div>
-                                        <Label htmlFor="boardingPoint">Boarding Point</Label>
-                                        <Select value={boardingPoint} onValueChange={setBoardingPoint} required>
-                                            <SelectTrigger id="boardingPoint"><SelectValue placeholder="Select Boarding Point" /></SelectTrigger>
-                                            <SelectContent>
-                                                {selectedBus.boardingPoints.map(point => <SelectItem key={`bp-${point}`} value={point}>{point}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                     <div>
-                                        <Label htmlFor="droppingPoint">Dropping Point</Label>
-                                        <Select value={droppingPoint} onValueChange={setDroppingPoint} required>
-                                            <SelectTrigger id="droppingPoint"><SelectValue placeholder="Select Dropping Point" /></SelectTrigger>
-                                            <SelectContent>
-                                                {selectedBus.droppingPoints.map(point => <SelectItem key={`dp-${point}`} value={point}>{point}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-
-                                {/* Passenger Details (Simple for Demo) */}
-                                <Card className="mb-4">
-                                     <CardHeader className="pb-2">
-                                         <CardTitle className="text-sm">Passenger Details</CardTitle>
-                                     </CardHeader>
-                                     <CardContent className="space-y-2">
-                                         <Input placeholder="Full Name" value={passengerDetails.name} onChange={e => setPassengerDetails({...passengerDetails, name: e.target.value})} required/>
-                                         <Input type="email" placeholder="Email Address" value={passengerDetails.email} onChange={e => setPassengerDetails({...passengerDetails, email: e.target.value})} required/>
-                                         <Input type="tel" placeholder="Mobile Number" value={passengerDetails.phone} onChange={e => setPassengerDetails({...passengerDetails, phone: e.target.value})} required/>
-                                     </CardContent>
-                                </Card>
-                            </div>
-
-                             <DialogFooter className="p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
-                                 <div className="text-left">
-                                     <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.id).join(', ')} ({selectedSeats.length})</p>
-                                     <p className="text-lg font-bold">Total Fare: ₹{totalFare.toFixed(2)}</p>
+                            {/* Lower Deck */}
+                             <div className="mb-4">
+                                 <p className="text-center font-semibold text-sm mb-2">Lower Deck</p>
+                                 <div className={`grid ${gridColsClass} gap-1.5 justify-center items-center`}>
+                                     {lowerDeckSeats.map(seat => (
+                                         <SeatButton key={seat.id} seat={seat} isSelected={selectedSeats.some(s => s.id === seat.id)} onSelect={handleSeatSelect} />
+                                     ))}
                                  </div>
-                                 <Button
-                                     className="w-full sm:w-auto bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
-                                     disabled={selectedSeats.length === 0 || !boardingPoint || !droppingPoint || isBooking}
-                                     onClick={handleConfirmBooking} // Use confirmation directly for demo
-                                 >
-                                     {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <User className="mr-2 h-4 w-4"/>}
-                                     {isBooking ? 'Booking...' : 'Confirm Booking'}
-                                 </Button>
-                             </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                )}
+                             </div>
+
+                             {/* Upper Deck (if applicable) */}
+                             {isSleeperLayout && upperDeckSeats.length > 0 && (
+                                 <div className="mt-6">
+                                     <Separator className="mb-3"/>
+                                     <p className="text-center font-semibold text-sm mb-2">Upper Deck</p>
+                                      <div className={`grid ${gridColsClass} gap-1.5 justify-center items-center`}>
+                                         {upperDeckSeats.map(seat => (
+                                            <SeatButton key={seat.id} seat={seat} isSelected={selectedSeats.some(s => s.id === seat.id)} onSelect={handleSeatSelect} />
+                                         ))}
+                                     </div>
+                                 </div>
+                             )}
+
+                             {/* Boarding & Dropping Points */}
+                             <Separator className="my-4"/>
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                 <div>
+                                     <Label htmlFor="boardingPoint">Boarding Point</Label>
+                                     <Select value={boardingPoint} onValueChange={setBoardingPoint} required>
+                                         <SelectTrigger id="boardingPoint"><SelectValue placeholder="Select Boarding Point" /></SelectTrigger>
+                                         <SelectContent>
+                                             {selectedBus.boardingPoints.map(point => <SelectItem key={`bp-${point}`} value={point}>{point}</SelectItem>)}
+                                         </SelectContent>
+                                     </Select>
+                                 </div>
+                                  <div>
+                                     <Label htmlFor="droppingPoint">Dropping Point</Label>
+                                     <Select value={droppingPoint} onValueChange={setDroppingPoint} required>
+                                         <SelectTrigger id="droppingPoint"><SelectValue placeholder="Select Dropping Point" /></SelectTrigger>
+                                         <SelectContent>
+                                             {selectedBus.droppingPoints.map(point => <SelectItem key={`dp-${point}`} value={point}>{point}</SelectItem>)}
+                                         </SelectContent>
+                                     </Select>
+                                 </div>
+                             </div>
+
+                             {/* Passenger Details (Simple for Demo) */}
+                             <Card className="mb-4">
+                                  <CardHeader className="pb-2">
+                                      <CardTitle className="text-sm">Passenger Details</CardTitle>
+                                  </CardHeader>
+                                  <CardContent className="space-y-2">
+                                      <Input placeholder="Full Name" value={passengerDetails.name} onChange={e => setPassengerDetails({...passengerDetails, name: e.target.value})} required/>
+                                      <Input type="email" placeholder="Email Address" value={passengerDetails.email} onChange={e => setPassengerDetails({...passengerDetails, email: e.target.value})} required/>
+                                      <Input type="tel" placeholder="Mobile Number" value={passengerDetails.phone} onChange={e => setPassengerDetails({...passengerDetails, phone: e.target.value})} required/>
+                                  </CardContent>
+                             </Card>
+                         </div>
+
+                          <DialogFooter className="p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
+                              <div className="text-left">
+                                  <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.number).join(', ') || 'None'} ({selectedSeats.length})</p>
+                                  <p className="text-lg font-bold">Total Fare: ₹{totalFare.toFixed(2)}</p>
+                              </div>
+                              <Button
+                                  className="w-full sm:w-auto bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
+                                  disabled={selectedSeats.length === 0 || !boardingPoint || !droppingPoint || isBooking || !passengerDetails.name || !passengerDetails.email || !passengerDetails.phone}
+                                  onClick={handleConfirmBooking} // Use confirmation directly for demo
+                              >
+                                  {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserCircle className="mr-2 h-4 w-4"/>}
+                                  {isBooking ? 'Booking...' : 'Confirm Booking'}
+                              </Button>
+                          </DialogFooter>
+                     </DialogContent>
+                 </Dialog>
             </main>
         </div>
     );
+}
+
+// Seat Button Component
+interface SeatButtonProps {
+    seat: Seat;
+    isSelected: boolean;
+    onSelect: (seat: Seat) => void;
+}
+
+function SeatButton({ seat, isSelected, onSelect }: SeatButtonProps) {
+    if (seat.isGangway) {
+         return <div style={{ gridColumn: seat.gridColumn, gridRow: seat.gridRow }} className="w-full h-full"></div>; // Empty div for aisle
+    }
+    return (
+        <Button
+             style={{ gridColumn: seat.gridColumn, gridRow: seat.gridRow }}
+             variant={isSelected ? "default" : seat.isWomenOnly ? "outline" : "outline"}
+             size="icon"
+             className={cn(
+                "h-8 text-xs font-mono border rounded", // Base style
+                seat.type === 'sleeper' ? "w-12" : "w-8", // Sleeper wider
+                !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
+                isSelected && "bg-primary text-primary-foreground",
+                 seat.isWomenOnly && !isSelected && "border-pink-400 bg-pink-100 text-pink-700 hover:bg-pink-200",
+             )}
+             onClick={() => onSelect(seat)}
+             disabled={!seat.isAvailable}
+             title={seat.type === 'sleeper' ? 'Sleeper' : 'Seater'}
+        >
+            {seat.type === 'seater' ? <Armchair className="h-4 w-4"/> : seat.number}
+        </Button>
+    )
 }

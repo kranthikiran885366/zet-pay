@@ -1,10 +1,9 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, Armchair, X, Loader2, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Clapperboard, CalendarIcon, Clock, MapPin, Filter, ChevronDown, ChevronUp, Armchair, X, Loader2, Plane } from 'lucide-react'; // Added Plane, ChevronUp
 import Link from 'next/link';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -91,27 +90,47 @@ interface Seat {
     number: number;
     type: 'Normal' | 'Premium' | 'Recliner';
     isAvailable: boolean;
+    isAisle?: boolean; // Indicate if this position should be an aisle space
     price: number;
 }
 
-// Generate mock cinema seats
+// Generate mock cinema seats with aisles
 const generateCinemaSeats = (basePrice: number): { seats: Seat[], rows: string[], maxCols: number } => {
     const seats: Seat[] = [];
-    const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    const cols = 15;
+    const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']; // Rows H, G, F are often premium/recliner
+    const totalSeatsPerRow = 18; // Total positions including potential aisles
+    const aisleAfterSeat = [4, 14]; // Add an aisle gap after seat 4 and 14
 
+    let seatCounter = 0;
     for (const row of rows) {
-        for (let c = 1; c <= cols; c++) {
-            const id = `${row}${c}`;
-            let type: Seat['type'] = 'Normal';
-            let price = basePrice;
-            if (['F', 'G'].includes(row)) { type = 'Premium'; price += 50; }
-            if (row === 'H') { type = 'Recliner'; price += 150; }
+        seatCounter = 0; // Reset seat number for each row
+        for (let pos = 1; pos <= totalSeatsPerRow; pos++) {
+            if (aisleAfterSeat.includes(pos)) {
+                 // Add an aisle placeholder (optional, styling can handle gaps)
+                 seats.push({ id: `${row}-aisle-${pos}`, row, number: 0, type: 'Normal', isAvailable: false, isAisle: true, price: 0 });
+            } else {
+                seatCounter++;
+                const seatNumber = seatCounter;
+                 const id = `${row}${seatNumber}`;
+                 let type: Seat['type'] = 'Normal';
+                 let price = basePrice;
+                 // Example: Rows F, G are premium, H is recliner
+                 if (['F', 'G'].includes(row)) { type = 'Premium'; price = Math.round(basePrice * 1.2); }
+                 if (row === 'H') { type = 'Recliner'; price = Math.round(basePrice * 1.5); }
 
-            seats.push({ id, row, number: c, type, isAvailable: Math.random() > 0.4, price });
+                 seats.push({
+                    id,
+                    row,
+                    number: seatNumber,
+                    type,
+                    isAvailable: Math.random() > 0.4, // 60% available
+                    price,
+                    isAisle: false,
+                 });
+            }
         }
     }
-    return { seats, rows, maxCols: cols };
+    return { seats, rows, maxCols: totalSeatsPerRow }; // Return total positions for grid layout
 };
 
 
@@ -434,51 +453,49 @@ export default function MovieBookingPage() {
                          </DialogHeader>
                          <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
                               {/* Screen Indicator */}
-                               <div className="w-4/5 mx-auto mb-6">
-                                    <div className="h-1 bg-gray-400 rounded-t-full"></div>
-                                    <div className="text-center text-xs text-muted-foreground mt-1">Screen this way</div>
-                               </div>
+                              <div className="w-full pt-4 pb-8">
+                                <div className="h-0.5 w-full bg-gray-300"></div>
+                                <svg width="100%" height="30" viewBox="0 0 100 10" preserveAspectRatio="none">
+                                    <path d="M 0 10 Q 50 -5 100 10" stroke="rgb(156 163 175)" strokeWidth="1" fill="none" />
+                                </svg>
+                                <div className="text-center text-xs text-muted-foreground -mt-3">Screen this way</div>
+                             </div>
 
                                {/* Enhanced Seat Grid with Row Labels */}
-                                <div className="flex gap-4 justify-center">
-                                    {/* Row Labels Column */}
-                                    <div className="flex flex-col gap-1 justify-between items-center py-1">
-                                        {seatRows.map(row => (
-                                             <div key={`label-${row}`} className="h-6 w-6 text-xs font-semibold text-muted-foreground flex items-center justify-center">{row}</div>
-                                        ))}
-                                    </div>
-                                     {/* Seat Grid Container */}
-                                    <div className="overflow-x-auto pb-2">
-                                         <div
-                                            className="grid gap-1.5 justify-center"
-                                            style={{ gridTemplateColumns: `repeat(${seatMaxCols}, minmax(0, 1fr))` }}
-                                         >
-                                            {seatLayout.map(seat => (
-                                                <Button
-                                                    key={seat.id}
-                                                    variant={selectedSeats.some(s => s.id === seat.id) ? "default" : "outline"}
-                                                    size="icon"
-                                                    className={cn(
-                                                        "h-6 w-6 text-[10px] leading-none border",
-                                                         // Add margin for aisle spacing (e.g., after seat 3 and 12)
-                                                         (seat.number === 3) && 'mr-2',
-                                                         (seat.number === 12) && 'mr-2',
-                                                        !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
-                                                        selectedSeats.some(s => s.id === seat.id) && "bg-primary text-primary-foreground",
-                                                        seat.type === 'Premium' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-yellow-500",
-                                                        seat.type === 'Recliner' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-blue-500",
-                                                        seat.type === 'Recliner' && "w-8" // Make recliners slightly wider
-                                                    )}
-                                                    onClick={() => handleSeatSelect(seat)}
-                                                    disabled={!seat.isAvailable}
-                                                    title={`${seat.id} (${seat.type}) - ₹${seat.price}`}
-                                                >
-                                                    {seat.number}
-                                                </Button>
-                                            ))}
+                               <div className="flex flex-col items-center">
+                                  {seatRows.map(row => (
+                                     <div key={row} className="flex items-center gap-1 mb-1 w-full justify-center">
+                                        <div className="w-6 text-center text-xs font-medium text-muted-foreground">{row}</div>
+                                        <div className="flex flex-wrap justify-center gap-1.5 flex-grow">
+                                           {seatLayout.filter(s => s.row === row).map(seat => (
+                                              seat.isAisle ? (
+                                                  <div key={seat.id} className="w-4"></div> // Aisle space
+                                              ) : (
+                                                  <Button
+                                                      key={seat.id}
+                                                      variant={selectedSeats.some(s => s.id === seat.id) ? "default" : "outline"}
+                                                      size="icon"
+                                                      className={cn(
+                                                         "h-6 w-6 text-[10px] leading-none border rounded-sm", // Base style
+                                                         !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
+                                                         selectedSeats.some(s => s.id === seat.id) && "bg-primary text-primary-foreground",
+                                                         seat.type === 'Premium' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-yellow-500",
+                                                         seat.type === 'Recliner' && !selectedSeats.some(s => s.id === seat.id) && seat.isAvailable && "border-blue-500",
+                                                          seat.type === 'Recliner' && "w-8" // Make recliners slightly wider
+                                                      )}
+                                                      onClick={() => handleSeatSelect(seat)}
+                                                      disabled={!seat.isAvailable}
+                                                      title={`${seat.id} (${seat.type}) - ₹${seat.price}`}
+                                                  >
+                                                      {seat.number}
+                                                  </Button>
+                                              )
+                                           ))}
                                         </div>
+                                        <div className="w-6"></div> {/* Spacer for symmetry */}
                                      </div>
-                                </div>
+                                  ))}
+                              </div>
 
                              {/* Legend */}
                              <Separator className="my-4"/>
