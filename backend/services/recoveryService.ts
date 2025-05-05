@@ -1,19 +1,17 @@
 
 
-const admin = require('firebase-admin');
+/**
+ * @fileOverview Service functions for scheduling and processing wallet recovery deductions using Firestore.
+ * Intended for BACKEND execution (e.g., via a scheduled Cloud Function).
+ */
+import admin from 'firebase-admin'; // Use Node.js Admin SDK
 const db = admin.firestore();
-const { addTransaction, logTransactionToBlockchain } = require('./transactionLogger'); // Use centralized logger
-// Import a hypothetical UPI Provider Service for debiting
-const upiProviderService = require('./upiProviderService'); // Ensure this service has initiateDebit
-// Import wallet controller for internal crediting
-const { payViaWalletInternal } = require('../controllers/walletController'); // Import payViaWalletInternal
-const { getLinkedAccounts } = require('./upi'); // To get user's accounts
-
-// Import Firestore types and functions correctly
-const { collection, addDoc, serverTimestamp, query, where, getDocs, Timestamp, writeBatch, doc, runTransaction, limit, orderBy, updateDoc } = require('firebase/firestore');
-
-// Import date-fns if needed (or use native Date methods)
-const { addDays } = require('date-fns'); // Assuming date-fns is installed
+import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Import Timestamp from Admin SDK
+import { getLinkedAccounts } from './upi'; // Import Node.js version of the service
+import { payViaWalletInternal } from '../controllers/walletController'; // Import internal wallet payment function
+const upiProviderService = require('./upiProviderService'); // For initiating debit
+import type { BankAccount } from './types'; // Import shared type
+// Removed import for client-side addTransaction
 
 interface RecoveryTask {
     id?: string; // Firestore document ID
@@ -40,12 +38,12 @@ interface RecoveryTask {
  * @param recoverySourceUpiId Optional: Specific bank UPI ID to recover from (if not provided, will attempt default).
  * @returns A promise that resolves to true if scheduling was successful, false otherwise.
  */
-async function scheduleRecovery(userId: string, amount: number, originalRecipientUpiId: string, recoverySourceUpiId?: string): Promise<boolean> {
+export async function scheduleRecovery(userId: string, amount: number, originalRecipientUpiId: string, recoverySourceUpiId?: string): Promise<boolean> {
     if (!userId || amount <= 0) {
-        console.error("Invalid parameters for scheduling recovery.");
+        console.error("[Recovery Service] Invalid parameters for scheduling recovery.");
         return false;
     }
-    console.log(`Scheduling recovery of ₹${amount} for user ${userId}`);
+    console.log(`[Recovery Service] Scheduling recovery of ₹${amount} for user ${userId}`);
 
     // Calculate next midnight for scheduling
     const now = new Date();
@@ -62,17 +60,16 @@ async function scheduleRecovery(userId: string, amount: number, originalRecipien
     };
 
     try {
-        const recoveryColRef = collection(db, 'recoveryTasks');
-        // Add timestamps automatically upon creation
-        const docRef = await addDoc(recoveryColRef, {
+        const recoveryColRef = db.collection('recoveryTasks');
+        const docRef = await recoveryColRef.add({
             ...recoveryData,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(), // Use Admin SDK FieldValue
+            updatedAt: FieldValue.serverTimestamp(),
         });
-        console.log("Recovery task scheduled with ID:", docRef.id);
+        console.log("[Recovery Service] Recovery task scheduled with ID:", docRef.id);
         return true;
     } catch (error) {
-        console.error("Error scheduling recovery task:", error);
+        console.error("[Recovery Service] Error scheduling recovery task:", error);
         return false;
     }
 }
@@ -81,51 +78,48 @@ async function scheduleRecovery(userId: string, amount: number, originalRecipien
  * Processes pending recovery tasks. Intended for BACKEND execution (e.g., scheduled Cloud Function).
  * Finds scheduled tasks past their execution time and attempts recovery.
  */
-async function processPendingRecoveries(): Promise<void> {
-    console.log("Processing pending recovery tasks...");
+export async function processPendingRecoveries(): Promise<void> {
+    console.log("[Recovery Service] Processing pending recovery tasks...");
     const now = Timestamp.now();
-    const recoveryColRef = collection(db, 'recoveryTasks');
-    const q = query(recoveryColRef,
-        where('recoveryStatus', '==', 'Scheduled'),
-        where('scheduledTime', '<=', now),
-        orderBy('scheduledTime'), // Process older ones first
-        limit(10) // Process in batches
-    );
+    const recoveryColRef = db.collection('recoveryTasks');
+    const q = recoveryColRef
+        .where('recoveryStatus', '==', 'Scheduled')
+        .where('scheduledTime', '<=', now)
+        .orderBy('scheduledTime') // Process older ones first
+        .limit(10); // Process in batches
 
     try {
-        const querySnapshot = await getDocs(q);
-        console.log(`Found ${querySnapshot.docs.length} pending recovery tasks.`);
+        const querySnapshot = await q.get();
+        console.log(`[Recovery Service] Found ${querySnapshot.docs.length} pending recovery tasks.`);
 
         if (querySnapshot.empty) {
             return;
         }
 
-        const batch = writeBatch(db);
-
-        // Collect promises for asynchronous recovery attempts
-        const recoveryPromises = [];
+        const batch = db.batch(); // Use Admin SDK batch
+        const recoveryPromises: Promise<void>[] = []; // Store promises for async processing
 
         for (const taskDoc of querySnapshot.docs) {
             const task = { id: taskDoc.id, ...taskDoc.data() } as RecoveryTask;
-            const taskRef = doc(db, 'recoveryTasks', task.id!);
+            const taskRef = db.collection('recoveryTasks').doc(task.id!);
 
-            console.log(`Marking task ${task.id} as 'Processing' for user ${task.userId}, amount ₹${task.amount}`);
-            batch.update(taskRef, { recoveryStatus: 'Processing', updatedAt: serverTimestamp() });
+            console.log(`[Recovery Service] Marking task ${task.id} as 'Processing' for user ${task.userId}, amount ₹${task.amount}`);
+            batch.update(taskRef, { recoveryStatus: 'Processing', updatedAt: FieldValue.serverTimestamp() });
 
-            // Push the async recovery attempt promise to the array
+            // Push the async recovery attempt promise
             recoveryPromises.push(attemptRecoveryForTask(task));
         }
 
         // Commit the status updates ('Processing') first
         await batch.commit();
-        console.log("Marked tasks as 'Processing'. Starting recovery attempts...");
+        console.log("[Recovery Service] Marked tasks as 'Processing'. Starting recovery attempts...");
 
         // Wait for all recovery attempts to complete (or fail)
         await Promise.allSettled(recoveryPromises);
-        console.log("Finished processing batch of recovery attempts.");
+        console.log("[Recovery Service] Finished processing batch of recovery attempts.");
 
     } catch (error) {
-        console.error("Error fetching/batch-updating pending recovery tasks:", error);
+        console.error("[Recovery Service] Error fetching/batch-updating pending recovery tasks:", error);
     }
 }
 
@@ -134,7 +128,7 @@ async function processPendingRecoveries(): Promise<void> {
  * Debits bank, credits wallet, updates task status in Firestore.
  */
 async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
-    console.log(`Attempting recovery for task ${task.id}...`);
+    console.log(`[Recovery Service] Attempting recovery for task ${task.id}...`);
     let recoverySuccess = false;
     let failureMessage = 'Unknown recovery error';
     let debitTxId: string | undefined;
@@ -142,26 +136,35 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
     let finalBankUpiId = task.bankUpiId; // Store the UPI ID used
 
     try {
-        // 1. Determine Recovery Source Account
+        // 1. Determine Recovery Source Account if not specified in task
         if (!finalBankUpiId) {
-            const userAccounts = await getLinkedAccounts(); // Fetch user's accounts (ensure this works backend)
-            const defaultAccount = userAccounts.find(acc => acc.isDefault);
-            if (!defaultAccount) throw new Error("No default bank account found for recovery.");
-            finalBankUpiId = defaultAccount.upiId;
-            console.log(`Using default account ${finalBankUpiId} for recovery task ${task.id}`);
+            const userAccounts = await getLinkedAccounts(task.userId); // Fetch user's accounts using Node.js service
+            const defaultAccount = userAccounts.find((acc: BankAccount) => acc.isDefault); // Type annotation needed
+            if (!defaultAccount && userAccounts.length > 0) {
+                 finalBankUpiId = userAccounts[0].upiId; // Fallback to first account if no default
+                 console.log(`[Recovery Service] No default account, using first linked: ${finalBankUpiId} for task ${task.id}`);
+            } else if (defaultAccount) {
+                 finalBankUpiId = defaultAccount.upiId;
+                 console.log(`[Recovery Service] Using default account ${finalBankUpiId} for task ${task.id}`);
+            } else {
+                throw new Error("No linked bank account found for recovery.");
+            }
         }
+        if (!finalBankUpiId) throw new Error("Could not determine bank account for recovery."); // Ensure finalBankUpiId is set
+
 
         // 2. Debit from User's Bank Account using the service
+        // CRITICAL: This needs a secure, non-interactive debit mechanism (e.g., mandate)
         const debitResult = await upiProviderService.initiateDebit(finalBankUpiId, task.amount, `ZetPayWalletRecovery_${task.id}`);
         if (!debitResult.success) {
             throw new Error(debitResult.message || 'Bank debit failed during recovery.');
         }
         debitTxId = debitResult.transactionId;
-        console.log(`[Recovery] Debit successful for task ${task.id}. Tx ID: ${debitTxId}`);
+        console.log(`[Recovery Service] Debit successful for task ${task.id}. Tx ID: ${debitTxId}`);
 
 
         // 3. Credit to User's Zet Pay Wallet (using internal function from walletController)
-        console.log(`[Recovery] Crediting ₹${task.amount} back to user ${task.userId}'s wallet for task ${task.id}...`);
+        console.log(`[Recovery Service] Crediting ₹${task.amount} back to user ${task.userId}'s wallet for task ${task.id}...`);
          // Use payViaWalletInternal with negative amount to simulate credit/top-up via internal logic
         const creditResult = await payViaWalletInternal(task.userId, 'WALLET_RECOVERY_CREDIT', -task.amount, `Recovery Credit from ${finalBankUpiId}`);
         if (!creditResult.success) {
@@ -170,13 +173,13 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
             throw new Error(failureMessage);
         }
         creditTxId = creditResult.transactionId;
-        console.log(`[Recovery] Wallet credit successful for task ${task.id}. Tx ID: ${creditTxId}`);
+        console.log(`[Recovery Service] Wallet credit successful for task ${task.id}. Tx ID: ${creditTxId}`);
 
         // 4. Mark Recovery as Successful
         recoverySuccess = true;
 
     } catch (recoveryError: any) {
-        console.error(`Recovery failed for task ${task.id}:`, recoveryError.message);
+        console.error(`[Recovery Service] Recovery failed for task ${task.id}:`, recoveryError.message);
         failureMessage = recoveryError.message || failureMessage;
         recoverySuccess = false;
         // TODO: Implement alerting for critical failures (debit success, credit fail)
@@ -184,18 +187,18 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
 
     // 5. Update Task Status in Firestore
     try {
-        const taskRef = doc(db, 'recoveryTasks', task.id!);
-        await updateDoc(taskRef, {
+        const taskRef = db.collection('recoveryTasks').doc(task.id!);
+        await taskRef.update({
             recoveryStatus: recoverySuccess ? 'Completed' : 'Failed',
             failureReason: recoverySuccess ? null : failureMessage,
-            updatedAt: serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
             bankUpiId: finalBankUpiId, // Record the final account used/attempted
             recoveryTransactionId: debitTxId || null,
             walletCreditTransactionId: creditTxId || null,
         });
-        console.log(`Updated status for recovery task ${task.id} to ${recoverySuccess ? 'Completed' : 'Failed'}.`);
+        console.log(`[Recovery Service] Updated status for recovery task ${task.id} to ${recoverySuccess ? 'Completed' : 'Failed'}.`);
     } catch (updateError) {
-        console.error(`FATAL: Failed to update final status for recovery task ${task.id}:`, updateError);
+        console.error(`[Recovery Service] FATAL: Failed to update final status for recovery task ${task.id}:`, updateError);
         // Log this critical error for monitoring
     }
 }
@@ -206,17 +209,3 @@ module.exports = {
     processPendingRecoveries, // Keep export if triggered externally by scheduler
     // attemptRecoveryForTask is internal, not exported directly
 };
-
-// Helper functions (if date-fns not available backend)
-// function addDays(date: Date, days: number): Date {
-//   const result = new Date(date);
-//   result.setDate(result.getDate() + days);
-//   return result;
-// }
-
-// Example of formatting if needed without date-fns
-// function format(date: Date, formatString: string): string {
-//     if (formatString === 'PP') return date.toLocaleDateString('en-CA'); // YYYY-MM-DD
-//     return date.toISOString();
-// }
-        

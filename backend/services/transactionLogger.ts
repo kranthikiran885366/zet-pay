@@ -1,13 +1,14 @@
+
 /**
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
 import admin from 'firebase-admin'; // Use admin SDK
 const db = admin.firestore();
-import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
+import blockchainLogger from './blockchainLogger'; // Correct import path for backend service
 import { sendToUser } from '../server'; // Import backend WebSocket sender using relative path
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
-import { Timestamp } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp
+import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
 
 /**
  * Adds a new transaction record to Firestore and logs it to the blockchain (backend context).
@@ -28,7 +29,7 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const dataToSave = {
             ...rest,
             userId: userId,
-            date: Timestamp.now(), // Use server timestamp directly
+            date: FieldValue.serverTimestamp(), // Use Firestore server timestamp
             // Generate avatarSeed if not provided
             avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
             // Set default nulls for optional fields if not provided
@@ -57,8 +58,8 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const newDocSnap = await docRef.get();
         const savedData = newDocSnap.data();
 
-        if (!savedData) {
-            throw new Error("Failed to retrieve saved transaction data after logging.");
+        if (!savedData || !savedData.date) { // Check if date field exists after fetch
+            throw new Error("Failed to retrieve saved transaction data or timestamp.");
         }
 
         // Convert Firestore Timestamp to JS Date for WebSocket payload
@@ -71,9 +72,11 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
 
         // Send real-time update via WebSocket (backend function)
         console.log(`[Backend Logger] Sending WS update for tx ${finalTransaction.id} to user ${userId}`);
+        // Ensure payload date is serializable (ISO string) for WebSocket
+        const wsPayload = { ...finalTransaction, date: finalTransaction.date.toISOString() };
         const sent = sendToUser(userId, {
             type: 'transaction_update',
-            payload: finalTransaction, // Send the complete transaction data (JS Date format)
+            payload: wsPayload, // Send ISO string date
         });
         if (!sent) {
             console.warn(`[Backend Logger] WebSocket not connected for user ${userId}. Transaction update not sent in real-time.`);
@@ -116,5 +119,11 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
     const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id };
 
     // Call the actual blockchain logging service function
-    return blockchainLogger.logTransaction(transactionId, blockchainPayload);
+    // Assuming blockchainLogger has a logTransaction method
+    if (blockchainLogger && typeof blockchainLogger.logTransaction === 'function') {
+        return blockchainLogger.logTransaction(transactionId, blockchainPayload);
+    } else {
+        console.error("[Backend Logger] blockchainLogger or blockchainLogger.logTransaction is not available.");
+        return null;
+    }
 }
