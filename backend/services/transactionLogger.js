@@ -3,53 +3,57 @@
 
 const admin = require('firebase-admin');
 const db = admin.firestore();
-const blockchainLogger = require('./blockchainLogger'); // Import the blockchain service
+const blockchainLogger = require('./blockchainLogger'); // Import the backend blockchain service
 // Correctly require the exported functions from server.js
 const { sendToUser } = require('../server');
 
-// Use shared type definition
-import type { Transaction } from './types';
+// Use shared type definition (relative path might differ based on setup)
+// Adjust the path if your 'types.ts' is elsewhere or use require if not using TS directly here
+// For simplicity, assuming types are primarily for frontend/shared context, we might skip strict TS typing here
+// import type { Transaction } from './types';
 
 /**
- * Adds a new transaction record to Firestore and optionally logs it to the blockchain.
- * Automatically adds server timestamp.
- * Generates avatarSeed if not provided.
- * Sends real-time notification via WebSocket.
+ * Adds a new transaction record to Firestore and logs it to the blockchain.
+ * Called by various backend controllers AFTER payment/action is processed.
  *
  * @param transactionData Transaction details (userId is required).
  * @returns A promise resolving to the full transaction object including Firestore ID and resolved timestamp.
  */
-async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string }): Promise<Transaction> {
-    const { userId, name, ...rest } = transactionData;
+async function addTransaction(transactionData /*: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } */) {
+    const { userId, ...rest } = transactionData;
     if (!userId) throw new Error("User ID is required to log transaction.");
 
-    console.log(`Logging transaction for user ${userId}:`, rest);
+    console.log(`[Backend Logger] Logging transaction for user ${userId}:`, rest.type);
 
     try {
-        const transactionsColRef = collection(db, 'transactions');
-        const dataToSave: any = { // Use any temporarily or refine based on Firestore types
+        const transactionsColRef = db.collection('transactions'); // Use Admin SDK
+        const dataToSave = {
             ...rest,
             userId: userId,
-            name: name || 'Unknown Transaction',
-            date: serverTimestamp(), // Use server timestamp
-            avatarSeed: rest.avatarSeed || (name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
-            // Explicitly handle potentially undefined fields
-             billerId: rest.billerId || null,
-             upiId: rest.upiId || null,
-             loanId: rest.loanId || null,
-             ticketId: rest.ticketId || null,
-             refundEta: rest.refundEta || null,
-             blockchainHash: rest.blockchainHash || null,
-             paymentMethodUsed: rest.paymentMethodUsed || null,
-             originalTransactionId: rest.originalTransactionId || null,
+            date: admin.firestore.FieldValue.serverTimestamp(), // Use server timestamp
+            // Generate avatarSeed if not provided (backend fallback)
+            avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
+            // Set default nulls for optional fields if not provided
+            billerId: rest.billerId || null,
+            upiId: rest.upiId || null,
+            loanId: rest.loanId || null,
+            ticketId: rest.ticketId || null,
+            refundEta: rest.refundEta || null,
+            blockchainHash: rest.blockchainHash || null, // Will be updated after logging
+            paymentMethodUsed: rest.paymentMethodUsed || null,
+            originalTransactionId: rest.originalTransactionId || null,
         };
 
         // Remove keys with null or undefined values before saving
-        Object.keys(dataToSave).forEach(key => (dataToSave[key] === undefined || dataToSave[key] === null) && delete dataToSave[key]);
+         Object.keys(dataToSave).forEach(key => {
+             if (dataToSave[key] === undefined) {
+                 dataToSave[key] = null; // Set undefined to null for Firestore
+             }
+         });
 
 
-        const docRef = await addDoc(transactionsColRef, dataToSave);
-        console.log("Transaction logged to Firestore with ID:", docRef.id);
+        const docRef = await transactionsColRef.add(dataToSave);
+        console.log("[Backend Logger] Transaction logged to Firestore with ID:", docRef.id);
 
         // Fetch the newly created doc to get the server timestamp resolved
         const newDocSnap = await docRef.get();
@@ -59,39 +63,39 @@ async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 
             throw new Error("Failed to retrieve saved transaction data.");
         }
 
-        // Convert Firestore Timestamp to JS Date
-        const finalTransaction: Transaction = {
+        // Convert Firestore Timestamp to JS Date for return value and logging
+        const finalTransaction = {
             id: docRef.id,
-            ...(savedData as Omit<Transaction, 'id' | 'date'>), // Cast excluding id and date
-            date: (savedData.date as admin.firestore.Timestamp).toDate(), // Convert timestamp
+            ...savedData,
+            date: savedData.date.toDate(), // Convert timestamp
         };
 
-         // Send real-time update via WebSocket AFTER successful Firestore save
-         // Use the sendToUser function imported from server.js
+        // Send real-time update via WebSocket AFTER successful Firestore save
         const sent = sendToUser(userId, {
             type: 'transaction_update',
-            payload: finalTransaction, // Send the complete transaction data
+            payload: finalTransaction, // Send the complete transaction data (JS Date format)
         });
         if (!sent) {
-            console.warn(`WebSocket not connected for user ${userId}. Transaction update not sent in real-time.`);
+            console.warn(`[Backend Logger] WebSocket not connected for user ${userId}. Transaction update not sent in real-time.`);
         }
 
 
-        // Optional: Log to blockchain asynchronously (don't block response)
+        // Log to blockchain asynchronously (don't block response)
         logTransactionToBlockchain(finalTransaction.id, finalTransaction)
             .then(hash => {
                 if (hash) {
                     // Optionally update the Firestore doc with the hash
-                    updateDoc(docRef, { blockchainHash: hash }).catch(err => console.error("Failed to update tx with blockchain hash:", err));
+                    docRef.update({ blockchainHash: hash }).catch(err => console.error("[Backend Logger] Failed to update tx with blockchain hash:", err));
                 }
             })
-            .catch(err => console.error("Blockchain logging failed:", err)); // Catch errors from the async call
+            .catch(err => console.error("[Backend Logger] Blockchain logging failed:", err)); // Catch errors from the async call
 
         return finalTransaction; // Return the JS Date version
 
     } catch (error) {
-        console.error(`Error logging transaction for user ${userId}:`, error);
-        throw new Error("Could not log transaction.");
+        console.error(`[Backend Logger] Error logging transaction for user ${userId}:`, error);
+        // Decide how to handle logging errors in the backend (e.g., log to monitoring service)
+        throw new Error("Could not log transaction."); // Let controller handle the overall error
     }
 }
 
@@ -104,10 +108,12 @@ async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 
  * @param data The full transaction data object.
  * @returns A promise resolving to the blockchain transaction hash or null.
  */
-async function logTransactionToBlockchain(transactionId: string, data: Transaction): Promise<string | null> {
+async function logTransactionToBlockchain(transactionId, data) {
     // Exclude sensitive or unnecessary data before sending to blockchain logger if needed
     const { userId, amount, type, date, name, description, status, id } = data; // Select relevant fields
-    const blockchainPayload = { userId, amount, type, date: date.toISOString(), name, description, status, originalId: id };
+    // Ensure date is ISO string for consistent logging format
+    const isoDate = date instanceof Date ? date.toISOString() : new Date().toISOString();
+    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id };
 
     return blockchainLogger.logTransaction(transactionId, blockchainPayload);
 }
@@ -119,5 +125,5 @@ module.exports = {
 };
 
 // Ensure imports for Firestore types are correct if using stricter typing
-const { collection, addDoc, doc, updateDoc, serverTimestamp } = require('firebase/firestore');
-        
+// const { collection, addDoc, doc, updateDoc, serverTimestamp, getDoc, Timestamp } = require('firebase/firestore');
+

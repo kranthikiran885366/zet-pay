@@ -1,9 +1,10 @@
+
 /**
  * @fileOverview Service functions for processing bill payments.
  */
 
 import type { Transaction } from './types'; // Use the common Transaction interface
-import { addTransaction } from './transactionLogger'; // Import function to add transaction to Firestore
+import { addTransaction } from '@/services/transactionLogger'; // Import function to add transaction to Firestore
 
 export interface BillPaymentDetails {
     billerId: string;

@@ -5,8 +5,8 @@
  */
 
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
-import { addTransaction } from './transactions'; // For logging the withdrawal/hold
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc, runTransaction } from 'firebase/firestore';
+import { addTransaction } from '@/services/transactionLogger'; // For logging the withdrawal/hold
 import { getWalletBalance, payViaWallet } from './wallet'; // To check/hold balance potentially
 import { addDays, differenceInMinutes } from 'date-fns'; // For expiry calculation
 
@@ -32,6 +32,11 @@ export interface WithdrawalDetails {
     expiresAt: Timestamp;
     completedAt?: Timestamp;
     failureReason?: string;
+    // Added from backend
+    transactionId?: string;
+    updatedAt?: Timestamp;
+    expiresInSeconds?: number; // Calculated on client potentially
+
 }
 
 /**
@@ -62,15 +67,15 @@ export async function getNearbyAgents(latitude: number, longitude: number): Prom
  * Initiates a cardless cash withdrawal request in Firestore.
  * Generates OTP and QR data. Places a temporary hold (simulated).
  * @param agentId The ID of the selected Zet Agent.
- * @param agentName The name of the agent (for logging).
  * @param amount The amount to withdraw.
  * @returns A promise resolving to the WithdrawalDetails object (including the Firestore document ID).
  * @throws Error if user is not logged in, balance is insufficient, or initiation fails.
  */
-export async function initiateWithdrawal(agentId: string, agentName: string, amount: number): Promise<WithdrawalDetails> {
+export async function initiateWithdrawal(agentId: string, amount: number): Promise<WithdrawalDetails> {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("User not logged in.");
     const userId = currentUser.uid;
+    const agentName = 'Zet Agent'; // Fetch agent name if needed
 
     console.log(`Initiating withdrawal of ₹${amount} at agent ${agentId} (${agentName}) for user ${userId}`);
 
@@ -95,7 +100,7 @@ export async function initiateWithdrawal(agentId: string, agentName: string, amo
     const qrData = `zetpay://cashwithdrawal?txn=${transactionId}&agent=${agentId}&amount=${amount}&otp=${otp}`; // Example QR data format
 
     // 3. Create Withdrawal Request Document in Firestore
-    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt'> = {
+    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt' | 'updatedAt'> = {
         userId,
         agentId,
         agentName,
@@ -111,6 +116,7 @@ export async function initiateWithdrawal(agentId: string, agentName: string, amo
         const docRef = await addDoc(withdrawalColRef, {
             ...withdrawalData,
             createdAt: serverTimestamp(), // Use server timestamp
+            updatedAt: serverTimestamp(),
         });
         console.log("Withdrawal request created with ID:", docRef.id);
 
@@ -125,10 +131,16 @@ export async function initiateWithdrawal(agentId: string, agentName: string, amo
             // Add specific fields like withdrawalRequestId: docRef.id
         });
 
+         // Fetch the created doc to get the server timestamp resolved for return
+        const newDocSnap = await getDoc(docRef);
+        const savedData = newDocSnap.data()!;
+
         return {
             id: docRef.id,
             ...withdrawalData,
-            createdAt: Timestamp.now(), // Use client time for immediate return
+            createdAt: (savedData.createdAt as Timestamp), // Use resolved timestamp
+            expiresAt: (savedData.expiresAt as Timestamp),
+            expiresInSeconds: differenceInMinutes(expiresAt, new Date()) * 60, // Calculate seconds remaining
         } as WithdrawalDetails;
 
     } catch (error) {

@@ -1,7 +1,9 @@
+
 // backend/services/blockchainLogger.js
 
 // Placeholder for actual blockchain interaction logic (e.g., using Web3.js, Ethers.js, or a specific blockchain SDK)
 const BLOCKCHAIN_API_ENDPOINT = process.env.BLOCKCHAIN_API_ENDPOINT || 'http://localhost:5001/log'; // Example endpoint for a logging service
+const axios = require('axios'); // Example: Using axios if calling an external service
 
 /**
  * Logs transaction data to the blockchain (SIMULATED).
@@ -32,7 +34,12 @@ async function logTransaction(transactionId, data) {
         console.log(`[Blockchain SIM] Transaction ${transactionId} logged successfully. Hash: ${mockTxHash}`);
         return mockTxHash; // Return a mock hash
     } catch (error) {
-        console.error(`[Blockchain SIM] Failed to log transaction ${transactionId}:`, error.message);
+        // Check if error is an Axios error and log details if so
+        if (axios.isAxiosError(error)) {
+             console.error(`[Blockchain SIM] Axios error logging transaction ${transactionId}:`, error.response?.data || error.message);
+        } else {
+             console.error(`[Blockchain SIM] Generic error logging transaction ${transactionId}:`, error.message);
+        }
         // Decide if this failure should be critical or just logged
         return null;
     }
@@ -52,7 +59,7 @@ async function getTransactionInfo(transactionId) {
 
     await new Promise(resolve => setTimeout(resolve, 100));
     // Simulate finding data based on ID pattern
-    if (transactionId.startsWith('TXN')) {
+    if (transactionId.startsWith('TXN') || transactionId.startsWith('CW_') || transactionId.startsWith('REC_')) { // Added prefixes
         return {
             loggedData: { /* Mock data based on ID */ userId: 'user123', type: 'Sent', amount: -100 },
             blockchainTimestamp: new Date().toISOString(),
@@ -71,7 +78,8 @@ async function verifyTransaction(transactionId) {
      console.log(`[Blockchain SIM] Verifying transaction ${transactionId}`);
      // Simulate verification
      await new Promise(resolve => setTimeout(resolve, 50));
-     return transactionId.startsWith('TXN') && Math.random() > 0.1; // 90% chance valid simulation
+     // Simulate validity based on known prefixes
+     return (transactionId.startsWith('TXN') || transactionId.startsWith('CW_') || transactionId.startsWith('REC_')) && Math.random() > 0.1; // 90% chance valid simulation
 }
 
 
@@ -80,3 +88,4 @@ module.exports = {
     getTransactionInfo,
     verifyTransaction,
 };
+

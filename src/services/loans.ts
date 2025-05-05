@@ -1,9 +1,10 @@
+
 /**
  * @fileOverview Service functions for managing micro-loans and potentially other loan types.
  */
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, Timestamp, orderBy, limit } from 'firebase/firestore';
-import { addTransaction } from './transactions'; // To log loan disbursement/repayment
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, Timestamp, orderBy, limit, runTransaction } from 'firebase/firestore';
+import { addTransaction } from '@/services/transactionLogger'; // To log loan disbursement/repayment
 
 export interface MicroLoanEligibility {
     eligible: boolean;

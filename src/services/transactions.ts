@@ -7,6 +7,7 @@ import type { Transaction } from './types'; // Import shared type
 import type { DateRange } from "react-day-picker";
 import { auth } from '@/lib/firebase'; // Keep auth for user ID if needed client-side
 import { Unsubscribe } from 'firebase/firestore'; // Keep type for potential fallback
+import { ensureWebSocketConnection, subscribeToWebSocketMessages, sendWebSocketMessage } from '@/lib/websocket'; // Import WebSocket utility
 
 export type { Transaction }; // Re-export for convenience
 
@@ -83,149 +84,82 @@ export function subscribeToTransactionHistory(
         return () => {}; // No-op cleanup
     }
     const userId = currentUser.uid;
-    let ws: WebSocket | null = null;
     let pollingIntervalId: NodeJS.Timeout | null = null;
     const limit = filters?.limit || count;
     const updatedFilters = { ...filters, limit };
 
-    const wsUrl = process.env.NEXT_PUBLIC_WSS_URL || 'ws://localhost:9003';
+    // Ensure WebSocket connection is attempted
+    ensureWebSocketConnection();
 
-    const connectWebSocket = () => {
-        console.log(`Attempting WebSocket connection to ${wsUrl} for transaction updates...`);
-        ws = new WebSocket(wsUrl);
+    // Define handler for transaction updates
+    const handleTransactionUpdate = (payload: any) => {
+        let updatedTransactions: Transaction[] = [];
+         if (Array.isArray(payload)) {
+             updatedTransactions = payload.map((tx: any) => ({
+                 ...tx,
+                 date: new Date(tx.date),
+                 avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
+             }));
+             onUpdate(updatedTransactions);
+         } else if (payload && typeof payload === 'object' && payload.id) {
+             // Handle single transaction update: Let the component merge it
+             const newTransaction = {
+                 ...payload,
+                 date: new Date(payload.date),
+                 avatarSeed: payload.avatarSeed || payload.name?.toLowerCase().replace(/\s+/g, '') || payload.id,
+             };
+             onUpdate([newTransaction]); // Pass only the new one
+         } else {
+             console.warn("Received unexpected payload format for transaction update:", payload);
+         }
+    };
 
-        ws.onopen = () => {
-            console.log("WebSocket connected for transaction updates.");
-            // Clear polling interval if WS connects successfully
-            if (pollingIntervalId) {
-                 clearInterval(pollingIntervalId);
-                 pollingIntervalId = null;
-                 console.log("WebSocket connected, cleared polling interval.");
-            }
-            // Authenticate WebSocket connection
-            currentUser.getIdToken().then(token => {
-                if (token && ws?.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'authenticate', token }));
-                     // Request initial data after auth
-                     console.log("WebSocket authenticated, requesting initial transactions...");
-                     ws.send(JSON.stringify({ type: 'request_initial_transactions', filters: updatedFilters }));
-                }
-            }).catch(tokenError => {
-                 console.error("Error getting token for WS auth:", tokenError);
-                 onError(new Error("WebSocket authentication failed."));
-                 ws?.close();
-            });
-             // Fetch initial data via API while WS connects/authenticates (as a backup/faster initial load)
-             fetchAndPoll();
-        };
+    // Subscribe to WebSocket messages
+    const wsUnsubscribe = subscribeToWebSocketMessages('transaction_update', handleTransactionUpdate);
+    const wsInitialUnsubscribe = subscribeToWebSocketMessages('initial_transactions', handleTransactionUpdate);
 
-        ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data.toString());
-                 console.log("WebSocket message received (transactions):", message);
-                if (message.type === 'transaction_update' || message.type === 'initial_transactions') {
-                    // Process payload: could be a single transaction or an array
-                    let updatedTransactions: Transaction[] = [];
-                    if (Array.isArray(message.payload)) {
-                         updatedTransactions = message.payload.map((tx: any) => ({
-                             ...tx,
-                             date: new Date(tx.date),
-                             avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
-                         }));
-                    } else if (message.payload && typeof message.payload === 'object') {
-                         // Handle single transaction update: Prepend to current list or refetch full list
-                         console.log("Received single transaction update via WS, prepending...");
-                         const newTransaction = {
-                             ...message.payload,
-                             date: new Date(message.payload.date),
-                             avatarSeed: message.payload.avatarSeed || message.payload.name?.toLowerCase().replace(/\s+/g, '') || message.payload.id,
-                         };
-                          // Update state by prepending new/updated transaction (requires access to previous state)
-                          // This logic should ideally be in the component using this service.
-                          // For now, we call onUpdate with the single new transaction.
-                          // Components should handle merging this into their state.
-                          onUpdate([newTransaction]); // Pass only the new one, let component handle merge/update
-                          return;
-                    }
-                    onUpdate(updatedTransactions);
-                } else if (message.type === 'auth_success') {
-                    console.log("Transaction WebSocket authenticated.");
-                    // If not already fetched, request initial transactions
-                    if (ws?.readyState === WebSocket.OPEN) { // Check again before sending
-                        ws.send(JSON.stringify({ type: 'request_initial_transactions', filters: updatedFilters }));
-                    }
-                }
-            } catch (e) {
-                console.error("Error processing WebSocket message for transactions:", e);
-                onError(new Error("Received invalid real-time data."));
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error("WebSocket error for transactions:", error);
-            onError(new Error("Real-time connection error. Trying polling fallback."));
-            // Fallback to polling if WebSocket fails
-            if (!pollingIntervalId) { // Start polling only if not already polling
-                fetchAndPoll(true); // Start polling immediately on WS error
-            }
-        };
-
-        ws.onclose = (event) => {
-            console.log("WebSocket closed for transactions:", event.code, event.reason);
-            ws = null; // Clear instance
-            // Fallback to polling if closed unexpectedly and not already polling
-             if (!event.wasClean && !pollingIntervalId) {
-                 console.log("WebSocket closed unexpectedly. Falling back to polling.");
-                 fetchAndPoll(true); // Start polling
-             }
-        };
-    }
-
-    // Function to fetch data via API and set up polling
+    // Function to fetch data via API and set up polling (used as fallback)
     const fetchAndPoll = async (startPolling = false) => {
         try {
+            console.log("Polling for transactions...");
             const transactions = await getTransactionHistory(updatedFilters);
             onUpdate(transactions);
-             // Set up polling only if specifically requested (e.g., on WS error/close)
-             if (startPolling && !pollingIntervalId) {
-                 console.log("Starting polling for transaction updates (interval: 30s)");
-                 pollingIntervalId = setInterval(async () => {
-                     try {
-                         // If WebSocket has reconnected in the meantime, stop polling
-                         if (ws && ws.readyState === WebSocket.OPEN) {
-                             clearInterval(pollingIntervalId!);
-                             pollingIntervalId = null;
-                             console.log("WebSocket reconnected, stopping polling.");
-                             return;
-                         }
-                         const polledTransactions = await getTransactionHistory(updatedFilters);
-                         onUpdate(polledTransactions);
-                     } catch (pollError) {
-                         console.error("Polling error:", pollError);
-                         onError(new Error("Failed to update transactions."));
-                         // Keep polling unless it's a fatal error?
-                     }
-                 }, 30000); // Poll every 30 seconds
-             }
+            // Set up polling only if specifically requested
+            if (startPolling && !pollingIntervalId) {
+                console.log("Starting polling interval (30s) for transactions...");
+                pollingIntervalId = setInterval(async () => {
+                    try {
+                        const polledTransactions = await getTransactionHistory(updatedFilters);
+                        onUpdate(polledTransactions);
+                    } catch (pollError) {
+                        console.error("Polling error:", pollError);
+                        onError(new Error("Failed to update transactions via polling."));
+                        // Consider stopping polling after too many errors?
+                        // clearInterval(pollingIntervalId!);
+                        // pollingIntervalId = null;
+                    }
+                }, 30000); // Poll every 30 seconds
+            }
         } catch (error: any) {
             onError(error);
         }
     };
 
-    // Initial attempt to connect WebSocket
-    connectWebSocket();
+     // Fetch initial data via REST API immediately for faster loading
+     getTransactionHistory(updatedFilters).then(initialTxs => onUpdate(initialTxs)).catch(err => onError(err));
+     // Rely on WebSocket 'initial_transactions' or polling fallback for subsequent updates
 
     // Return cleanup function
     return () => {
         console.log("Cleaning up transaction subscription (WebSocket and Polling)...");
-        if (ws) {
-            ws.close(1000, "Client unmounted"); // Close WS with normal closure code
-            ws = null;
-        }
+        wsUnsubscribe(); // Unsubscribe from WebSocket messages
+        wsInitialUnsubscribe(); // Unsubscribe from initial data message
         if (pollingIntervalId) {
             clearInterval(pollingIntervalId);
             pollingIntervalId = null;
         }
+        // Note: We don't close the WebSocket connection here, as it might be used by other subscriptions.
+        // Connection closure should be handled globally or when the app closes.
     };
 }
 
@@ -260,4 +194,3 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
 
 // Keep TransactionFilters interface if used by components
 export type { TransactionFilters };
-        

@@ -5,7 +5,7 @@
  */
 import { db, auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, limit, getDocs, Timestamp, serverTimestamp, runTransaction, writeBatch } from 'firebase/firestore';
-import { addTransaction } from './transactions'; // To log repayments
+import { addTransaction } from '@/services/transactionLogger'; // To log repayments
 
 // Interfaces remain largely the same, added Firestore IDs
 export interface BnplDetails {
