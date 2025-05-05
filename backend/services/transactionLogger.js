@@ -1,8 +1,10 @@
+
 // backend/services/transactionLogger.js
 
 const admin = require('firebase-admin');
 const db = admin.firestore();
 const blockchainLogger = require('./blockchainLogger'); // Import the blockchain service
+const { sendToUser } = require('../server'); // Import WebSocket sender
 
 // Use shared type definition
 import type { Transaction } from './types';
@@ -11,6 +13,7 @@ import type { Transaction } from './types';
  * Adds a new transaction record to Firestore and optionally logs it to the blockchain.
  * Automatically adds server timestamp.
  * Generates avatarSeed if not provided.
+ * Sends real-time notification via WebSocket.
  *
  * @param transactionData Transaction details (userId is required).
  * @returns A promise resolving to the full transaction object including Firestore ID and resolved timestamp.
@@ -29,13 +32,15 @@ async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 
             name: name || 'Unknown Transaction',
             date: serverTimestamp(), // Use server timestamp
             avatarSeed: rest.avatarSeed || (name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
-            // Explicitly remove undefined fields that might cause issues with Firestore
+            // Explicitly handle potentially undefined fields
              billerId: rest.billerId || null,
              upiId: rest.upiId || null,
              loanId: rest.loanId || null,
              ticketId: rest.ticketId || null,
              refundEta: rest.refundEta || null,
-             blockchainHash: rest.blockchainHash || null, // Ensure blockchainHash is handled
+             blockchainHash: rest.blockchainHash || null,
+             paymentMethodUsed: rest.paymentMethodUsed || null,
+             originalTransactionId: rest.originalTransactionId || null,
         };
 
         // Remove keys with null or undefined values before saving
@@ -59,6 +64,13 @@ async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 
             ...(savedData as Omit<Transaction, 'id' | 'date'>), // Cast excluding id and date
             date: (savedData.date as admin.firestore.Timestamp).toDate(), // Convert timestamp
         };
+
+         // Send real-time update via WebSocket
+        sendToUser(userId, {
+            type: 'transaction_update',
+            payload: finalTransaction, // Send the complete transaction data
+        });
+
 
         // Optional: Log to blockchain asynchronously (don't block response)
         logTransactionToBlockchain(finalTransaction.id, finalTransaction)
@@ -100,3 +112,7 @@ module.exports = {
     addTransaction,
     logTransactionToBlockchain,
 };
+
+// Ensure imports for Firestore types are correct if using stricter typing
+const { collection, addDoc, doc, updateDoc, serverTimestamp } = require('firebase/firestore');
+        

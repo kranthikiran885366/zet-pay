@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for managing transaction history via the backend API.
  */
@@ -5,6 +6,7 @@ import { apiClient } from '@/lib/apiClient';
 import type { Transaction } from './types'; // Import shared type
 import type { DateRange } from "react-day-picker";
 import { auth } from '@/lib/firebase'; // Keep auth for user ID if needed client-side
+import { Unsubscribe } from 'firebase/firestore'; // Keep type for potential fallback
 
 export type { Transaction }; // Re-export for convenience
 
@@ -58,22 +60,15 @@ export async function getTransactionHistory(filters?: TransactionFilters): Promi
     }
 }
 
-// **IMPORTANT**: Real-time subscription (subscribeToTransactionHistory)
-// needs a WebSocket connection or Server-Sent Events (SSE) from the backend.
-// The previous Firestore `onSnapshot` logic is removed as we now rely on the backend API.
-// We will keep the function signature but make it call the one-time fetch for now,
-// or return an error indicating real-time is not implemented via the standard API client.
-
 /**
- * **(Placeholder)** Subscribes to real-time updates for the current user's transaction history.
- * NOTE: This currently calls the one-time fetch `getTransactionHistory`.
- * Real-time functionality requires WebSocket or SSE backend implementation.
+ * Subscribes to real-time updates for the current user's transaction history using WebSockets.
+ * Includes fallback to polling via `getTransactionHistory` if WebSocket connection fails.
  *
  * @param onUpdate Callback function triggered with the updated list of transactions.
  * @param onError Callback function triggered on error.
  * @param filters Optional filters.
  * @param count Optional limit.
- * @returns A cleanup function (currently does nothing).
+ * @returns A cleanup function to close the WebSocket connection and clear any polling interval.
  */
 export function subscribeToTransactionHistory(
     onUpdate: (transactions: Transaction[]) => void,
@@ -81,47 +76,142 @@ export function subscribeToTransactionHistory(
     filters?: TransactionFilters,
     count?: number
 ): () => void {
-     console.warn("Real-time transaction subscription using Firestore 'onSnapshot' is replaced. Using one-time fetch via API. For real-time, implement WebSocket/SSE.");
-     const currentUser = auth.currentUser;
-     if (!currentUser) {
-         onError(new Error("User not logged in."));
-         return () => {}; // Return no-op cleanup
-     }
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        onError(new Error("User not logged in."));
+        return () => {}; // No-op cleanup
+    }
+    const userId = currentUser.uid;
+    let ws: WebSocket | null = null;
+    let pollingIntervalId: NodeJS.Timeout | null = null;
+    const limit = filters?.limit || count;
+    const updatedFilters = { ...filters, limit };
 
-     const fetchAndUpdate = async () => {
-         try {
-             // Use the count from filters if provided, otherwise use the separate count param
-             const limit = filters?.limit || count;
-             const updatedFilters = { ...filters, limit };
-             const transactions = await getTransactionHistory(updatedFilters);
-             onUpdate(transactions);
-         } catch (error: any) {
-             onError(error);
-         }
-     };
+    const wsUrl = process.env.NEXT_PUBLIC_WSS_URL || 'ws://localhost:9003';
 
-     // Initial fetch
-     fetchAndUpdate();
+    const connectWebSocket = () => {
+        console.log(`Attempting WebSocket connection to ${wsUrl} for transaction updates...`);
+        ws = new WebSocket(wsUrl);
 
-     // Simulate periodic polling as a fallback for real-time (adjust interval as needed)
-     // In a production app, use WebSockets or SSE instead.
-     const intervalId = setInterval(fetchAndUpdate, 60000); // Poll every 60 seconds
+        ws.onopen = () => {
+            console.log("WebSocket connected for transaction updates.");
+            // Clear polling interval if WS connects successfully
+            if (pollingIntervalId) {
+                 clearInterval(pollingIntervalId);
+                 pollingIntervalId = null;
+                 console.log("WebSocket connected, cleared polling interval.");
+            }
+            // Authenticate WebSocket connection
+            currentUser.getIdToken().then(token => {
+                if (token && ws?.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'authenticate', token }));
+                     // Optionally request initial data after auth
+                     // ws.send(JSON.stringify({ type: 'request_initial_transactions', limit: limit || 5 }));
+                }
+            }).catch(tokenError => {
+                 console.error("Error getting token for WS auth:", tokenError);
+                 onError(new Error("WebSocket authentication failed."));
+                 ws?.close();
+            });
+             // Fetch initial data via API while WS connects/authenticates
+             fetchAndPoll();
+        };
 
-     // Return a function to clear the interval
-     return () => {
-         console.log("Clearing transaction polling interval.");
-         clearInterval(intervalId);
-     };
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data.toString());
+                 console.log("WebSocket message received (transactions):", message);
+                if (message.type === 'transaction_update' || message.type === 'initial_transactions') {
+                    // Process payload: could be a single transaction or an array
+                    let updatedTransactions: Transaction[] = [];
+                    if (Array.isArray(message.payload)) {
+                         updatedTransactions = message.payload.map((tx: any) => ({
+                             ...tx,
+                             date: new Date(tx.date),
+                             avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
+                         }));
+                    } else if (message.payload && typeof message.payload === 'object') {
+                         // Handle single transaction update - more complex state management needed here
+                         // For simplicity, we'll refetch the whole list on single update via WS for now
+                         console.log("Received single transaction update via WS, refetching list...");
+                         fetchAndPoll(); // Refetch list on single update
+                         return; // Avoid calling onUpdate with single item for now
+                    }
+                    onUpdate(updatedTransactions);
+                } else if (message.type === 'auth_success') {
+                    console.log("Transaction WebSocket authenticated.");
+                    // If not already fetched, request initial transactions
+                    // ws?.send(JSON.stringify({ type: 'request_initial_transactions', limit: limit || 5 }));
+                }
+            } catch (e) {
+                console.error("Error processing WebSocket message for transactions:", e);
+                onError(new Error("Received invalid real-time data."));
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error for transactions:", error);
+            onError(new Error("Real-time connection error. Trying polling fallback."));
+            // Fallback to polling if WebSocket fails
+            if (!pollingIntervalId) { // Start polling only if not already polling
+                fetchAndPoll(true); // Start polling immediately on WS error
+            }
+        };
+
+        ws.onclose = (event) => {
+            console.log("WebSocket closed for transactions:", event.code, event.reason);
+            ws = null; // Clear instance
+            // Fallback to polling if closed unexpectedly and not already polling
+             if (!event.wasClean && !pollingIntervalId) {
+                 console.log("WebSocket closed unexpectedly. Falling back to polling.");
+                 fetchAndPoll(true); // Start polling
+             }
+        };
+    }
+
+    // Function to fetch data via API and set up polling
+    const fetchAndPoll = async (startPolling = false) => {
+        try {
+            const transactions = await getTransactionHistory(updatedFilters);
+            onUpdate(transactions);
+             // Set up polling only if specifically requested (e.g., on WS error/close)
+             if (startPolling && !pollingIntervalId) {
+                 console.log("Starting polling for transaction updates (interval: 30s)");
+                 pollingIntervalId = setInterval(async () => {
+                     try {
+                         const polledTransactions = await getTransactionHistory(updatedFilters);
+                         onUpdate(polledTransactions);
+                     } catch (pollError) {
+                         console.error("Polling error:", pollError);
+                         onError(new Error("Failed to update transactions."));
+                     }
+                 }, 30000); // Poll every 30 seconds
+             }
+        } catch (error: any) {
+            onError(error);
+        }
+    };
+
+    // Initial attempt to connect WebSocket
+    connectWebSocket();
+
+    // Return cleanup function
+    return () => {
+        console.log("Cleaning up transaction subscription (WebSocket and Polling)...");
+        if (ws) {
+            ws.close(1000, "Client unmounted"); // Close WS with normal closure code
+            ws = null;
+        }
+        if (pollingIntervalId) {
+            clearInterval(pollingIntervalId);
+            pollingIntervalId = null;
+        }
+    };
 }
 
 
-// **IMPORTANT**: `addTransaction` should now primarily be handled by the backend.
-// When a payment/recharge is processed via the backend API, the backend service
-// itself should be responsible for creating the transaction record in the database.
-// Client-side `addTransaction` might only be needed for purely client-side events
-// that need logging, which is less common in this architecture.
-
-// **REMOVE or COMMENT OUT** the client-side `addTransaction` unless specifically needed.
+// **REMOVE or COMMENT OUT** the client-side `addTransaction`
+// It's handled by the backend now.
 /*
 export async function addTransaction(...) { ... }
 */
@@ -156,3 +246,4 @@ export async function logTransactionToBlockchain(...) { ... }
 
 // Keep TransactionFilters interface if used by components
 export type { TransactionFilters };
+        

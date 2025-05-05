@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,15 +6,14 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, ShieldCheck, RadioTower, Gift, History, Settings, LifeBuoy, MoreHorizontal, Tv2, Plane, ShoppingBag, BadgePercent, Loader2, Wallet, Mic, MessageSquare } from "lucide-react"; // Added MessageSquare
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2 } from "lucide-react"; // Removed unused icons, added Loader2, Wallet, Mic, MessageSquare
 import Image from 'next/image';
-import { subscribeToTransactionHistory, Transaction } from '@/services/transactions';
+import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use service with subscription
 import { useToast } from "@/hooks/use-toast";
-import type { Unsubscribe } from 'firebase/firestore';
 import { auth } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
-import { cn } from '@/lib/utils'; // Ensure cn is imported
+import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation'; // Import useRouter
 
 // Static data (can be fetched later if needed)
@@ -45,22 +45,17 @@ const quickLinks = [
 export default function Home() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Track login state
   const { toast } = useToast();
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands(); // Use the hook
   const router = useRouter();
-
-  useEffect(() => {
-     // Redirect to splash screen if not already there
-     if (router.pathname === '/') {
-         router.replace('/splash');
-     }
-  }, [router]);
 
   // Handle voice command results (placeholder)
   useEffect(() => {
     if (transcript) {
       toast({ title: "Voice Command (Simulated)", description: `Recognized: "${transcript}". Processing... (Not Implemented)` });
       // TODO: Add NLP processing and action dispatching here
+      // Example: if (transcript.includes('recharge')) router.push('/recharge/mobile');
     }
   }, [transcript, toast]);
 
@@ -72,56 +67,62 @@ export default function Home() {
   }, [voiceError, toast]);
 
 
-  // Subscribe to recent transactions on component mount
+  // Check auth state and subscribe/unsubscribe to transactions
   useEffect(() => {
-    let unsubscribeFromTransactions: Unsubscribe | null = null;
     setIsLoadingTransactions(true);
-    console.log("Setting up auth listener...");
+    let cleanupSubscription: (() => void) | null = null;
 
-    // Check if user is logged in before subscribing
+    console.log("Setting up auth listener for homepage...");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
-      if (user) {
-        console.log("User logged in, subscribing to transactions...");
-        unsubscribeFromTransactions = subscribeToTransactionHistory(
-          (transactions) => {
-            console.log("Received recent transactions update:", transactions);
-            setRecentTransactions(transactions);
-            setIsLoadingTransactions(false);
-          },
-          (error) => {
-            console.error("Failed to subscribe to recent transactions:", error);
-             if (error.message !== "User not logged in.") { // Avoid duplicate toast if already handled
-                toast({ variant: "destructive", title: "Error Loading Transactions", description: error.message });
-             }
-            setIsLoadingTransactions(false);
-            setRecentTransactions([]); // Clear on error
-          },
-          undefined, // No specific filters for home page recent list
-          3 // Limit to latest 3 transactions
-        );
+        setIsLoggedIn(!!user); // Update login state
 
-      } else {
-        console.log("User is not logged in. Clearing transactions.");
-        if (unsubscribeFromTransactions) {
-             console.log("Unsubscribing from transactions due to logout.");
-             unsubscribeFromTransactions();
-             unsubscribeFromTransactions = null;
+        if (user) {
+            console.log("User logged in on homepage, subscribing to transactions...");
+             // If already subscribed, clean up first (shouldn't happen often here, but good practice)
+             if (cleanupSubscription) {
+                 cleanupSubscription();
+                 cleanupSubscription = null;
+             }
+
+            // Subscribe using the service function which handles WS/polling
+            cleanupSubscription = subscribeToTransactionHistory(
+                (transactions) => {
+                    console.log("Received transactions update (Home):", transactions.length);
+                    setRecentTransactions(transactions); // Already limited to 5 by service
+                    setIsLoadingTransactions(false);
+                },
+                (error) => {
+                    console.error("Error in transaction subscription (Home):", error);
+                     if (error.message !== "User not logged in.") {
+                        toast({ variant: "destructive", title: "Transaction Update Error", description: error.message });
+                    }
+                    setIsLoadingTransactions(false);
+                    setRecentTransactions([]);
+                },
+                undefined, // No specific filters
+                5 // Limit to 5
+            );
+
+        } else {
+            console.log("User logged out on homepage. Clearing transactions and cleaning up.");
+            if (cleanupSubscription) {
+                cleanupSubscription();
+                cleanupSubscription = null;
+            }
+            setRecentTransactions([]);
+            setIsLoadingTransactions(false);
         }
-        setRecentTransactions([]);
-        setIsLoadingTransactions(false);
-      }
     });
 
-    // Cleanup both listeners on unmount
+    // Cleanup auth listener and any active transaction subscription on unmount
     return () => {
-      console.log("Cleaning up auth and transaction listeners.");
+      console.log("Cleaning up homepage auth listener and transaction subscription.");
       unsubscribeAuth();
-      if (unsubscribeFromTransactions) {
-        console.log("Unsubscribing from recent transactions on unmount.");
-        unsubscribeFromTransactions();
+      if (cleanupSubscription) {
+        cleanupSubscription();
       }
     };
-  }, [toast, router]); // Added router to dependency array
+  }, [toast]); // Effect depends only on toast
 
 
   const handleVoiceButtonClick = () => {
@@ -139,9 +140,9 @@ export default function Home() {
       <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2">
           <Link href="/profile" passHref>
-            <Avatar className="h-8 w-8 cursor-pointer">
-              <AvatarImage src="https://picsum.photos/seed/user1/40/40" alt="User" data-ai-hint="user profile"/>
-              <AvatarFallback>U</AvatarFallback>
+            <Avatar className="h-8 w-8 cursor-pointer border-2 border-primary-foreground/50">
+              <AvatarImage src={auth.currentUser?.photoURL || `https://picsum.photos/seed/${auth.currentUser?.uid || 'default'}/40/40`} alt="User" data-ai-hint="user profile"/>
+              <AvatarFallback>{auth.currentUser?.displayName?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
           </Link>
           {/* Location can be dynamic later */}
@@ -165,78 +166,80 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4 space-y-4 pb-20">
+      <main className="flex-grow p-4 space-y-4 pb-20"> {/* Adjusted padding */}
         {/* Send Money Section */}
         <Card className="shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Send Money</CardTitle>
+            <CardTitle className="text-base font-semibold text-primary">Send Money</CardTitle> {/* Adjusted size */}
           </CardHeader>
-          <CardContent className="grid grid-cols-4 gap-x-4 gap-y-6 text-center">
-            <Link href="/scan" passHref>
-              <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+          <CardContent className="grid grid-cols-4 gap-x-2 gap-y-4 text-center p-3"> {/* Adjusted padding and gap */}
+            <Link href="/scan" passHref legacyBehavior>
+              <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="bg-primary/10 text-primary p-3 rounded-full">
-                  <ScanLine className="h-6 w-6" />
+                  <ScanLine className="h-5 w-5" /> {/* Adjusted size */}
                 </div>
                 <span className="text-xs font-medium text-foreground">Scan &amp; Pay</span>
-              </div>
+              </a>
             </Link>
-            <Link href="/send/mobile" passHref>
-              <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+            <Link href="/send/mobile" passHref legacyBehavior>
+              <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="bg-primary/10 text-primary p-3 rounded-full">
-                  <User className="h-6 w-6" />
+                  <User className="h-5 w-5" /> {/* Adjusted size */}
                 </div>
                 <span className="text-xs font-medium text-foreground">To Mobile</span>
-              </div>
+              </a>
             </Link>
-            <Link href="/send/bank" passHref>
-              <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+            <Link href="/send/bank" passHref legacyBehavior>
+              <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="bg-primary/10 text-primary p-3 rounded-full">
-                  <Landmark className="h-6 w-6" />
+                  <Landmark className="h-5 w-5" /> {/* Adjusted size */}
                 </div>
-                <span className="text-xs font-medium text-foreground">To Bank/UPI ID</span>
-              </div>
+                <span className="text-xs font-medium text-foreground">To Bank/UPI</span>
+              </a>
             </Link>
-             <Link href="/balance" passHref>
-              <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+             <Link href="/balance" passHref legacyBehavior>
+              <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="bg-primary/10 text-primary p-3 rounded-full">
-                  <Banknote className="h-6 w-6" />
+                  <Banknote className="h-5 w-5" /> {/* Adjusted size */}
                 </div>
                 <span className="text-xs font-medium text-foreground">Check Balance</span>
-              </div>
+              </a>
             </Link>
           </CardContent>
         </Card>
 
         {/* Conversational Action Link */}
-        <Link href="/conversation" passHref>
-            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-                <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <MessageSquare className="h-6 w-6"/>
-                        <div>
-                            <p className="font-semibold text-sm">Ask PayFriend</p>
-                            <p className="text-xs opacity-90">Try: "Recharge my Jio number"</p>
+        <Link href="/conversation" passHref legacyBehavior>
+            <a className="block">
+                <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
+                    <CardContent className="p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <MessageSquare className="h-6 w-6"/>
+                            <div>
+                                <p className="font-semibold text-sm">Ask PayFriend</p>
+                                <p className="text-xs opacity-90">Try: "Recharge my Jio number"</p>
+                            </div>
                         </div>
-                    </div>
-                    <Mic className="h-5 w-5"/>
-                </CardContent>
-            </Card>
+                        <Mic className="h-5 w-5"/>
+                    </CardContent>
+                </Card>
+            </a>
         </Link>
 
         {/* Quick Links: Recharge, Bills, Tickets Section */}
         <Card className="shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Recharge, Bills & More</CardTitle>
+            <CardTitle className="text-base font-semibold text-primary">Recharge, Bills & More</CardTitle> {/* Adjusted size */}
           </CardHeader>
-          <CardContent className="grid grid-cols-4 gap-x-4 gap-y-6 text-center">
+          <CardContent className="grid grid-cols-4 gap-x-2 gap-y-4 text-center p-3"> {/* Adjusted padding and gap */}
             {quickLinks.map((link) => (
-              <Link key={link.name} href={link.href} passHref>
-                <div className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
+              <Link key={link.name} href={link.href} passHref legacyBehavior>
+                <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                   <div className="bg-primary/10 text-primary p-3 rounded-full">
-                    <link.icon className="h-6 w-6" />
+                    <link.icon className="h-5 w-5" /> {/* Adjusted size */}
                   </div>
                   <span className="text-xs font-medium text-foreground">{link.name}</span>
-                </div>
+                </a>
               </Link>
             ))}
           </CardContent>
@@ -244,16 +247,16 @@ export default function Home() {
 
          {/* Offers Section */}
         <Card className="shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Offers</CardTitle>
-            <Link href="/offers" passHref>
-              <Button variant="link" size="sm" className="text-primary p-0 h-auto">View All</Button>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+            <CardTitle className="text-base font-semibold text-primary">Offers For You</CardTitle> {/* Adjusted size */}
+            <Link href="/offers" passHref legacyBehavior>
+              <a className="text-xs text-primary hover:underline">View All</a>
             </Link>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3"> {/* Adjusted gap and padding */}
              {offers.slice(0, 3).map((offer) => (
-              <Link href={`/offers/${offer.id}`} key={offer.id} passHref>
-                <div className="relative rounded-lg overflow-hidden cursor-pointer group">
+              <Link href={`/offers/${offer.id}`} key={offer.id} passHref legacyBehavior>
+                <a className="block relative rounded-lg overflow-hidden cursor-pointer group">
                   <Image
                     src={offer.imageUrl}
                     alt={offer.title}
@@ -263,11 +266,11 @@ export default function Home() {
                     data-ai-hint={offer.dataAiHint}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
-                  <div className="absolute bottom-0 left-0 p-2 text-white">
-                      <p className="text-sm font-semibold">{offer.title}</p>
-                      <p className="text-xs opacity-90">{offer.description}</p>
+                  <div className="absolute bottom-0 left-0 p-1.5 text-white"> {/* Adjusted padding */}
+                      <p className="text-xs font-semibold">{offer.title}</p> {/* Adjusted size */}
+                      <p className="text-[10px] opacity-90">{offer.description}</p> {/* Adjusted size */}
                   </div>
-                </div>
+                </a>
               </Link>
              ))}
           </CardContent>
@@ -275,16 +278,16 @@ export default function Home() {
 
         {/* Switch Section */}
         <Card className="shadow-md">
-           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">PayFriend Switch</CardTitle>
+           <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+            <CardTitle className="text-base font-semibold text-primary">PayFriend Switch</CardTitle> {/* Adjusted size */}
             {/* Link to a dedicated Switch page if needed */}
            </CardHeader>
-           <CardContent className="grid grid-cols-4 gap-4 text-center">
+           <CardContent className="grid grid-cols-4 gap-3 text-center p-3"> {/* Adjusted padding */}
              {switchApps.map((app) => (
                  <Link key={app.id} href={app.href} passHref legacyBehavior>
                     <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity" data-testid={`switch-app-${app.id}`}>
                       <div className={`${app.bgColor} ${app.color} p-3 rounded-full`}>
-                        <app.icon className="h-6 w-6" />
+                        <app.icon className="h-5 w-5" /> {/* Adjusted size */}
                       </div>
                       <span className="text-xs font-medium text-foreground">{app.name}</span>
                     </a>
@@ -295,31 +298,32 @@ export default function Home() {
 
          {/* Recent Transactions Section */}
          <Card className="shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-semibold text-primary">Recent Transactions</CardTitle>
-             <Link href="/history" passHref>
-                <Button variant="link" size="sm" className="text-primary p-0 h-auto">View History</Button>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3"> {/* Adjusted padding */}
+            <CardTitle className="text-base font-semibold text-primary">Recent Activity</CardTitle> {/* Adjusted size */}
+             <Link href="/history" passHref legacyBehavior>
+                <a className="text-xs text-primary hover:underline">View All</a>
              </Link>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2 p-3 divide-y divide-border"> {/* Adjusted padding */}
             {isLoadingTransactions ? (
                  <div className="flex justify-center items-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground ml-2">Loading transactions...</p>
                  </div>
+            ) : !isLoggedIn ? (
+                 <p className="text-xs text-muted-foreground text-center py-4">Log in to view transactions.</p>
             ) : recentTransactions.length === 0 ? (
-                 <p className="text-sm text-muted-foreground text-center py-4">No recent transactions.</p>
+                 <p className="text-xs text-muted-foreground text-center py-4">No recent transactions.</p>
             ) : (
                  recentTransactions.map((tx) => (
-                 <div key={tx.id} className="flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                     <Avatar className="h-9 w-9">
+                 <div key={tx.id} className="flex items-center justify-between pt-2"> {/* Add padding top for separation */}
+                   <div className="flex items-center gap-2 overflow-hidden"> {/* Reduced gap */}
+                     <Avatar className="h-8 w-8"> {/* Adjusted size */}
                        <AvatarImage src={`https://picsum.photos/seed/${tx.avatarSeed || tx.id}/40/40`} alt={tx.name} data-ai-hint="person avatar"/>
                        <AvatarFallback>{tx.name?.charAt(0) || '?'}</AvatarFallback>
                      </Avatar>
-                     <div>
-                       <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                       <p className="text-xs text-muted-foreground">{format(tx.date, "PPp")}</p> {/* Use formatted date */}
+                     <div className="overflow-hidden">
+                       <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
+                       <p className="text-xs text-muted-foreground">{format(new Date(tx.date), "PP HH:mm")}</p> {/* Ensure date is Date object */}
                      </div>
                    </div>
                    <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-green-600' : 'text-foreground'}`}>
@@ -334,32 +338,33 @@ export default function Home() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg flex justify-around items-center p-2">
-         <Link href="/" passHref>
-            <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-primary">
-                <Landmark className="h-5 w-5 mb-1" />
-                <span className="text-xs">Home</span>
-            </Button>
+      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg flex justify-around items-center p-1"> {/* Reduced padding */}
+         <Link href="/" passHref legacyBehavior>
+            <a className="flex flex-col items-center h-auto p-1 text-primary">
+                <Landmark className="h-5 w-5 mb-0.5" /> {/* Adjusted spacing */}
+                <span className="text-[10px]">Home</span> {/* Adjusted size */}
+            </a>
          </Link>
-          <Link href="/services" passHref>
-             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                 <Bolt className="h-5 w-5 mb-1" />
-                 <span className="text-xs">Services</span>
-             </Button>
+          <Link href="/services" passHref legacyBehavior>
+             <a className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
+                 <Bolt className="h-5 w-5 mb-0.5" /> {/* Adjusted spacing */}
+                 <span className="text-[10px]">Services</span> {/* Adjusted size */}
+             </a>
           </Link>
-         <Link href="/history" passHref>
-            <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                <History className="h-5 w-5 mb-1" />
-                <span className="text-xs">History</span>
-            </Button>
+         <Link href="/history" passHref legacyBehavior>
+            <a className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
+                <History className="h-5 w-5 mb-0.5" /> {/* Adjusted spacing */}
+                <span className="text-[10px]">History</span> {/* Adjusted size */}
+            </a>
          </Link>
-          <Link href="/profile" passHref>
-             <Button variant="ghost" className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
-                <User className="h-5 w-5 mb-1" /> {/* Changed Settings to User for clarity */}
-                <span className="text-xs">Profile</span>
-             </Button>
+          <Link href="/profile" passHref legacyBehavior>
+             <a className="flex flex-col items-center h-auto p-1 text-muted-foreground hover:text-primary">
+                <User className="h-5 w-5 mb-0.5" /> {/* Changed Settings to User, Adjusted spacing */}
+                <span className="text-[10px]">Profile</span> {/* Adjusted size */}
+             </a>
          </Link>
       </nav>
     </div>
   );
 }
+        

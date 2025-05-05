@@ -1,11 +1,11 @@
+
 /**
  * @fileOverview Service functions for managing the Zet Pay Wallet via the backend API.
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
 
-// No need for Firestore imports here anymore
-
+// Define the expected result structure from the backend API
 export interface WalletTransactionResult {
     success: boolean;
     transactionId?: string; // The ID of the transaction record created by the backend
@@ -54,12 +54,13 @@ export async function topUpWallet(userId: string | undefined, amount: number, fu
 
      try {
         // Backend infers user from token
-        const result = await apiClient<{ success: boolean; newBalance: number; message?: string }>('/wallet/topup', {
+        // Use the correct expected response type from the backend endpoint
+        const result = await apiClient<{ success: boolean; newBalance?: number; message?: string; transactionId?: string }>('/wallet/topup', {
             method: 'POST',
             body: JSON.stringify({ amount, fundingSourceInfo }),
         });
         console.log("Wallet top-up API response:", result);
-        return result;
+        return result; // Return the structured result
      } catch (error: any) {
         console.error("Error topping up wallet via API:", error);
         return { success: false, message: error.message || "Failed to process top-up." };
@@ -103,3 +104,4 @@ export async function payViaWallet(
          return { success: false, message: error.message || "Failed to process wallet payment." };
      }
 }
+        
