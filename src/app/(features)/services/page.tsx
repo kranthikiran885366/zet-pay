@@ -65,7 +65,7 @@ import {
     Building2, // For Zet Bank / Municipal
     Zap, // For EV Charging
     Siren, // For Emergency Assistance
-    Store, // For Rest Stop / Shops
+    Store, // For Rest Stop (placeholder)
     HeartPulse, // For Healthcare
     Wrench, // Electrician/Plumber
     SprayCan, // Home Cleaning/Pest Control
@@ -89,7 +89,17 @@ import {
     Flame, // LPG
     Building, // Housing Society
     LucideIcon, // Generic placeholder if needed
-    Tv2 // Added Tv2 icon
+    Tv2, // Added Tv2 icon
+    Stethoscope, // Doctor Appointments
+    BedDouble, // Hospital Beds
+    FlaskConical, // Lab Tests
+    Dumbbell, // Fitness Trainer
+    Pill, // Pharmacy
+    Ambulance, // Emergency Ambulance
+    Repeat, // Medicine Subscription
+    BadgePercent, // Health Offers
+    BedSingle, // Added BedSingle icon
+    Play, // Added Play icon
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -125,6 +135,7 @@ const financialServices = [
     { name: "Check Credit Score", icon: Gauge, href: "/credit-score", category: "Financial Services" },
     { name: "Personal Loans", icon: Banknote, href: "/loans", category: "Financial Services" },
     { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" }, // Link to Zet Bank page
+    { name: "Pay Later", icon: Wallet, href: "/bnpl", category: "Financial Services" }, // Added Pay Later link
 ];
 
 const travelServices = [
@@ -162,6 +173,11 @@ const entertainmentServices = [
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming" },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming" }, // Using Play Store
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming" }, // Link to Game Zone page
+     { name: "AR/VR Events", icon: Sparkles, href: "/entertainment/arvr", category: "Entertainment & Gaming" },
+     { name: "Group Booking", icon: Users, href: "/entertainment/group", category: "Entertainment & Gaming" },
+     { name: "Event Reminders", icon: BellRing, href: "/reminders?category=Event", category: "Entertainment & Gaming" }, // Link to reminders with filter
+     { name: "Discover Events", icon: MapPin, href: "/entertainment/discover", category: "Entertainment & Gaming" },
+     { name: "Watch Party", icon: Users, href: "/entertainment/watchparty", category: "Entertainment & Gaming" },
 ];
 
 const templeServices = [
@@ -203,6 +219,7 @@ const utilityToolsServices = [
    { name: "Secure Vault", icon: FolderLock, href: "/vault", category: "Utilities & Tools" },
    { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Utilities & Tools" },
    { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Utilities & Tools" }, // Added SIP Reminders
+   { name: "Bill Reminders", icon: BellRing, href: "/reminders", category: "Utilities & Tools" }, // Add Bill Reminders
 ];
 
 const vouchersMoreServices = [
@@ -230,7 +247,13 @@ const healthcareServices = [
     { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness" },
 ];
 
+const aiAndToolsServices = [
+     { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools"}, // Conversational AI
+     { name: "Spending Analysis", icon: TrendingUp, href: "/analysis", category: "AI & Tools"}, // Spending Analysis
+     { name: "Savings Goals", icon: Target, href: "/goals", category: "AI & Tools"}, // Goal-based planning
+];
 
+// --- Combine All Services ---
 const allServices = [
     ...rechargeBillPayServices,
     ...loanRepaymentServices,
@@ -245,7 +268,8 @@ const allServices = [
     ...utilityToolsServices,
     ...vouchersMoreServices,
     ...paymentsServices,
-    ...healthcareServices, // Added healthcare services
+    ...healthcareServices,
+    ...aiAndToolsServices, // Added AI & Tools
 ];
 
 const groupServicesByCategory = (services: any[]) => {
@@ -253,19 +277,20 @@ const groupServicesByCategory = (services: any[]) => {
     // Define NEW category order reflecting broader scope
     const categoryOrder = [
         "Recharge & Bills",
-        "Travel",
-        "Entertainment & Gaming",
-        "Food & Shopping",
-        "Hyperlocal Services",
+        "Payments", // Group pure payment actions
         "Financial Services",
-        "Loan Repayment",
+        "Travel",
+        "Food & Shopping",
+        "Entertainment & Gaming",
+        "Healthcare & Wellness",
+        "Hyperlocal Services",
         "Temple Services",
-        "Healthcare & Wellness", // Added Healthcare category
         "Transit & Toll",
-        "Payments",
         "Municipal Services",
+        "AI & Tools", // Added AI & Tools category
         "Utilities & Tools",
         "Vouchers & More",
+        "Loan Repayment", // Moved lower maybe?
         // Add more categories as needed
     ];
 
