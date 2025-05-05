@@ -151,15 +151,19 @@ const travelServices = [
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel"},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel" },
     { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel" },
-    { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Travel" },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel" }, // Link to EV Charging page
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel" }, // Link to Rest Stop page
+    { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel" }, // Added Live Bus Tracking link
+    { name: "Live Train Status", icon: MapPin, href: "/live/train", category: "Travel" }, // Added Live Train Tracking link
 ];
 
 const transitTollServices = [
+    { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Transit & Toll" },
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Transit & Toll" },
     { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Transit & Toll"},
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Transit & Toll" }, // Smart Parking
+    { name: "Bus Pass Apply", icon: Ticket, href: "/passes/bus", category: "Transit & Toll" }, // Added Bus Pass Application
+    { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Transit & Toll" }, // Added My Passes
 ];
 
 const foodAndShoppingServices = [
@@ -245,7 +249,6 @@ const healthcareServices = [
     { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness" },
     { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness" },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness" },
-    { name: "Emergency Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Emergency" },
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Wellness" },
     { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Records" },
     { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Offers" },
@@ -297,7 +300,7 @@ const groupServicesByCategory = (services: any[]) => {
         "Utilities & Tools",
         "Vouchers & More",
         // Categories below might be empty depending on final service assignments
-        "Emergency",
+        "Emergency", // Ensure Ambulance is categorized here if needed
         "Wellness",
         "Records",
         "Offers",
