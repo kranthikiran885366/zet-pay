@@ -71,7 +71,7 @@ import {
     SprayCan, // Home Cleaning/Pest Control
     WashingMachine, // Laundry
     Scissors, // Tailoring
-    CarIcon as CarWashIcon, // Use CarIcon for Car Wash, alias
+    Car as CarWashIcon, // Corrected icon
     Package, // Courier
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
@@ -81,6 +81,9 @@ import {
     GraduationCap, // Added for Education Fees
     PiggyBank, // Added for Pocket Money
     IndianRupee, // Added for Cash Withdrawal
+    TrendingUp, // Added for Stock Market
+    BookUser, // Placeholder for Mobile Postpaid
+    Receipt, // Added for Traffic Challan
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -108,6 +111,8 @@ const travelServices = [
     { name: "EV Charging Stations", icon: Zap, href: "/travels/ev-charging", category: "Travel" },
     { name: "Rest Stop Booking", icon: Store, href: "/travels/rest-stop", category: "Travel" },
     { name: "Emergency Assistance", icon: Siren, href: "/travels/assistance", category: "Travel" },
+    { name: "Live Bus Tracking", icon: Bus, href: "/live/bus", category: "Travel"},
+    { name: "Live Train Tracking", icon: Train, href: "/live/train", category: "Travel"},
 ];
 
 const financialServices = [
@@ -121,6 +126,7 @@ const financialServices = [
     { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" },
     { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Financial Services" },
     { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Financial Services" }, // Added Pocket Money
+    { name: "Stock Market", icon: TrendingUp, href: "/stocks", category: "Financial Services"}, // Added Stock Market
 ];
 
 const entertainmentServices = [
@@ -152,17 +158,19 @@ const utilityServices = [
 const otherServices = [
    // Recharge & Bill Payments (Example subset)
     { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills" },
+    { name: "Mobile Postpaid", icon: BookUser, href: "/bills/mobile-postpaid", category: "Recharge & Bills"}, // Added Postpaid
     { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills" },
     { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills" },
     { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Recharge & Bills" },
-    { name: "Education Fees", icon: GraduationCap, href: "/bills/education", category: "Recharge & Bills" }, // Added Education Fees
+    { name: "Education Fees", icon: GraduationCap, href: "/bills/education", category: "Recharge & Bills" },
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Recharge & Bills" },
     { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills" },
     { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills" },
     { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills" },
-    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills" }, // Note: Duplicate href, maybe differentiate later
+    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills" },
     { name: "Intl Calling", icon: PhoneCall, href: "/recharge/isd", category: "Recharge & Bills" },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Recharge & Bills" },
+    { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Recharge & Bills"}, // Added Challan
 
     // Vouchers & More
     { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
