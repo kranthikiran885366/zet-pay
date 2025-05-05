@@ -261,4 +261,3 @@ export default function DarshanBookingPage() {
         </div>
     );
 }
-
