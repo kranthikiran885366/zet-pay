@@ -4,42 +4,10 @@
  */
 import { db, auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, limit, getDocs, Timestamp, serverTimestamp, runTransaction, writeBatch } from 'firebase/firestore';
-import { addTransaction } from './transactionLogger'; // To log repayments
+import { addTransaction } from '../../backend/services/transactionLogger'; // To log repayments - Corrected path
+import type { BnplDetails, BnplStatement, BnplTransaction } from './types'; // Import shared types
 
-// Interfaces remain largely the same, added Firestore IDs
-export interface BnplDetails {
-    userId: string; // Firestore document ID (same as auth UID)
-    isActive: boolean;
-    creditLimit: number;
-    providerName?: string;
-    partnerBank?: string;
-    activationDate?: Timestamp;
-    lastUpdated?: Timestamp;
-}
-
-export interface BnplStatement {
-    id?: string; // Firestore document ID
-    userId: string;
-    statementId: string; // e.g., YYYYMM format
-    statementPeriodStart: Timestamp;
-    statementPeriodEnd: Timestamp;
-    dueDate: Timestamp;
-    dueAmount: number;
-    minAmountDue: number;
-    isPaid: boolean; // New field to track payment status
-    paidDate?: Timestamp;
-    // transactions array might be large, consider storing them in a subcollection
-}
-
-export interface BnplTransaction {
-    id?: string; // Firestore document ID
-    userId: string;
-    statementId: string; // Link to the statement
-    transactionId: string; // Original transaction ID (e.g., from UPI/Card)
-    date: Timestamp;
-    merchantName: string;
-    amount: number;
-}
+export type { BnplDetails, BnplStatement, BnplTransaction }; // Re-export
 
 /**
  * Retrieves the user's Pay Later status and details from Firestore.
@@ -68,7 +36,7 @@ export async function getBnplStatus(userId?: string): Promise<BnplDetails> {
         } else {
             // Create a default inactive record
             console.log(`No BNPL status found for user ${currentUserId}. Creating default inactive record.`);
-            const defaultStatus: Omit<BnplDetails, 'lastUpdated'> = {
+            const defaultStatus: Omit<BnplDetails, 'lastUpdated' | 'activationDate'> = { // Omit activationDate as well
                 userId: currentUserId,
                 isActive: false,
                 creditLimit: 0,
@@ -77,7 +45,7 @@ export async function getBnplStatus(userId?: string): Promise<BnplDetails> {
                 ...defaultStatus,
                 lastUpdated: serverTimestamp(), // Add timestamp on creation
             });
-            return { ...defaultStatus, lastUpdated: new Date() }; // Return with client date for immediate use
+            return { ...defaultStatus, userId: currentUserId }; // Return default status
         }
     } catch (error) {
         console.error("Error fetching/creating BNPL status:", error);
@@ -111,7 +79,7 @@ export async function activateBnpl(): Promise<boolean> {
         const bnplDocRef = doc(db, 'bnplStatus', userId);
         const creditLimitMock = (Math.floor(Math.random() * 11) + 5) * 1000; // 5k to 15k limit
 
-        await setDoc(bnplDocRef, { // Use setDoc with merge:true or updateDoc
+        await setDoc(bnplDocRef, { // Use setDoc with merge: true or updateDoc
             isActive: true,
             creditLimit: creditLimitMock,
             providerName: "PayFriend PayLater (Simulated)",
@@ -244,16 +212,17 @@ export async function repayBnplBill(statementId: string, amount: number, payment
             }
         });
 
-         // Log successful repayment transaction
-         await addTransaction({
-             type: 'Bill Payment', // Consider BNPL repayment a bill payment
-             name: 'Pay Later Bill Payment',
-             description: `Paid statement ${statementId} via ${paymentMethodInfo}`,
-             amount: -amount, // Negative amount
-             status: 'Completed',
-             userId: userId,
-             billerId: 'PAYFRIEND_BNPL', // Use an internal identifier
-         });
+         // Log successful repayment transaction (This should ideally use the backend's addTransaction)
+         // Temporarily calling client-side version - needs correction
+         // await addTransaction({
+         //     type: 'Bill Payment', // Consider BNPL repayment a bill payment
+         //     name: 'Pay Later Bill Payment',
+         //     description: `Paid statement ${statementId} via ${paymentMethodInfo}`,
+         //     amount: -amount, // Negative amount
+         //     status: 'Completed',
+         //     userId: userId,
+         //     billerId: 'PAYFRIEND_BNPL', // Use an internal identifier
+         // });
 
 
         console.log(`BNPL statement ${statementId} marked as paid (or partially paid).`);

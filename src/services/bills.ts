@@ -3,7 +3,10 @@
  */
 
 import type { Transaction } from './types'; // Use the common Transaction interface
-import { addTransaction } from './transactionLogger'; // Import function to add transaction to Firestore
+// Import addTransaction from the backend services
+import { addTransaction } from '../../backend/services/transactionLogger'; // Corrected import path
+import { apiClient } from '@/lib/apiClient';
+import { format } from 'date-fns';
 
 export interface BillPaymentDetails {
     billerId: string;
@@ -11,98 +14,71 @@ export interface BillPaymentDetails {
     amount: number;
     billerType: string; // Electricity, Water, Insurance etc.
     billerName?: string; // Optional: For display/confirmation
+    // paymentMethod?: 'wallet' | 'upi' | 'card'; // Optional: If client wants to suggest a method
 }
 
 /**
- * Asynchronously fetches the outstanding amount for a specific biller and identifier.
- * SIMULATED - Actual implementation depends on BBPS or direct biller integration APIs.
+ * Fetches the outstanding bill details from the backend API.
+ * The backend handles the actual interaction with BBPS or biller APIs.
  *
- * @param {string} billerId Biller ID from BBPS or aggregator.
- * @param {string} identifier Consumer number, account ID, policy number, etc.
- * @returns {Promise<object|null>} Bill details or null if not found/applicable.
+ * @param billerId Biller ID from BBPS or aggregator.
+ * @param identifier Consumer number, account ID, policy number, etc.
+ * @returns A promise that resolves to bill details (amount, dueDate, etc.) or null if not found.
  */
-export async function fetchBillAmount(billerId: string, identifier: string): Promise<number | null> {
-    console.log(`[Bill Provider Sim] Fetching bill for Biller: ${billerId}, Identifier: ${identifier}`);
-    await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
+export async function fetchBillDetails(billerId: string, identifier: string): Promise<{ amount: number | null; dueDate?: Date | null; consumerName?: string } | null> {
+    console.log(`[Client Service] Fetching bill details via API for Biller: ${billerId}, Identifier: ${identifier}`);
+    const endpoint = `/bills/${billerId}/details?identifier=${encodeURIComponent(identifier)}`; // Assuming endpoint structure
 
-    // Mock data based on controller examples
-    if ((billerId === 'bescom' || billerId === 'mock-prepaid-bescom') && identifier === '12345') {
-        return 1350.75;
+    try {
+        // Type assertion for the expected API response structure
+        const result = await apiClient<{ success: boolean; message?: string; amount?: number; dueDate?: string; consumerName?: string }>(endpoint);
+
+        if (result.success && result.amount !== undefined) {
+            return {
+                amount: result.amount,
+                dueDate: result.dueDate ? new Date(result.dueDate) : null,
+                consumerName: result.consumerName
+            };
+        } else {
+            // Handle cases where API indicates success: false or amount is missing
+            console.log(`[Client Service] Bill details not found or fetch failed: ${result.message || 'No amount returned.'}`);
+            return { amount: null, dueDate: null, consumerName: undefined }; // Return null amount to indicate manual entry needed
+        }
+    } catch (error: any) {
+        console.error(`Error fetching bill details for ${billerId} via API:`, error);
+        throw error; // Re-throw error to be caught by UI
     }
-    if ((billerId === 'bwssb') && identifier === 'W9876') {
-         return 420.00;
-    }
-     if ((billerId === 'mock-school-1') && identifier === 'S101') { // Example education fee
-         return 5000.00;
-     }
-      if ((billerId === 'hdfc-cc') && identifier === '4111********1111') { // Example credit card
-          return 12345.67;
-      }
-
-
-    // Return null if amount fetching is not supported or no bill found for mock data
-    console.log(`[Bill Provider Sim] No mock bill amount found for biller ${billerId}, identifier ${identifier}.`);
-    return null; // Bill fetch not supported or not found
 }
 
+
 /**
- * Asynchronously processes a bill payment.
- * SIMULATED - Actual implementation depends on payment gateway and biller integration.
- * Logs the transaction outcome to Firestore via addTransaction.
+ * Sends a bill payment request to the backend API.
+ * The backend handles payment processing (UPI/Wallet/Card) and transaction logging.
  *
- * @param {object} details Payment details { billerId, identifier, amount, type, transactionId }.
- * @returns {Promise<object>} Result status and messages.
+ * @param paymentDetails Details required for the bill payment.
+ * @returns A promise that resolves to the final Transaction object returned by the backend.
+ * @throws Error if the API call fails.
  */
 export async function processBillPayment(paymentDetails: BillPaymentDetails): Promise<Transaction> {
-    console.log("Processing bill payment:", paymentDetails);
-    // TODO: Implement actual API call to backend for payment processing (via UPI, Wallet, Card).
-    // This would involve selecting payment method, handling PIN/OTP, etc.
-    await new Promise(resolve => setTimeout(resolve, 1800)); // Simulate payment processing delay
+    console.log("Processing bill payment via API:", paymentDetails);
+    const endpoint = `/bills/${paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-')}`; // Example: /api/bills/electricity
 
-    // Simulate different outcomes
-    const randomStatus = Math.random();
-    let status: Transaction['status'] = 'Completed';
-    let descriptionSuffix = '';
-    if (randomStatus < 0.08) {
-        status = 'Failed';
-        descriptionSuffix = ' - Payment Failed';
-    } else if (randomStatus < 0.2) {
-        status = 'Pending';
-         descriptionSuffix = ' - Payment Pending';
-    }
-
-    const description = `${paymentDetails.billerName || paymentDetails.billerType} Bill for ${paymentDetails.identifier}${descriptionSuffix}`;
-
-    // Add transaction to Firestore history
-    // This assumes the payment processing part (debit from user) was attempted.
     try {
-        const transaction = await addTransaction({
-            type: 'Bill Payment',
-            name: paymentDetails.billerName || paymentDetails.billerType,
-            description: description,
-            amount: -paymentDetails.amount, // Negative for payment
-            status: status,
-            billerId: paymentDetails.billerId,
-            // upiId or other identifiers might be relevant depending on payment method
+        // Backend API handles payment deduction and logging
+        const resultTransaction = await apiClient<Transaction>(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(paymentDetails),
         });
-        console.log(`Bill payment transaction logged with ID: ${transaction.id} and status: ${status}`);
-        return transaction; // Return the created transaction details
-    } catch (error) {
-        console.error("Error logging bill payment transaction:", error);
-        // If logging fails, we still need to inform the user about the likely payment status
-        // Create a temporary Transaction object to return
-        const fallbackTransaction: Transaction = {
-            id: `local_${Date.now()}`,
-            userId: 'unknown', // User ID not available in this scope without auth context
-            type: 'Bill Payment',
-            name: paymentDetails.billerName || paymentDetails.billerType,
-            description: `${description} (Logging Failed)`,
-            amount: -paymentDetails.amount,
-            status: status, // Reflect the simulated payment status
-            date: new Date(),
-            avatarSeed: (paymentDetails.billerName || paymentDetails.billerType).toLowerCase(),
-            billerId: paymentDetails.billerId,
+        console.log("Bill Payment API response (Transaction):", resultTransaction);
+
+        // Convert date string from API response to Date object
+        return {
+            ...resultTransaction,
+            date: new Date(resultTransaction.date),
+             avatarSeed: resultTransaction.avatarSeed || resultTransaction.name?.toLowerCase().replace(/\s+/g, '') || resultTransaction.id,
         };
-        return fallbackTransaction;
+    } catch (error: any) {
+         console.error("Error processing bill payment via API:", error);
+         throw error; // Re-throw the error for UI handling
     }
 }

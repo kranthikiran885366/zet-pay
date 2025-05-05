@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from '@/lib/apiClient';
-import { addTransaction } from './transactionLogger'; // Import centralized logger
+import { addTransaction } from '../../backend/services/transactionLogger'; // Import centralized logger - Corrected Path
 import type { Transaction } from './types'; // Import Transaction type
 import { format } from "date-fns";
 

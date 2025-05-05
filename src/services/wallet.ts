@@ -3,16 +3,12 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-import { addTransaction } from './transactionLogger'; // Use centralized logger
-import type { Transaction } from './types'; // For internal logging if needed
+import { addTransaction } from '../../backend/services/transactionLogger'; // Use backend logger - Corrected Path
+import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
 
-// Define the expected result structure from the backend API
-export interface WalletTransactionResult {
-    success: boolean;
-    transactionId?: string; // The ID of the transaction record created by the backend
-    newBalance?: number; // Optionally returned by the backend after update
-    message?: string;
-}
+// Define the expected result structure from the backend API (Already in types.ts)
+// export interface WalletTransactionResult { ... }
+export type { WalletTransactionResult }; // Re-export
 
 
 /**
@@ -109,6 +105,7 @@ export async function payViaWallet(
 
 
 /**
+ * @deprecated This client-side simulation is deprecated. Use the `payViaWallet` function to interact with the backend API.
  * Internal helper function used by other services/controllers for direct wallet debit/credit.
  * Handles logging and real-time updates.
  * IMPORTANT: Negative amount signifies a CREDIT to the wallet (like a top-up/refund).

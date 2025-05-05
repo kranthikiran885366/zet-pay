@@ -19,22 +19,11 @@ import {
 } from 'firebase/firestore';
 import { getLinkedAccounts, BankAccount } from './upi'; // To get user's default bank account
 import { topUpWallet } from './wallet'; // To credit back to the wallet
-import { addTransaction, logTransactionToBlockchain } from './transactionLogger'; // To log recovery transaction
+import { addTransaction } from '../../backend/services/transactionLogger'; // To log recovery transaction - Corrected path
+import type { RecoveryTask } from './types'; // Import shared type
 
-interface RecoveryTask {
-    id?: string; // Firestore document ID
-    userId: string;
-    amount: number;
-    originalRecipientUpiId: string;
-    recoveryStatus: 'Scheduled' | 'Processing' | 'Completed' | 'Failed';
-    scheduledTime: Timestamp;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
-    failureReason?: string;
-    bankUpiId?: string; // The bank account used/attempted for recovery
-    recoveryTransactionId?: string; // ID of the successful debit transaction
-    walletCreditTransactionId?: string; // ID of the successful wallet credit transaction
-}
+export type { RecoveryTask }; // Re-export
+
 
 /**
  * Schedules a recovery task in Firestore to deduct funds from the user's bank account

@@ -4,8 +4,8 @@
 
 import admin from 'firebase-admin'; // Use admin SDK
 const db = admin.firestore();
-import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service
-import { sendToUser } from '../server'; // Import backend WebSocket sender
+import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
+import { sendToUser } from '../server'; // Import backend WebSocket sender using relative path
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
 import { Timestamp } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp
 
@@ -118,7 +118,3 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
     // Call the actual blockchain logging service function
     return blockchainLogger.logTransaction(transactionId, blockchainPayload);
 }
-
-// Note: The previous addTransaction function using apiClient is moved to the client-side service `src/services/transactionLogger.ts`
-
-    

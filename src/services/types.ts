@@ -40,6 +40,8 @@ export interface Transaction {
   ticketId?: string;
   refundEta?: string;
   blockchainHash?: string;
+  paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking'; // Optional: How was it paid?
+  originalTransactionId?: string; // For refunds/chargebacks
 }
 
 export interface BankAccount {
@@ -173,7 +175,87 @@ export interface Mandate {
     mandateUrn?: string;
 }
 
+// --- BNPL Types ---
+export interface BnplDetails {
+    userId: string; // Firestore document ID (same as auth UID)
+    isActive: boolean;
+    creditLimit: number;
+    providerName?: string;
+    partnerBank?: string;
+    activationDate?: Timestamp | Date; // Allow Date for client
+    lastUpdated?: Timestamp | Date;
+}
 
-// Note: If using Firestore Timestamps directly on client was intended,
-// import Timestamp type from 'firebase/firestore' and use it here.
-// However, generally, it's better to work with JS Dates on the client.
+export interface BnplStatement {
+    id?: string; // Firestore document ID
+    userId: string;
+    statementId: string; // e.g., YYYYMM format
+    statementPeriodStart: Timestamp | Date;
+    statementPeriodEnd: Timestamp | Date;
+    dueDate: Timestamp | Date;
+    dueAmount: number;
+    minAmountDue: number;
+    isPaid: boolean; // New field to track payment status
+    paidDate?: Timestamp | Date;
+    transactions?: BnplTransaction[]; // Embed or fetch separately
+}
+
+export interface BnplTransaction {
+    id?: string; // Firestore document ID
+    userId: string;
+    statementId: string; // Link to the statement
+    transactionId: string; // Original transaction ID (e.g., from UPI/Card)
+    date: Timestamp | Date;
+    merchantName: string;
+    amount: number;
+}
+
+// --- Cash Withdrawal Types ---
+export interface ZetAgent {
+    id: string; // Firestore document ID of the agent (if stored)
+    name: string;
+    address: string;
+    distanceKm: number; // Calculated distance
+    operatingHours: string;
+    // Add other relevant fields like geo-location, current cash limit, etc.
+}
+
+export interface WithdrawalDetails {
+    id?: string; // Firestore document ID for the withdrawal request
+    userId: string;
+    agentId: string;
+    agentName?: string; // Optional denormalized agent name
+    amount: number;
+    otp: string;
+    qrData: string;
+    status: 'Pending Confirmation' | 'Completed' | 'Expired' | 'Cancelled' | 'Failed';
+    createdAt: Timestamp | Date | string; // Allow multiple types
+    expiresAt: Timestamp | Date | string;
+    completedAt?: Timestamp | Date | string;
+    failureReason?: string;
+    transactionId?: string; // ID of the final transaction log entry
+    updatedAt?: Timestamp | Date | string; // Allow multiple types
+    expiresInSeconds?: number; // Calculated on client potentially
+}
+
+// --- Wallet Recovery Types ---
+export interface RecoveryTask {
+    id?: string; // Firestore document ID
+    userId: string;
+    amount: number;
+    originalRecipientUpiId: string;
+    recoveryStatus: 'Scheduled' | 'Processing' | 'Completed' | 'Failed';
+    scheduledTime: Timestamp | Date;
+    createdAt: Timestamp | Date;
+    updatedAt: Timestamp | Date;
+    failureReason?: string;
+    bankUpiId?: string; // The bank account used/attempted for recovery
+    recoveryTransactionId?: string; // ID of the successful debit transaction
+    walletCreditTransactionId?: string; // ID of the successful wallet credit transaction
+}
+
+
+// Note: Where Date | string is used, API will return string (likely ISO 8601),
+// and the service function should convert it to a Date object for client use.
+// Backend types might use Timestamp directly.
+

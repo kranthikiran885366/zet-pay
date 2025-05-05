@@ -5,38 +5,13 @@
 
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc, runTransaction } from 'firebase/firestore';
-import { addTransaction } from './transactionLogger'; // For logging the withdrawal/hold
+import { addTransaction } from '../../backend/services/transactionLogger'; // For logging the withdrawal/hold - Corrected path
 import { getWalletBalance, payViaWallet } from './wallet'; // To check/hold balance potentially
 import { addDays, differenceInMinutes } from 'date-fns'; // For expiry calculation
+import type { WithdrawalDetails, ZetAgent } from './types'; // Import shared types
 
-export interface ZetAgent {
-    id: string; // Firestore document ID of the agent (if stored)
-    name: string;
-    address: string;
-    distanceKm: number; // Calculated distance
-    operatingHours: string;
-    // Add other relevant fields like geo-location, current cash limit, etc.
-}
+export type { WithdrawalDetails, ZetAgent }; // Re-export
 
-export interface WithdrawalDetails {
-    id?: string; // Firestore document ID for the withdrawal request
-    userId: string;
-    agentId: string;
-    agentName?: string; // Optional denormalized agent name
-    amount: number;
-    otp: string;
-    qrData: string;
-    status: 'Pending Confirmation' | 'Completed' | 'Expired' | 'Cancelled' | 'Failed';
-    createdAt: Timestamp;
-    expiresAt: Timestamp;
-    completedAt?: Timestamp;
-    failureReason?: string;
-    // Added from backend
-    transactionId?: string;
-    updatedAt?: Timestamp;
-    expiresInSeconds?: number; // Calculated on client potentially
-
-}
 
 /**
  * Asynchronously retrieves a list of nearby Zet Agent shops.
@@ -99,7 +74,7 @@ export async function initiateWithdrawal(agentId: string, amount: number): Promi
     const qrData = `zetpay://cashwithdrawal?txn=${transactionId}&agent=${agentId}&amount=${amount}&otp=${otp}`; // Example QR data format
 
     // 3. Create Withdrawal Request Document in Firestore
-    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt' | 'updatedAt'> = {
+    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt' | 'updatedAt' | 'expiresInSeconds' | 'transactionId'> = {
         userId,
         agentId,
         agentName,
@@ -120,15 +95,16 @@ export async function initiateWithdrawal(agentId: string, amount: number): Promi
         console.log("Withdrawal request created with ID:", docRef.id);
 
         // Log the initiated withdrawal transaction (as pending)
-        await addTransaction({
-            type: 'Sent', // Funds are 'sent' to the agent initially
-            name: `Cash Withdrawal @ ${agentName}`,
-            description: `Pending Agent Confirmation (Txn: ${docRef.id})`,
-            amount: -amount,
-            status: 'Pending', // Match withdrawal status
-            userId: userId,
-            // Add specific fields like withdrawalRequestId: docRef.id
-        });
+        // This should ideally use the backend's addTransaction
+        // await addTransaction({
+        //     type: 'Sent', // Funds are 'sent' to the agent initially
+        //     name: `Cash Withdrawal @ ${agentName}`,
+        //     description: `Pending Agent Confirmation (Txn: ${docRef.id})`,
+        //     amount: -amount,
+        //     status: 'Pending', // Match withdrawal status
+        //     userId: userId,
+        //     // Add specific fields like withdrawalRequestId: docRef.id
+        // });
 
          // Fetch the created doc to get the server timestamp resolved for return
         const newDocSnap = await getDoc(docRef);
