@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Correct import for Button
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -46,12 +46,12 @@ import {
     Gift as GiftIcon, //Alias Gift to avoid conflict
     Home, // Added Temple icon (using Home as placeholder)
     Car,
-    Bike, // Corrected icon name (use Bike instead of Motorbike)
+    Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
     Sparkles,
   ShoppingBasket,
-  HeartHandshake, // Used for Donations, Club Fees, and Marriage Booking
+  HeartHandshake,
   Music,
     Map,
     Hotel,
@@ -104,6 +104,7 @@ import {
     Wallet, // Added Wallet icon
     Drama, // Import Drama icon
     ThermometerSnowflake, // Import AC Repair icon
+    ListChecks, // Added ListChecks for Subscription Manager
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -143,19 +144,20 @@ const financialServices = [
 ];
 
 const travelServices = [
-    { name: "Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel" }, // Link to Travel Assistant
+    { name: "AI Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel" }, // Link to Travel Assistant
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel"},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel"},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel"},
     { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel"}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel"},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel"},
-    { name: "Car Rentals", icon: Car, href: "/rent-vehicle?tab=car", category: "Travel" }, // Link to rent-vehicle page with car tab selected
-    { name: "Bike Rentals", icon: Bike, href: "/rent-vehicle?tab=bike", category: "Travel" }, // Link to rent-vehicle page with bike tab selected
+    { name: "Car Rentals", icon: Car, href: "/rent-vehicle", category: "Travel" }, // Link to rent-vehicle page
+    { name: "Bike Rentals", icon: Motorbike, href: "/rent-vehicle", category: "Travel" }, // Link to rent-vehicle page
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel" }, // Link to EV Charging page
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel" }, // Link to Rest Stop page
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel" }, // Added Live Bus Tracking link
     { name: "Live Train Status", icon: MapPin, href: "/live/train", category: "Travel" }, // Added Live Train Tracking link
+    { name: "Emergency Assist", icon: Siren, href: "/travels/assistance", category: "Travel"}, // Added Emergency Assist
 ];
 
 const transitTollServices = [
@@ -170,6 +172,7 @@ const transitTollServices = [
 const foodAndShoppingServices = [
     { name: "Order Food", icon: UtensilsCrossed, href: "/food", category: "Food & Shopping"},
     { name: "Shop Groceries", icon: ShoppingBasket, href: "/", category: "Food & Shopping"}, // Link to grocery page
+    { name: "Shopping Offers", icon: ShoppingBag, href: "/offers", category: "Food & Shopping"}, // Example link
 ];
 
 const entertainmentGamingServices = [
@@ -229,6 +232,7 @@ const utilityToolsServices = [
    { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Utilities & Tools" },
    { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Utilities & Tools" }, // Added SIP Reminders
    { name: "Bill Reminders", icon: BellRing, href: "/reminders", category: "Utilities & Tools" }, // Add Bill Reminders
+   { name: "Subscription Mgr", icon: ListChecks, href: "/subscription-manager", category: "Utilities & Tools"}, // Added Subscription Manager
 ];
 
 const vouchersMoreServices = [
@@ -236,6 +240,7 @@ const vouchersMoreServices = [
     { name: "Intl Calling Cards", icon: PhoneCall, href: "/recharge/isd", category: "Vouchers & More" },
     // { name: "App Store Code", icon: Apple, href: "/vouchers/digital", category: "Vouchers & More"}, // Merged with Gaming/Play Store
     { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" }, // Generic placeholder if needed
+    { name: "AI Gifting Assistant", icon: GiftIcon, href: "/ai-gifting", category: "Vouchers & More"}, // Added AI Gifting
 ];
 
 const paymentsServices = [
@@ -251,10 +256,10 @@ const healthcareServices = [
     { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness" },
     { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness" },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness" },
-    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Wellness" },
-    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Records" },
-    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Offers" },
-    { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Emergency"}, // Moved to Healthcare
+    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness" }, // Combined category
+    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Healthcare & Wellness" }, // Combined category
+    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness" }, // Combined category
+    { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness"}, // Moved to Healthcare
 ];
 
 const aiAndToolsServices = [
@@ -275,6 +280,7 @@ const allServices = [
     ...travelServices,
     ...foodAndShoppingServices,
     ...entertainmentGamingServices, // Renamed for clarity
+    ...eventsCelebrationsServices, // Added new category
     ...healthcareServices,
     ...hyperlocalServices,
     ...templeServices,
@@ -309,11 +315,6 @@ const groupServicesByCategory = (services: any[]) => {
         "AI & Tools",
         "Utilities & Tools",
         "Vouchers & More",
-        // Categories below might be empty depending on final service assignments
-        "Emergency", // Ensure Ambulance is categorized here if needed
-        "Wellness",
-        "Records",
-        "Offers",
     ];
 
     // Initialize categories from the defined order
