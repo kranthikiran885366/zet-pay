@@ -16,7 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-
+import { apiClient } from '@/lib/apiClient'; // Import apiClient
+import { confirmBooking } from '@/services/booking'; // Import confirmBooking
+import { useRouter } from 'next/navigation';
 
 // Mock Data (Replace with actual API calls)
 const mockCities = ['Bangalore', 'Chennai', 'Hyderabad', 'Mumbai', 'Delhi', 'Pune', 'Kolkata'];
@@ -118,6 +120,7 @@ export default function BusBookingPage() {
      const [passengerDetails, setPassengerDetails] = useState({ name: '', email: '', phone: '' });
      const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     const handleSearch = async (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -130,7 +133,8 @@ export default function BusBookingPage() {
         setSearchResults([]); // Clear previous results
         console.log("Searching buses:", { fromCity, toCity, date: format(travelDate, 'yyyy-MM-dd') });
         try {
-            // Simulate API call
+             // Simulate API call
+            // const results = await apiClient<BusRoute[]>(`/bookings/bus/search?from=${fromCity}&to=${toCity}&date=${format(travelDate, 'yyyy-MM-dd')}`);
             await new Promise(resolve => setTimeout(resolve, 1500));
             // Filter mock data (in real app, API does this)
             const results = mockBusRoutes.filter(route => Math.random() > 0.3); // Simulate getting some results
@@ -199,20 +203,41 @@ export default function BusBookingPage() {
              toast({ variant: "destructive", title: "Passenger Details Required" });
              return; // In a real app, you'd validate this earlier
          }
+         if (!selectedBus || !travelDate) {
+              toast({ variant: "destructive", title: "Booking Error", description: "Missing booking details." });
+             return;
+         }
          setIsBooking(true);
          try {
              console.log("Confirming booking with details:", passengerDetails);
-             // Simulate API call for booking
-             await new Promise(resolve => setTimeout(resolve, 2000));
-             toast({ title: "Booking Confirmed!", description: `Your tickets for ${selectedBus?.operator} are booked. Total Fare: ₹${totalFare}` });
-             // Reset state or navigate away
-             setShowSeatSelection(false);
-             setSelectedBus(null);
-             setShowResults(false);
-             // router.push('/tickets'); // Redirect to a tickets page
-         } catch (error) {
+             const bookingData = {
+                 providerId: selectedBus.id, // Pass bus ID or relevant provider ID
+                 selection: {
+                     busId: selectedBus.id, // Or a service ID
+                     routeName: `${fromCity} to ${toCity}`,
+                     boardingPoint,
+                     droppingPoint,
+                     seats: selectedSeats.map(s => s.id),
+                 },
+                 passengerDetails: passengerDetails,
+                 totalAmount: totalFare,
+                 paymentMethod: 'wallet', // Or get from UI selection
+             };
+             const result = await confirmBooking('bus', bookingData); // Use 'bus' type
+
+             if (result.status === 'Completed') {
+                toast({ title: "Booking Confirmed!", description: `Your tickets for ${selectedBus?.operator} are booked. Total Fare: ₹${totalFare}` });
+                // Reset state or navigate away
+                setShowSeatSelection(false);
+                setSelectedBus(null);
+                setShowResults(false);
+                router.push('/history'); // Example: Redirect to history
+             } else {
+                 toast({ variant: "destructive", title: `Booking ${result.status || 'Failed'}`, description: result.message || "Could not confirm your booking." });
+             }
+         } catch (error: any) {
              console.error("Booking failed:", error);
-             toast({ variant: "destructive", title: "Booking Failed", description: "Could not confirm your booking." });
+             toast({ variant: "destructive", title: "Booking Failed", description: error.message || "Could not confirm your booking." });
          } finally {
              setIsBooking(false);
          }
@@ -346,14 +371,14 @@ export default function BusBookingPage() {
                     </div>
                 )}
 
-                {/* Seat Selection */}
+                {/* Seat Selection Dialog */}
                  <Dialog open={showSeatSelection} onOpenChange={(open) => { if (!open) { setShowSeatSelection(false); setSelectedBus(null); } }}>
                      <DialogContent className="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl p-0"> {/* Responsive max-width */}
                          <DialogHeader className="p-4 border-b">
                              <DialogTitle className="flex items-center gap-2">
                                  <Bus className="h-5 w-5"/> Select Seats - {selectedBus?.operator}
                              </DialogTitle>
-                             <DialogDescription>{fromCity} to {toCity} on {format(travelDate!, 'PPP')} ({selectedBus?.type})</DialogDescription>
+                             <DialogDescription>{fromCity} to {toCity} on {travelDate ? format(travelDate, 'PPP') : ''} ({selectedBus?.type})</DialogDescription>
                              <Button variant="ghost" size="icon" className="absolute right-4 top-4 h-7 w-7" onClick={() => {setShowSeatSelection(false); setSelectedBus(null);}}>
                                  <X className="h-4 w-4"/>
                              </Button>
@@ -404,7 +429,7 @@ export default function BusBookingPage() {
                                      <Select value={boardingPoint} onValueChange={setBoardingPoint} required>
                                          <SelectTrigger id="boardingPoint"><SelectValue placeholder="Select Boarding Point" /></SelectTrigger>
                                          <SelectContent>
-                                             {selectedBus.boardingPoints.map(point => <SelectItem key={`bp-${point}`} value={point}>{point}</SelectItem>)}
+                                             {selectedBus && selectedBus.boardingPoints.map(point => <SelectItem key={`bp-${point}`} value={point}>{point}</SelectItem>)}
                                          </SelectContent>
                                      </Select>
                                  </div>
@@ -413,7 +438,7 @@ export default function BusBookingPage() {
                                      <Select value={droppingPoint} onValueChange={setDroppingPoint} required>
                                          <SelectTrigger id="droppingPoint"><SelectValue placeholder="Select Dropping Point" /></SelectTrigger>
                                          <SelectContent>
-                                             {selectedBus.droppingPoints.map(point => <SelectItem key={`dp-${point}`} value={point}>{point}</SelectItem>)}
+                                             {selectedBus && selectedBus.droppingPoints.map(point => <SelectItem key={`dp-${point}`} value={point}>{point}</SelectItem>)}
                                          </SelectContent>
                                      </Select>
                                  </div>
@@ -434,7 +459,7 @@ export default function BusBookingPage() {
 
                           <DialogFooter className="p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
                               <div className="text-left">
-                                  <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.number).join(', ') || 'None'} ({selectedSeats.length})</p>
+                                  <p className="text-sm text-muted-foreground">Seats: {selectedSeats.map(s => s.number || s.id).join(', ') || 'None'} ({selectedSeats.length})</p>
                                   <p className="text-lg font-bold">Total Fare: ₹{totalFare.toFixed(2)}</p>
                               </div>
                               <Button
