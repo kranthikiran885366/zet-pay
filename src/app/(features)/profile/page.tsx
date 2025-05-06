@@ -174,8 +174,8 @@ export default function ProfilePage() {
                     icon={Lock} // Using Lock icon as Biometric might be handled in Security
                     title="App Lock"
                     description="Use PIN/Biometric to open app"
-                    checked={biometric}
-                    onCheckedChange={setBiometric} // Basic toggle for now
+                    checked={appLock}
+                    onCheckedChange={handleAppLockChange} // Basic toggle for now
                     disabled={isLoading || isUpdating}
                 />
                  {/* Smart Wallet Bridge Toggle */}
@@ -193,8 +193,9 @@ export default function ProfilePage() {
 
          <Card className="shadow-md">
              <CardContent className="p-0 divide-y divide-border">
-                <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="Contact us, FAQs, Live Chat" />
-                 <SettingsItem href="/about" icon={Info} title="About PayFriend" description="App version, legal information" />
+                {/* Link to the 24/7 Live Support Chat */}
+                <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="24/7 Live Chat, FAQs" />
+                <SettingsItem href="/about" icon={Info} title="About PayFriend" description="App version, legal information" />
              </CardContent>
          </Card>
 
@@ -289,38 +290,38 @@ interface SettingsSwitchItemProps {
 
 function SettingsSwitchItem({ icon: Icon, title, description, checked, onCheckedChange, disabled = false }: SettingsSwitchItemProps) {
     const id = title.toLowerCase().replace(/\s+/g, '-');
-    const [isUpdating, setIsUpdating] = useState(false); // Local state for individual switch updates
+    const [isUpdatingSwitch, setIsUpdatingSwitch] = useState(false); // Renamed internal state
 
     const handleChange = async (newChecked: boolean) => {
-        if (disabled || isUpdating) return; // Prevent change if disabled or already updating
-        setIsUpdating(true);
+        if (disabled || isUpdatingSwitch) return; // Prevent change if disabled or already updating
+        setIsUpdatingSwitch(true);
         try {
             await onCheckedChange(newChecked); // Call the async handler passed via props
         } catch (error) {
             // Error handled in the parent component's toast
             console.error("Error during switch change:", error);
         } finally {
-            setIsUpdating(false);
+            setIsUpdatingSwitch(false);
         }
     };
 
     return (
-        <div className={`flex items-center justify-between p-4 ${disabled && !isUpdating ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center justify-between p-4 ${disabled && !isUpdatingSwitch ? 'opacity-50' : ''}`}>
             <div className="flex items-center gap-4">
                 <Icon className="h-5 w-5 text-primary" />
                 <div>
-                    <Label htmlFor={id} className={`text-sm font-medium ${disabled && !isUpdating ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
+                    <Label htmlFor={id} className={`text-sm font-medium ${disabled && !isUpdatingSwitch ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
                     <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
             </div>
             <div className="flex items-center">
-                {isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
+                {isUpdatingSwitch && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
                 <Switch
                     id={id}
                     checked={checked}
                     onCheckedChange={handleChange} // Use internal handler
                     aria-label={title}
-                    disabled={disabled || isUpdating} // Disable if globally disabled or if this switch is updating
+                    disabled={disabled || isUpdatingSwitch} // Disable if globally disabled or if this switch is updating
                 />
             </div>
         </div>
