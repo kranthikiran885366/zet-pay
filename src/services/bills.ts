@@ -1,10 +1,10 @@
+
 /**
  * @fileOverview Service functions for processing bill payments.
  */
 
 import type { Transaction } from './types'; // Use the common Transaction interface
-// Import addTransaction from the backend services
-import { addTransaction } from '../../backend/services/transactionLogger'; // Corrected import path
+// Removed incorrect import of addTransaction from client-side
 import { apiClient } from '@/lib/apiClient';
 import { format } from 'date-fns';
 
@@ -61,7 +61,8 @@ export async function fetchBillDetails(billerId: string, identifier: string): Pr
  */
 export async function processBillPayment(paymentDetails: BillPaymentDetails): Promise<Transaction> {
     console.log("Processing bill payment via API:", paymentDetails);
-    const endpoint = `/bills/${paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-')}`; // Example: /api/bills/electricity
+    // Endpoint includes type, e.g., /api/bills/electricity
+    const endpoint = `/bills/pay/${paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-')}`;
 
     try {
         // Backend API handles payment deduction and logging
@@ -82,3 +83,4 @@ export async function processBillPayment(paymentDetails: BillPaymentDetails): Pr
          throw error; // Re-throw the error for UI handling
     }
 }
+

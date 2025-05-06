@@ -1,10 +1,11 @@
+
 /**
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
-import { admin, db } from '../config/firebaseAdmin'; // Use configured admin instance
-import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
-import { sendToUser } from '../server'; // Import WebSocket sender from server.js
+import { admin, db } from '../config/firebaseAdmin.js'; // Use configured admin instance - Assuming JS file
+import blockchainLogger from './blockchainLogger.ts'; // Import the backend blockchain service using relative path - Assuming TS file
+import { sendToUser } from '../server.js'; // Correct path to import WebSocket sender from backend server.js - Assuming JS file
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
 
@@ -47,7 +48,7 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             planId: (rest as any).planId ?? null,
             identifier: (rest as any).identifier ?? null,
             withdrawalRequestId: (rest as any).withdrawalRequestId ?? null,
-            createdAt: rest.createdAt instanceof Date ? Timestamp.fromDate(rest.createdAt) : FieldValue.serverTimestamp(), // Ensure createdAt is set on initial log
+            createdAt: FieldValue.serverTimestamp(), // Ensure createdAt is set on initial log
             updatedAt: FieldValue.serverTimestamp(), // Always set updatedAt
         };
 
@@ -160,7 +161,7 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
     }
 }
 
-
+// Remove module.exports if using ES Modules consistently
 // module.exports = {
 //     addTransaction,
 //     logTransactionToBlockchain,

@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban } from 'lucide-react'; // Added Lock, AlarmClockOff, Ban
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban, HardDrive, Ticket } from 'lucide-react'; // Added HardDrive, Ticket
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, mockRechargePlans, mockDthPlans } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService, removed getRechargeHistory, RechargeHistoryEntry
+import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService, getRechargePlans, removed mock exports
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"; // Added AlertDialog components
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, addDays, isBefore } from "date-fns"; // Added isBefore
+import { format, addDays, isBefore, differenceInMinutes } from "date-fns"; // Added differenceInMinutes, isBefore
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"; // For horizontal scroll
 import Image from 'next/image'; // For operator logos
@@ -31,6 +31,7 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 import { getWalletBalance } from '@/services/wallet'; // Import wallet balance service
 import { getBankStatus, BankAccount } from '@/services/upi'; // Import bank status service and BankAccount type
 import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Import Transaction related types and function
+import { auth } from '@/lib/firebase'; // Import auth
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
@@ -43,6 +44,7 @@ const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: st
   fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers"}, // Updated icon
   datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers" }, // Added Data Card
   buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes" }, // Added Bus Pass
+  metro: { icon: TramFront, title: "Metro Recharge", identifierLabel: "Metro Card Number", searchPlaceholder: "Enter Card Number", recentLabel: "Recent Metros"}, // Added Metro
   // Add more types as needed
 };
 
@@ -133,8 +135,13 @@ export default function RechargePage() {
     const fetchBalance = async () => {
       setIsBalanceLoading(true);
       try {
-        const balance = await getWalletBalance("user123"); // Replace with actual user ID
-        setAccountBalance(balance);
+         const userId = auth.currentUser?.uid; // Get current user ID
+         if (userId) {
+            const balance = await getWalletBalance(userId);
+            setAccountBalance(balance);
+         } else {
+            setAccountBalance(0); // Or null if preferred when logged out
+         }
       } catch (err) {
         console.error("Failed to fetch wallet balance:", err);
         // Optionally show a toast, but balance might not be critical for all flows
@@ -150,7 +157,7 @@ export default function RechargePage() {
   useEffect(() => {
     async function fetchBillersData() {
       // Fetch only relevant billers
-      if (!['mobile', 'dth', 'fastag', 'electricity', 'datacard', 'buspass'].includes(type)) return; // Added datacard, buspass
+      if (!['mobile', 'dth', 'fastag', 'electricity', 'datacard', 'buspass', 'metro'].includes(type)) return; // Added metro
       setIsLoading(true);
       setError(null);
       try {
@@ -240,6 +247,8 @@ export default function RechargePage() {
       // Example: const bankIdentifier = mapBillerToBank[billerId] || 'defaultBank';
       const bankIdentifier = 'mockBank'; // Placeholder
       try {
+        // In a real app, fetch status for the bank associated with the *selected payment method*, not just the biller.
+        // For now, simulating based on biller.
         const status = await getBankStatus(bankIdentifier);
         setBankStatus(status);
       } catch (error) {
@@ -278,7 +287,7 @@ export default function RechargePage() {
     }
      // Check balance before proceeding (ensure accountBalance is not null)
      if (accountBalance !== null && Number(amount) > accountBalance) {
-        setError(`Insufficient balance (₹${accountBalance.toFixed(2)}). Please add funds.`);
+        setError(`Insufficient wallet balance (₹${accountBalance.toFixed(2)}). Please add funds.`);
         toast({ variant: "destructive", title: "Insufficient Balance" });
         return;
     }
@@ -372,9 +381,8 @@ export default function RechargePage() {
     setIsRecommending(false);
     try {
       console.log(`Fetching plans for ${selectedBillerName} (${selectedBiller}) - Type: ${type}`);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      // Use different mock data based on type
-      const fetchedPlans = type === 'mobile' ? mockRechargePlans : type === 'dth' ? mockDthPlans : []; // Add mocks for other types if needed
+      // Replace with actual API call
+      const fetchedPlans = await getRechargePlans(selectedBiller, type, identifier); // Use service function
       setRechargePlans(fetchedPlans);
       if (type === 'mobile' && fetchedPlans.length > 0) {
         fetchRecommendations(fetchedPlans);
@@ -391,13 +399,16 @@ export default function RechargePage() {
 
   const fetchRecommendations = async (plans: RechargePlan[]) => {
     if (!selectedBillerName || plans.length === 0) return;
+    const userId = auth.currentUser?.uid;
+    if (!userId) return; // Need user ID for recommendations
+
     setIsRecommending(true);
     try {
       const input: RecommendRechargePlansInput = {
-        userId: 'user123', // Replace with actual user ID
+        userId: userId,
         operatorName: selectedBillerName,
         availablePlans: plans,
-        usageHistory: mockUsageHistory,
+        usageHistory: mockUsageHistory, // Replace with actual fetched usage history
       };
       const result = await recommendRechargePlans(input);
       setRecommendedPlanIds(result.recommendedPlanIds);
@@ -611,13 +622,13 @@ export default function RechargePage() {
 
   const handleQuickRecharge = (entry: Transaction) => { // Changed type to Transaction
     if (entry.billerId && entry.amount) {
-      setIdentifier(entry.upiId || ''); // Use upiId as identifier
+      setIdentifier(entry.upiId || entry.identifier || ''); // Use identifier if available
       setSelectedBiller(entry.billerId);
       setAmount(Math.abs(entry.amount).toString()); // Use absolute value
       // Attempt to find matching plan based on amount and potentially description
-       const plan = rechargePlans.find(p => p.price === Math.abs(entry.amount) && (!entry.description || p.description.includes(entry.description))) || null;
+      const plan = rechargePlans.find(p => p.price === Math.abs(entry.amount) && (!entry.description || p.description.includes(entry.description))) || null;
       setSelectedPlan(plan);
-      toast({ title: "Details Filled", description: `Recharging ₹${Math.abs(entry.amount)} for ${entry.upiId}` });
+      toast({ title: "Details Filled", description: `Recharging ₹${Math.abs(entry.amount)} for ${entry.identifier || entry.upiId}` });
       setShowHistory(false);
        // Auto-detect operator based on billerId if needed
         const biller = billers.find(b => b.billerId === entry.billerId);
@@ -838,7 +849,7 @@ export default function RechargePage() {
                                 <div>
                                     <p className="text-sm font-medium">₹{Math.abs(entry.amount)}{entry.description ? ` (${entry.description.split('-')[0].trim()})` : ''}</p> {/* Simplified description */}
                                     <p className="text-xs text-muted-foreground">
-                                        {format(entry.date, 'PPp')} - Status: {entry.status}
+                                        {format(new Date(entry.date), 'PPp')} - Status: {entry.status}
                                         {checkingActivationTxnId === entry.id && <Loader2 className="inline ml-1 h-3 w-3 animate-spin"/>}
                                     </p>
                                 </div>
@@ -858,7 +869,7 @@ export default function RechargePage() {
                                                  <AlertDialogHeader>
                                                      <AlertDialogTitle>Cancel Recharge?</AlertDialogTitle>
                                                      <AlertDialogDescription>
-                                                         Attempt to cancel recharge of ₹{Math.abs(entry.amount)} from {format(entry.date, 'PPp')}? Cancellation is not guaranteed and only possible within 30 minutes.
+                                                         Attempt to cancel recharge of ₹{Math.abs(entry.amount)} from {format(new Date(entry.date), 'PPp')}? Cancellation is not guaranteed and only possible within 30 minutes.
                                                      </AlertDialogDescription>
                                                  </AlertDialogHeader>
                                                  <AlertDialogFooter>
