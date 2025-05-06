@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Correct import for Button
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -103,6 +103,7 @@ import {
     Target, // Added Target icon
     Wallet, // Added Wallet icon
     Drama, // Import Drama icon
+    ThermometerSnowflake, // Import AC Repair icon
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -149,8 +150,8 @@ const travelServices = [
     { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel"}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel"},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel"},
-    { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel" },
-    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel" },
+    { name: "Car Rentals", icon: Car, href: "/rent-vehicle?tab=car", category: "Travel" }, // Link to rent-vehicle page with car tab selected
+    { name: "Bike Rentals", icon: Motorbike, href: "/rent-vehicle?tab=bike", category: "Travel" }, // Link to rent-vehicle page with bike tab selected
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel" }, // Link to EV Charging page
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel" }, // Link to Rest Stop page
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel" }, // Added Live Bus Tracking link
@@ -203,6 +204,7 @@ const templeServices = [
 
 const hyperlocalServices = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services" },
+    { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services" }, // Added AC Repair
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
