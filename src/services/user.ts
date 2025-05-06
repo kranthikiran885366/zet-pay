@@ -1,4 +1,5 @@
 
+
 /**
  * @fileOverview Service functions for managing user profile data via the backend API.
  */
@@ -18,7 +19,12 @@ export async function getCurrentUserProfile(): Promise<UserProfileClient | null>
     try {
         // Assuming UserProfile returned by API matches UserProfileClient
         const profile = await apiClient<UserProfileClient>('/users/profile');
-        return profile;
+         // Convert date strings if necessary (API client might already handle this if backend sends Date objects)
+         return {
+            ...profile,
+            createdAt: profile.createdAt ? new Date(profile.createdAt) : undefined,
+            updatedAt: profile.updatedAt ? new Date(profile.updatedAt) : undefined,
+        };
     } catch (error) {
         console.error("Error fetching user profile via API:", error);
         // Return null or rethrow, depending on how calling components handle errors
@@ -88,3 +94,5 @@ export async function updateUserProfileSettings(settings: Partial<Pick<UserProfi
          throw error; // Re-throw error
      }
 }
+
+

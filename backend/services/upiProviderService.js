@@ -1,4 +1,6 @@
-
+/**
+ * @fileOverview SIMULATED UPI Provider Service (PSP/Bank Integration)
+ */
 
 const { addDays, format } = require('date-fns');
 
@@ -23,13 +25,13 @@ const verifyRecipient = async (upiId) => {
     console.log(`[PSP Sim] Verifying UPI ID: ${upiId}`);
     await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API call
 
-    if (!upiId || !upiId.includes('@')) {
+    if (!upiId || typeof upiId !== 'string' || !upiId.includes('@')) {
         throw new Error("Invalid UPI ID format.");
     }
-    if (upiId.includes('invalid')) {
+    if (upiId.toLowerCase().includes('invalid') || upiId.toLowerCase().includes('notfound')) {
         throw new Error("UPI ID not found or invalid.");
     }
-     if (upiId.includes('unknown')) {
+     if (upiId.toLowerCase().includes('unknown') || upiId.toLowerCase().includes('notreg')) {
          throw new Error("UPI ID not registered.");
      }
     // Simulate name verification - replace spaces/dots with space, capitalize
@@ -51,57 +53,61 @@ const initiatePayment = async ({ sourceUpiId, recipientUpiId, amount, pin, note 
      // Simulate PIN validation (basic)
      if (!pin || (pin !== '1234' && pin !== '123456')) {
           console.warn(`[PSP Sim] Payment failed: Incorrect PIN simulation for ${sourceUpiId}`);
-           // Use a specific error code or message pattern for incorrect PIN
           const error = new Error('Incorrect UPI PIN.');
           error.code = 'UPI_INCORRECT_PIN'; // Add custom code
           throw error;
      }
 
-      // Simulate specific failure scenarios based on recipient ID for demo
-      if (recipientUpiId === 'limit@payfriend') {
+      // Simulate specific failure scenarios based on recipient ID or amount for demo
+      if (recipientUpiId.toLowerCase().includes('limit')) {
           console.warn(`[PSP Sim] Payment failed: Limit Exceeded simulation`);
           const error = new Error('Daily UPI transaction limit exceeded.');
           error.code = 'UPI_LIMIT_EXCEEDED';
           throw error;
       }
-      if (recipientUpiId === 'debitfail@payfriend') {
+       if (recipientUpiId.toLowerCase().includes('funds')) {
+            console.warn(`[PSP Sim] Payment failed: Insufficient funds simulation`);
+            const error = new Error('Insufficient bank balance.');
+            error.code = 'INSUFFICIENT_FUNDS';
+            throw error;
+       }
+       if (recipientUpiId.toLowerCase().includes('debitfail')) {
           console.warn(`[PSP Sim] Payment failed: Debit failed simulation`);
-           // Simulate scenario where debit might have happened but confirmation failed
           const error = new Error('Payment failed due to network error at bank. Please check account.');
           error.code = 'BANK_NETWORK_ERROR';
           error.mightBeDebited = true; // Add custom property
           throw error;
       }
-      if (recipientUpiId === 'timeout@payfriend') {
+      if (recipientUpiId.toLowerCase().includes('timeout')) {
            console.warn(`[PSP Sim] Payment failed: Timeout simulation`);
            const error = new Error('Transaction timed out. Please check status later.');
            error.code = 'TRANSACTION_TIMEOUT';
            throw error;
       }
-      if (amount > 10000 && !sourceUpiId.includes('default')) { // Simulate insufficient funds for non-default accounts over 10k
-           console.warn(`[PSP Sim] Payment failed: Insufficient funds simulation`);
-           const error = new Error('Insufficient bank balance.');
-           error.code = 'INSUFFICIENT_FUNDS';
+       if (recipientUpiId.toLowerCase().includes('bankdecline')) {
+           console.warn(`[PSP Sim] Payment failed: Generic bank decline simulation`);
+           const error = new Error('Payment declined by recipient bank.');
+           error.code = 'BANK_DECLINED';
            throw error;
-      }
+       }
 
 
-     // Simulate random failure
-     if (Math.random() < 0.05) { // 5% generic failure chance
-         console.warn(`[PSP Sim] Payment failed: Generic bank decline simulation`);
-         const error = new Error('Payment declined by recipient bank.');
-         error.code = 'BANK_DECLINED';
+     // Simulate random failure (reduced chance now specific errors are handled)
+     if (Math.random() < 0.02) { // 2% generic failure chance
+         console.warn(`[PSP Sim] Payment failed: Unknown PSP/Bank error simulation`);
+         const error = new Error('Payment failed due to an unexpected bank error.');
+         error.code = 'UNKNOWN_BANK_ERROR';
           throw error;
      }
 
       // Simulate Pending Status
-      if (Math.random() < 0.1) { // 10% chance of pending
+      if (Math.random() < 0.05) { // 5% chance of pending
           console.log('[PSP Sim] Payment Pending.');
-           return { status: 'Pending', message: 'Transaction is Pending Confirmation', transactionId: `PENDING_${Date.now()}` };
+           return { status: 'Pending', message: 'Transaction is Pending Confirmation', transactionId: `PSP_PENDING_${Date.now()}` };
       }
 
      // Simulate Success
-     const transactionId = `UPI_${Date.now()}`;
+     const transactionId = `PSP_UPI_${Date.now()}`;
      console.log(`[PSP Sim] Payment successful. Txn ID: ${transactionId}`);
      return { status: 'Completed', message: 'Transaction Successful', transactionId };
  };
@@ -111,7 +117,9 @@ const initiatePayment = async ({ sourceUpiId, recipientUpiId, amount, pin, note 
      await new Promise(resolve => setTimeout(resolve, 500));
 
      if (!pin || (pin !== '1234' && pin !== '123456')) {
-         throw new Error('Incorrect UPI PIN.');
+          const error = new Error('Incorrect UPI PIN.');
+          error.code = 'UPI_INCORRECT_PIN'; // Use specific code
+          throw error;
      }
      // Simulate balance
      const balance = parseFloat((Math.random() * 50000 + 100).toFixed(2));
@@ -133,11 +141,15 @@ const initiatePayment = async ({ sourceUpiId, recipientUpiId, amount, pin, note 
      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
 
      // Simulate success/failure (e.g., mandate inactive, insufficient funds)
+     // Make failure more likely for simulation purposes if needed
      const success = Math.random() > 0.1; // 90% success simulation
 
      if (!success) {
-         console.warn(`[PSP Sim] Secure debit failed for ${upiId}.`);
-         return { success: false, message: 'Automated debit failed (e.g., insufficient funds or mandate issue).' };
+         console.warn(`[PSP Sim] Secure debit failed for ${upiId}. Simulating insufficient funds or mandate issue.`);
+          const error = new Error('Automated debit failed (e.g., insufficient funds or mandate issue).');
+          error.code = 'AUTO_DEBIT_FAILED'; // Custom code
+          throw error; // Throw error for failed debit
+         // return { success: false, message: 'Automated debit failed (e.g., insufficient funds or mandate issue).' };
      }
 
      const transactionId = `DEBIT_${Date.now()}`;
@@ -153,3 +165,4 @@ module.exports = {
     checkAccountBalance,
     initiateDebit, // Export the new function
 };
+

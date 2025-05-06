@@ -7,121 +7,168 @@ const { checkKYCAndBridgeStatus } = require('../services/userService'); // Impor
 const upiProviderService = require('../services/upiProviderService');
 const { getBankStatus } = require('../services/bankStatusService');
 const upiLiteService = require('../services/upiLite'); // Import UPI Lite service
+const { format, addBusinessDays } = require('date-fns'); // For refund ETA
+const { sendToUser } = require('../server'); // For WebSocket updates
+// Import helper from wallet service (ensure it's exported correctly)
+const { payViaWalletInternal } = require('../services/wallet'); // Use internal wallet function
+
+// Import shared Transaction type definition (adjust path as needed)
+// Assuming types.ts exists in services directory
+// const { Transaction, UpiTransactionResult } = require('../services/types'); // Use require if needed or define inline for JS
+
+// Define types inline if not using TS require
+/**
+ * @typedef {import('../services/types').Transaction} Transaction
+ * @typedef {import('../services/types').UpiTransactionResult} UpiTransactionResult
+ * @typedef {import('../services/types').BankAccount} BankAccount
+ */
+
 
 // Firestore Functions (assuming client-side SDK used for simplicity, adjust if using Admin SDK elsewhere)
-const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp } = require('firebase/firestore');
+const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp, updateDoc } = require('firebase/firestore'); // Added updateDoc
 const firestoreDb = admin.firestore(); // Use Admin SDK's Firestore instance
 
 // --- Linked Bank Accounts ---
 
 exports.getLinkedAccounts = async (req, res, next) => {
     const userId = req.user.uid;
-    const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
-    const q = query(accountsColRef, orderBy('isDefault', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const accounts = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-    res.status(200).json(accounts);
+    try {
+        const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
+        const q = query(accountsColRef, orderBy('isDefault', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const accounts = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        res.status(200).json(accounts);
+    } catch (error) {
+         next(error);
+    }
 };
 
 exports.linkBankAccount = async (req, res, next) => {
     const userId = req.user.uid;
     const { bankName, accountNumber } = req.body; // Basic details needed
+    if (!bankName || !accountNumber) {
+        res.status(400);
+        return next(new Error("Bank Name and Account Number are required."));
+    }
 
-    // --- SIMULATION ---
-    // In a real app, this requires a complex flow involving:
-    // 1. User selecting bank.
-    // 2. Backend fetching user's mobile number associated with their profile.
-    // 3. Backend initiating NPCI device binding/account fetching flow via PSP using the mobile number.
-    // 4. User confirming account selection via SMS OTP sent to the registered mobile.
-    // 5. PSP confirming linkage and returning account details (masked number, generated UPI ID).
-    // 6. Optionally triggering UPI PIN set/reset flow if needed.
-    console.log(`Simulating account linking for ${userId} with bank ${bankName}...`);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    // --- End Simulation ---
+    try {
+        // --- SIMULATION ---
+        // In a real app, this requires a complex flow involving:
+        // 1. User selecting bank.
+        // 2. Backend fetching user's mobile number associated with their profile.
+        // 3. Backend initiating NPCI device binding/account fetching flow via PSP using the mobile number.
+        // 4. User confirming account selection via SMS OTP sent to the registered mobile.
+        // 5. PSP confirming linkage and returning account details (masked number, generated UPI ID).
+        // 6. Optionally triggering UPI PIN set/reset flow if needed.
+        console.log(`Simulating account linking for ${userId} with bank ${bankName}...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        // --- End Simulation ---
 
-    // Simulate successful linking and data returned by PSP
-    const maskedNumber = `xxxx${accountNumber.slice(-4)}`;
-    const bankDomain = bankName.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5);
-    const generatedUpiId = `${userId.substring(0, 4)}${maskedNumber.slice(-4)}@ok${bankDomain}`; // Example ID format
-    const pinLength = Math.random() > 0.5 ? 6 : 4; // Example PIN length
+        // Simulate successful linking and data returned by PSP
+        const maskedNumber = `xxxx${String(accountNumber).slice(-4)}`; // Ensure string
+        const bankDomain = bankName.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5);
+        const generatedUpiId = `${userId.substring(0, 4)}${maskedNumber.slice(-4)}@ok${bankDomain}`; // Example ID format
+        const pinLength = Math.random() > 0.5 ? 6 : 4; // Example PIN length
 
-    const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
-    const q = query(accountsColRef, limit(1));
-    const existingAccountsSnap = await getDocs(q);
-    const isFirstAccount = existingAccountsSnap.empty;
+        const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
+        const q = query(accountsColRef, limit(1));
+        const existingAccountsSnap = await getDocs(q);
+        const isFirstAccount = existingAccountsSnap.empty;
 
-    const accountData = {
-        bankName,
-        accountNumber: maskedNumber, // Store masked number
-        userId, // Ensure userId is stored
-        upiId: generatedUpiId,
-        isDefault: isFirstAccount,
-        pinLength, // Store PIN length
-        createdAt: Timestamp.now(), // Add creation timestamp
-    };
+        const accountData = {
+            bankName,
+            accountNumber: maskedNumber, // Store masked number
+            userId, // Ensure userId is stored
+            upiId: generatedUpiId,
+            isDefault: isFirstAccount,
+            pinLength, // Store PIN length
+            createdAt: Timestamp.now(), // Add creation timestamp
+        };
 
-    const docRef = await addDoc(accountsColRef, accountData);
-    res.status(201).json({ id: docRef.id, ...accountData }); // Return the saved data including the ID
+        const docRef = await addDoc(accountsColRef, accountData);
+        res.status(201).json({ id: docRef.id, ...accountData }); // Return the saved data including the ID
+    } catch (error) {
+         next(error);
+    }
 };
 
 exports.removeUpiId = async (req, res, next) => {
     const userId = req.user.uid;
     const { upiId } = req.params; // Get from route param
-
-    const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
-    const q = query(accountsColRef, where('upiId', '==', upiId), limit(1));
-    const accountSnapshot = await getDocs(q);
-
-    if (accountSnapshot.empty) {
-        res.status(404);
-        throw new Error("UPI ID not found.");
+     if (!upiId) {
+        res.status(400);
+        return next(new Error("UPI ID parameter is required."));
     }
 
-    const accountDoc = accountSnapshot.docs[0];
-    if (accountDoc.data().isDefault) {
-        const allAccountsSnap = await getDocs(accountsColRef);
-        if (allAccountsSnap.size <= 1) {
-             res.status(400);
-             throw new Error("Cannot remove the only linked account.");
+    try {
+        const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
+        const q = query(accountsColRef, where('upiId', '==', upiId), limit(1));
+        const accountSnapshot = await getDocs(q);
+
+        if (accountSnapshot.empty) {
+            res.status(404);
+            throw new Error("UPI ID not found.");
         }
-         res.status(400);
-         throw new Error("Cannot remove default account. Set another as default first.");
-    }
 
-    await deleteDoc(accountDoc.ref);
-    res.status(200).json({ message: `UPI ID ${upiId} removed successfully.` });
+        const accountDoc = accountSnapshot.docs[0];
+        if (accountDoc.data().isDefault) {
+            const allAccountsSnap = await getDocs(accountsColRef);
+            if (allAccountsSnap.size <= 1) {
+                 res.status(400);
+                 throw new Error("Cannot remove the only linked account.");
+            }
+             res.status(400);
+             throw new Error("Cannot remove default account. Set another as default first.");
+        }
+
+        // TODO: Call PSP to deregister UPI ID if required by integration
+        console.log(`[PSP Sim] Simulating deregistration for UPI ID: ${upiId}`);
+
+        await deleteDoc(accountDoc.ref);
+        res.status(200).json({ message: `UPI ID ${upiId} removed successfully.` });
+    } catch (error) {
+         next(error);
+    }
 };
 
 exports.setDefaultAccount = async (req, res, next) => {
     const userId = req.user.uid;
     const { upiId } = req.body; // UPI ID to set as default
-
-    const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
-    const batch = writeBatch(firestoreDb);
-
-    const newDefaultQuery = query(accountsColRef, where('upiId', '==', upiId), limit(1));
-    const newDefaultSnap = await getDocs(newDefaultQuery);
-    if (newDefaultSnap.empty) {
-        res.status(404);
-        throw new Error("Selected UPI ID not found.");
+     if (!upiId) {
+        res.status(400);
+        return next(new Error("UPI ID is required in the request body."));
     }
-    const newDefaultDocRef = newDefaultSnap.docs[0].ref;
 
-    const currentDefaultQuery = query(accountsColRef, where('isDefault', '==', true), limit(1));
-    const currentDefaultSnap = await getDocs(currentDefaultQuery);
+    try {
+        const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
+        const batch = writeBatch(firestoreDb);
 
-    // Unset current default if it exists and is different from the new one
-    if (!currentDefaultSnap.empty) {
-        const currentDefaultDocRef = currentDefaultSnap.docs[0].ref;
-        if (currentDefaultDocRef.id !== newDefaultDocRef.id) {
-            batch.update(currentDefaultDocRef, { isDefault: false });
+        const newDefaultQuery = query(accountsColRef, where('upiId', '==', upiId), limit(1));
+        const newDefaultSnap = await getDocs(newDefaultQuery);
+        if (newDefaultSnap.empty) {
+            res.status(404);
+            throw new Error("Selected UPI ID not found.");
         }
-    }
+        const newDefaultDocRef = newDefaultSnap.docs[0].ref;
 
-    // Set the new default
-    batch.update(newDefaultDocRef, { isDefault: true });
-    await batch.commit();
-    res.status(200).json({ message: `${upiId} set as default successfully.` });
+        const currentDefaultQuery = query(accountsColRef, where('isDefault', '==', true), limit(1));
+        const currentDefaultSnap = await getDocs(currentDefaultQuery);
+
+        // Unset current default if it exists and is different from the new one
+        if (!currentDefaultSnap.empty) {
+            const currentDefaultDocRef = currentDefaultSnap.docs[0].ref;
+            if (currentDefaultDocRef.id !== newDefaultDocRef.id) {
+                batch.update(currentDefaultDocRef, { isDefault: false });
+            }
+        }
+
+        // Set the new default
+        batch.update(newDefaultDocRef, { isDefault: true });
+        await batch.commit();
+        res.status(200).json({ message: `${upiId} set as default successfully.` });
+    } catch (error) {
+         next(error);
+    }
 };
 
 
@@ -129,37 +176,65 @@ exports.setDefaultAccount = async (req, res, next) => {
 
 exports.verifyUpiId = async (req, res, next) => {
     const { upiId } = req.query; // Get UPI ID from query parameter
-    // Basic validation already done by express-validator
-    const verifiedName = await upiProviderService.verifyRecipient(upiId as string); // Call PSP service
-    res.status(200).json({ verifiedName });
+     if (!upiId || typeof upiId !== 'string' || !upiId.includes('@')) {
+        res.status(400);
+        return next(new Error("Valid UPI ID query parameter is required."));
+    }
+    try {
+        const verifiedName = await upiProviderService.verifyRecipient(upiId); // Call PSP service
+        res.status(200).json({ verifiedName });
+    } catch (error) {
+         // Handle specific verification errors if PSP provides codes
+         if (error.message?.includes("not found") || error.message?.includes("Invalid")) {
+            res.status(404); // Not Found
+         } else {
+             res.status(500); // Generic server error from PSP
+         }
+         next(error);
+    }
 };
 
 exports.processUpiPayment = async (req, res, next) => {
     const userId = req.user.uid;
     const { recipientUpiId, amount, pin, note, sourceAccountUpiId } = req.body;
 
-    let paymentResult: UpiTransactionResult = { // Initialize result object
+    // Basic Validation (already handled by router, but double check)
+    if (!recipientUpiId || !amount || amount <= 0 || !pin || !sourceAccountUpiId) {
+         res.status(400);
+         return next(new Error("Missing required fields: recipientUpiId, amount, pin, sourceAccountUpiId."));
+    }
+
+
+    /** @type {UpiTransactionResult} */
+    let paymentResult = { // Initialize result object
         amount, recipientUpiId, status: 'Failed', message: 'Payment processing failed.', usedWalletFallback: false
     };
-    let recipientName = 'Recipient';
-    let logData: Partial<Transaction> = { // Prepare base log data
+    let recipientName = 'Recipient'; // Default name
+    /** @type {Partial<Transaction>} */
+    let logData = { // Prepare base log data
         type: 'Failed', name: recipientName, description: '', amount: -amount, status: 'Failed', userId, upiId: recipientUpiId, paymentMethodUsed: 'UPI'
     };
+    let finalTransactionId = null; // Will hold the Firestore transaction ID
 
     try {
-        // 1. Verify Recipient (Optional but Recommended)
+        // --- Step 1: Verify Recipient (Optional but Recommended) ---
         try {
              recipientName = await upiProviderService.verifyRecipient(recipientUpiId);
              logData.name = recipientName;
-             logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''}`; // Update description early
-        } catch (verifyError: any) {
-             // Proceed even if verification fails? Or stop? Decided to stop.
-             res.status(400);
-             throw new Error(`Recipient verification failed: ${verifyError.message}`);
+             logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''}`;
+        } catch (verifyError) {
+             console.warn(`Recipient verification failed for ${recipientUpiId}: ${verifyError.message} - Proceeding anyway...`);
+             // Decide if you want to proceed or fail here
+             // For this example, we proceed but use the UPI ID as the name
+             recipientName = recipientUpiId;
+             logData.name = recipientName;
+             logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''}`;
+             // Or uncomment to fail:
+             // res.status(400);
+             // throw new Error(`Recipient verification failed: ${verifyError.message}`);
         }
 
-
-        // 2. Check Bank Server Status for Source Account
+        // --- Step 2: Check Bank Server Status for Source Account ---
         const bankHandle = sourceAccountUpiId.split('@')[1];
         const bankStatus = await getBankStatus(bankHandle);
         if (bankStatus === 'Down') {
@@ -168,13 +243,11 @@ exports.processUpiPayment = async (req, res, next) => {
              throw new Error(paymentResult.message); // Go to fallback/failure handling
         }
          if (bankStatus === 'Slow') {
-             // Add a warning to the response? Or just proceed?
              paymentResult.message = `Your bank (${sourceAccountUpiId}) server is slow. Payment might take longer.`;
              // Continue with payment attempt
          }
 
-
-        // 3. Initiate UPI Payment via Provider
+        // --- Step 3: Initiate UPI Payment via Provider ---
         const upiResult = await upiProviderService.initiatePayment({
             sourceUpiId: sourceAccountUpiId,
             recipientUpiId,
@@ -183,85 +256,128 @@ exports.processUpiPayment = async (req, res, next) => {
             note: note || `Payment to ${recipientName}`
         });
 
-        // 4. Handle UPI Result
+        // --- Step 4: Handle UPI Result - Success ---
         if (upiResult.status === 'Completed') {
              logData.type = 'Sent';
              logData.status = 'Completed';
              paymentResult.status = 'Completed';
              paymentResult.message = upiResult.message || 'Transaction Successful';
-             paymentResult.transactionId = upiResult.transactionId; // Store PSP transaction ID if available
-             logData.description = logData.description?.replace('Payment to', 'Paid to'); // Update description for success
+             paymentResult.pspTransactionId = upiResult.transactionId; // Store PSP transaction ID
+             logData.description = logData.description?.replace('Payment to', 'Paid to');
 
-             const loggedTx = await addTransaction(logData as Transaction); // Log successful transaction
-             paymentResult.transactionId = loggedTx.id; // Use Firestore transaction ID for consistency in response
+             // Add successful transaction to Firestore
+             const loggedTx = await addTransaction(logData);
+             finalTransactionId = loggedTx.id;
+             paymentResult.transactionId = finalTransactionId; // Use Firestore ID
 
-              // Log to blockchain (non-blocking)
-             logTransactionToBlockchain(loggedTx.id, { userId, type: logData.type, amount, date: new Date(), recipient: recipientUpiId })
+             // Blockchain log (non-blocking)
+             logTransactionToBlockchain(finalTransactionId, loggedTx)
                  .catch(err => console.error("Blockchain log failed:", err));
 
-             sendToUser(userId, { type: 'transaction_update', payload: { ...loggedTx, date: loggedTx.date.toISOString() } }); // Send WS update
+             sendToUser(userId, { type: 'transaction_update', payload: loggedTx });
              return res.status(200).json(paymentResult); // Respond with success
 
-         } else {
-             // UPI Failed or Pending
-             paymentResult.message = upiResult.message || `Payment ${upiResult.status}.`;
-             paymentResult.status = upiResult.status === 'Pending' ? 'Pending' : 'Failed'; // Map status
-             logData.status = paymentResult.status; // Update log status
-             logData.description += ` - ${paymentResult.status}: ${paymentResult.message}`;
+        } else {
+             // --- Step 4b: Handle UPI Result - Pending ---
+             if (upiResult.status === 'Pending') {
+                 paymentResult.message = upiResult.message || 'Transaction Pending Confirmation';
+                 paymentResult.status = 'Pending';
+                 logData.status = 'Pending';
+                 logData.description += ` - Pending: ${paymentResult.message}`;
+                 paymentResult.pspTransactionId = upiResult.transactionId; // Store PSP transaction ID
 
-             // Add ticket info if debit might have occurred
-             if (upiResult.mightBeDebited) {
-                 paymentResult.ticketId = `ZET_TKT_${Date.now()}`;
-                 paymentResult.refundEta = format(addBusinessDays(new Date(), 3), 'PPP'); // Example ETA
-                 logData.ticketId = paymentResult.ticketId;
-                 logData.refundEta = paymentResult.refundEta;
-                 logData.description += ` (Ticket: ${paymentResult.ticketId})`;
+                 // Log pending transaction to Firestore
+                 const loggedTx = await addTransaction(logData);
+                 finalTransactionId = loggedTx.id;
+                 paymentResult.transactionId = finalTransactionId; // Use Firestore ID
+
+                 sendToUser(userId, { type: 'transaction_update', payload: loggedTx });
+                 // Return 202 Accepted for Pending status
+                 return res.status(202).json(paymentResult);
              }
-             // Throw error to trigger fallback logic in catch block
-             throw new Error(paymentResult.message);
+             // --- Step 4c: Handle UPI Result - Failure (Throw to trigger fallback/error handling) ---
+             else {
+                paymentResult.message = upiResult.message || `Payment failed. Status: ${upiResult.status}`;
+                paymentResult.status = 'Failed';
+                paymentResult.errorCode = upiResult.code; // Store error code if provided by PSP
+                logData.status = 'Failed';
+                logData.description += ` - Failed: ${paymentResult.message}`;
+
+                // Add ticket info if debit might have occurred
+                if (upiResult.mightBeDebited) {
+                    paymentResult.ticketId = `ZET_TKT_${Date.now()}`;
+                    paymentResult.refundEta = format(addBusinessDays(new Date(), 3), 'PPP'); // Example ETA
+                    logData.ticketId = paymentResult.ticketId;
+                    logData.refundEta = paymentResult.refundEta;
+                    logData.description += ` (Ticket: ${paymentResult.ticketId})`;
+                }
+                // Throw error to trigger fallback logic
+                const error = new Error(paymentResult.message);
+                error.code = upiResult.code; // Attach code to error object
+                error.mightBeDebited = upiResult.mightBeDebited;
+                throw error;
+            }
          }
 
-    } catch (upiError: any) { // Catch errors from verification, bank status check, or payment initiation
-        console.warn("UPI Payment processing error/failure:", upiError.message);
-        paymentResult.message = upiError.message || paymentResult.message; // Update message with specific error
+    } catch (upiError) { // Catch errors from verification, bank status check, or payment initiation
+        console.warn("[UPI Ctrl] UPI Payment processing error/failure:", upiError.message, "Code:", upiError.code);
+        // Use error message or default if not set
+        paymentResult.message = upiError.message || paymentResult.message;
+        paymentResult.errorCode = upiError.code || paymentResult.errorCode; // Keep error code
 
-        // --- Attempt Wallet Fallback (Smart Wallet Bridge) ---
+        // --- Step 5: Attempt Wallet Fallback (Smart Wallet Bridge) ---
         let fallbackAttempted = false;
+        let fallbackSuccess = false;
+        let fallbackTxId = null;
+        let recoveryScheduled = false;
+
         try {
             const { canUseBridge, smartWalletBridgeLimit } = await checkKYCAndBridgeStatus(userId);
             const fallbackLimit = smartWalletBridgeLimit || 0;
 
-            // Define conditions for fallback attempt
+            // Define conditions for fallback attempt (e.g., specific error codes, user enabled bridge, amount within limit)
+            const fallbackErrorCodes = ['UPI_LIMIT_EXCEEDED', 'INSUFFICIENT_FUNDS', 'BANK_NETWORK_ERROR', 'TRANSACTION_TIMEOUT', 'BANK_DECLINED']; // Add codes that trigger fallback
             const shouldAttemptFallback = canUseBridge && amount <= fallbackLimit &&
-                (upiError.code === 'UPI_LIMIT_EXCEEDED' || upiError.message.includes('Bank server') || upiError.message.includes('limit') || upiError.code === 'INSUFFICIENT_FUNDS'); // Add insufficient funds
+                (fallbackErrorCodes.includes(upiError.code) || paymentResult.message.toLowerCase().includes('limit') || paymentResult.message.toLowerCase().includes('server is down'));
 
             if (shouldAttemptFallback) {
                 fallbackAttempted = true;
-                console.log("Attempting Wallet Fallback...");
-                const walletBalance = await getWalletBalance(userId); // Use service
+                console.log("[UPI Ctrl] Attempting Wallet Fallback for UPI failure...");
+                const walletBalance = await getWalletBalance({ uid: userId }); // Pass user object or just ID
+
                 if (walletBalance >= amount) {
-                    // Use internal wallet payment function from Wallet Service
                     const walletPaymentResult = await payViaWalletInternal(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`); // Using internal helper
 
                     if (walletPaymentResult.success && walletPaymentResult.transactionId) {
-                         paymentResult.status = 'FallbackSuccess'; // Use a distinct status for tracking? Or just 'Completed'? Using Completed for history.
-                         paymentResult.message = `Paid via Wallet (${upiError.message}). Recovery scheduled.`;
+                         fallbackSuccess = true;
+                         fallbackTxId = walletPaymentResult.transactionId;
+                         paymentResult.message = `Paid via Wallet (UPI Failed: ${upiError.message}). Recovery scheduled.`;
+                         paymentResult.status = 'Completed'; // Final status is Completed (via fallback)
                          paymentResult.usedWalletFallback = true;
-                         paymentResult.walletTransactionId = walletPaymentResult.transactionId; // Store wallet tx ID
-                         paymentResult.transactionId = walletPaymentResult.transactionId; // Use wallet tx ID as primary ID for response
-                         paymentResult.ticketId = undefined; // Clear ticket/refund info as fallback succeeded
+                         paymentResult.transactionId = fallbackTxId; // Use wallet transaction ID as the primary ID
+                         paymentResult.walletTransactionId = fallbackTxId; // Store specifically as well
+                         paymentResult.ticketId = undefined; // Clear UPI failure ticket info
                          paymentResult.refundEta = undefined;
 
+                         // Schedule recovery
                          await scheduleRecovery(userId, amount, recipientUpiId, sourceAccountUpiId);
+                         recoveryScheduled = true;
 
-                         // Wallet payment service already logs its transaction.
-                          // We should log the *original* UPI failure though.
-                         logData.status = 'Failed'; // Log original UPI attempt as failed
-                         logData.description += ' (Wallet Fallback Used)';
-                         await addTransaction(logData as Transaction); // Log the failed UPI attempt
+                         // Log the *original* UPI failure attempt separately if desired, or update its description
+                          logData.status = 'Failed'; // Log original UPI attempt as failed
+                          logData.description += ' (Wallet Fallback Used)';
+                         await addTransaction(logData); // Log the failed UPI attempt
 
-                         sendToUser(userId, { type: 'transaction_update', payload: { ...(await getTransactionDetails(walletPaymentResult.transactionId)), date: new Date().toISOString()} }); // Send WS update for wallet payment
-                         return res.status(200).json(paymentResult); // Return successful fallback result
+                         // Wallet payment service already logged the successful fallback transaction.
+                         // Send WebSocket update for the successful fallback transaction
+                         const finalTxDoc = await getDoc(doc(firestoreDb, 'transactions', fallbackTxId));
+                         if (finalTxDoc.exists()) {
+                              const finalTxData = convertFirestoreDocToTransaction(finalTxDoc);
+                              sendToUser(userId, { type: 'transaction_update', payload: finalTxData });
+                         }
+
+                         // Return 200 OK with fallback success details
+                         return res.status(200).json(paymentResult);
                     } else {
                          paymentResult.message = `UPI failed (${upiError.message}). Wallet fallback also failed: ${walletPaymentResult.message}.`;
                          logData.description += ` - Wallet Fallback Failed: ${walletPaymentResult.message}`;
@@ -270,84 +386,112 @@ exports.processUpiPayment = async (req, res, next) => {
                     paymentResult.message = `UPI failed (${upiError.message}). Insufficient wallet balance (₹${walletBalance.toFixed(2)}) for fallback.`;
                     logData.description += ' - Insufficient Wallet Balance for Fallback.';
                 }
+            } else {
+                 console.log(`[UPI Ctrl] Fallback not attempted. CanUseBridge: ${canUseBridge}, Amount ${amount} <= Limit ${fallbackLimit}: ${amount <= fallbackLimit}, ErrorCode Check: ${fallbackErrorCodes.includes(upiError.code)}`);
             }
-        } catch (fallbackError: any) {
-             console.error("Wallet Fallback logic error:", fallbackError.message);
+        } catch (fallbackError) {
+             console.error("[UPI Ctrl] Wallet Fallback logic error:", fallbackError.message);
              // Add fallback error details to the main message if fallback was attempted
-             if(fallbackAttempted) {
-                  paymentResult.message = `${paymentResult.message}. Fallback Error: ${fallbackError.message}`;
+             if (fallbackAttempted) {
+                  paymentResult.message += `. Fallback Error: ${fallbackError.message}`;
                   logData.description += ` - Fallback Error: ${fallbackError.message}`;
              }
         }
         // --- End Wallet Fallback ---
 
-        // --- Final Failure Logging and Response ---
+        // --- Step 6: Final Failure Logging and Response (if fallback didn't succeed) ---
         logData.status = 'Failed'; // Ensure status is Failed
-        logData.ticketId = paymentResult.ticketId; // Include ticket if generated
-        logData.refundEta = paymentResult.refundEta;
+        logData.ticketId = upiError.mightBeDebited ? `ZET_TKT_${Date.now()}` : undefined; // Assign ticket ID ONLY if debit might have happened
+        logData.refundEta = logData.ticketId ? format(addBusinessDays(new Date(), 3), 'PPP') : undefined; // Assign ETA only if ticket ID assigned
+        paymentResult.ticketId = logData.ticketId; // Update result object
+        paymentResult.refundEta = logData.refundEta;
+
         try {
-             const failedTx = await addTransaction(logData as Transaction); // Log the final failure
-             paymentResult.transactionId = failedTx.id; // Use ID from logged failure
-             sendToUser(userId, { type: 'transaction_update', payload: { ...failedTx, date: failedTx.date.toISOString() } }); // Send WS update for failed tx
+             const failedTx = await addTransaction(logData); // Log the final failure
+             finalTransactionId = failedTx.id;
+             paymentResult.transactionId = finalTransactionId; // Use ID from logged failure
+             sendToUser(userId, { type: 'transaction_update', payload: failedTx });
         } catch (logError) {
-             console.error("Failed to log failed UPI transaction:", logError);
-             // If logging fails, create a minimal object for the response
-             paymentResult.transactionId = `failed_${Date.now()}`;
+             console.error("[UPI Ctrl] Failed to log failed UPI transaction:", logError);
+             paymentResult.transactionId = `failed_${Date.now()}`; // Create placeholder ID if logging fails
         }
-        res.status(400).json(paymentResult); // Return final failure details
+        // Return appropriate error status (e.g., 400 Bad Request, 503 Service Unavailable for bank down)
+        let statusCode = 400; // Default bad request
+        if (upiError.code === 'BANK_NETWORK_ERROR' || paymentResult.message.includes('server is down')) {
+             statusCode = 503; // Service Unavailable
+        } else if (upiError.code === 'UPI_INCORRECT_PIN') {
+             statusCode = 401; // Unauthorized (wrong PIN)
+        }
+        res.status(statusCode).json(paymentResult); // Return final failure details
     }
 };
 
 exports.checkBalance = async (req, res, next) => {
-     const userId = req.user.uid; // Ensure user is owner of upiId if needed? Backend might handle.
+     const userId = req.user.uid;
      const { upiId, pin } = req.body;
-     const balance = await upiProviderService.checkAccountBalance(upiId, pin); // Use provider service
-     res.status(200).json({ balance });
+      if (!upiId || !pin) {
+        res.status(400);
+        return next(new Error("UPI ID and PIN are required."));
+    }
+     try {
+        const balance = await upiProviderService.checkAccountBalance(upiId, pin); // Use provider service
+        res.status(200).json({ balance });
+     } catch (error) {
+          next(error);
+     }
  };
 
 // --- UPI Lite ---
 
 exports.getUpiLiteStatus = async (req, res, next) => {
     const userId = req.user.uid;
-    const status = await upiLiteService.getUpiLiteDetails(userId); // Call service function
-    res.status(200).json(status);
+    try {
+        const status = await upiLiteService.getUpiLiteDetails(userId); // Call service function
+        res.status(200).json(status);
+    } catch (error) {
+         next(error);
+    }
 };
 
 exports.enableUpiLite = async (req, res, next) => {
     const userId = req.user.uid;
     const { linkedAccountUpiId } = req.body;
-    const success = await upiLiteService.enableUpiLite(userId, linkedAccountUpiId); // Call service function
-    if (success) {
-        res.status(200).json({ success: true, message: "UPI Lite enabled successfully." });
-    } else {
-        // Should not happen if service throws error, but handle just in case
-        res.status(500);
-        throw new Error("Failed to enable UPI Lite.");
+     if (!linkedAccountUpiId) {
+        res.status(400);
+        return next(new Error("Linked Account UPI ID is required."));
+    }
+    try {
+        const result = await upiLiteService.enableUpiLite(userId, linkedAccountUpiId); // Call service function
+        res.status(200).json(result); // Send back success/message from service
+    } catch (error) {
+        next(error);
     }
 };
 
 exports.topUpUpiLite = async (req, res, next) => {
     const userId = req.user.uid;
     const { amount, fundingSourceUpiId } = req.body;
-    const success = await upiLiteService.topUpUpiLite(userId, amount, fundingSourceUpiId); // Call service function
-    if (success) {
+     if (!amount || amount <= 0 || !fundingSourceUpiId) {
+        res.status(400);
+        return next(new Error("Valid amount and funding source UPI ID are required."));
+    }
+    try {
+        const result = await upiLiteService.topUpUpiLite(userId, amount, fundingSourceUpiId); // Call service function
         // Fetch updated balance to return
         const updatedDetails = await upiLiteService.getUpiLiteDetails(userId);
-        res.status(200).json({ success: true, message: "UPI Lite top-up successful.", newBalance: updatedDetails.balance });
-    } else {
-        res.status(500);
-        throw new Error("Failed to top-up UPI Lite.");
+        res.status(200).json({ ...result, newBalance: updatedDetails.balance }); // Send back success/message and new balance
+    } catch (error) {
+        next(error);
     }
 };
 
 exports.disableUpiLite = async (req, res, next) => {
     const userId = req.user.uid;
-    const result = await upiLiteService.disableUpiLite(userId); // Call service function
-    if (result.success) {
-        res.status(200).json({ success: true, message: `UPI Lite disabled. Balance ${result.balanceReturned ? `₹${result.balanceReturned}` : ''} transferred back to linked account.` });
-    } else {
-        res.status(500);
-        throw new Error("Failed to disable UPI Lite.");
+    try {
+        const result = await upiLiteService.disableUpiLite(userId); // Call service function
+        res.status(200).json(result); // Send back success/message from service
+    } catch (error) {
+        next(error);
     }
 };
 
@@ -356,71 +500,17 @@ exports.disableUpiLite = async (req, res, next) => {
 // exports.setUpiPin = async (req, res, next) => { ... }
 // exports.resetUpiPin = async (req, res, next) => { ... }
 
-// Add internal helper import if needed elsewhere
-module.exports.payViaWalletInternal = require('../services/wallet').payViaWalletInternal; // Make internal wallet payment available
 
-// Import shared Transaction type
-import type { Transaction, UpiTransactionResult } from '../services/types';
-import { format, addBusinessDays } from 'date-fns'; // For refund ETA
-const { sendToUser } = require('../server'); // For WebSocket updates
-// Import helper from wallet service (ensure it's exported correctly)
-const { payViaWalletInternal } = require('../services/wallet');
-// Helper function to get transaction details (if needed for WS updates)
-const getTransactionDetails = async (txId: string): Promise<Transaction | null> => {
-     const txDoc = await getDoc(doc(firestoreDb, 'transactions', txId));
-     if (txDoc.exists()) {
-         const data = txDoc.data();
-         return { id: txDoc.id, ...data, date: data.date.toDate() } as Transaction;
-     }
-     return null;
- }
-
-```
-  </change>
-  <change>
-    <file>backend/routes/userRoutes.js</file>
-    <description>Wrap userController functions with asyncHandler and add validation for profile update.</description>
-    <content><![CDATA[const express = require('express');
-const { body, validationResult } = require('express-validator'); // Import validator
-const userController = require('../controllers/userController');
-const asyncHandler = require('../middleware/asyncHandler'); // Import asyncHandler
-const router = express.Router();
-
-// Middleware to handle validation results
-const handleValidationErrors = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        const errorMessages = errors.array().map(err => err.msg).join(', ');
-        res.status(400); // Set status code
-        throw new Error(`Validation Failed: ${errorMessages}`); // Throw error for asyncHandler
-    }
-    next();
-};
-
-// GET /api/users/profile - Fetch current user's profile
-router.get('/profile', asyncHandler(userController.getUserProfile));
-
-// PUT /api/users/profile - Update current user's profile
-router.put('/profile',
-    // Add optional validation rules for fields that can be updated
-    body('name').optional().trim().notEmpty().withMessage('Name cannot be empty.'),
-    body('phone').optional({ checkFalsy: true }).trim().isMobilePhone('en-IN').withMessage('Invalid Indian mobile number format.'),
-    body('avatarUrl').optional({ checkFalsy: true }).isURL().withMessage('Invalid avatar URL.'),
-    body('notificationsEnabled').optional().isBoolean().withMessage('notificationsEnabled must be true or false.'),
-    body('biometricEnabled').optional().isBoolean().withMessage('biometricEnabled must be true or false.'),
-    body('appLockEnabled').optional().isBoolean().withMessage('appLockEnabled must be true or false.'),
-    body('isSmartWalletBridgeEnabled').optional().isBoolean().withMessage('isSmartWalletBridgeEnabled must be true or false.'),
-    body('smartWalletBridgeLimit').optional({ checkFalsy: true }).isNumeric().toFloat({ min: 0 }).withMessage('Invalid smart wallet bridge limit.'),
-    body('defaultPaymentMethod').optional().isString().trim(),
-    body('isSeniorCitizenMode').optional().isBoolean().withMessage('isSeniorCitizenMode must be true or false.'),
-    handleValidationErrors, // Apply validation check
-    asyncHandler(userController.updateUserProfile)
-);
-
-// POST /api/users/kyc/initiate - Initiate KYC process (Placeholder)
-// router.post('/kyc/initiate', asyncHandler(userController.initiateKyc));
-
-// GET /api/users/kyc/status - Get KYC status (can be part of getProfile)
-// router.get('/kyc/status', asyncHandler(userController.getKycStatus));
-
-module.exports = router;
+// Helper function to convert Firestore doc to Transaction type for WS updates
+function convertFirestoreDocToTransaction(docSnap) {
+    if (!docSnap.exists()) return null;
+    const data = docSnap.data();
+    return {
+        id: docSnap.id,
+        ...data,
+        date: (data.date instanceof Timestamp) ? data.date.toDate() : new Date(), // Convert Timestamp
+        // Ensure other potential timestamps are converted
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
+    }; // Basic assertion, refine if using TS interfaces strictly
+}

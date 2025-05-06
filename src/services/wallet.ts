@@ -3,10 +3,8 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-// Removed unused import: addTransaction
-// Removed unused import: logTransactionToBlockchain
-// Removed unused import: Transaction type specific to logger context
-import type { WalletTransactionResult } from './types'; // Use shared types
+import { addTransaction } from '@/services/transactionLogger'; // Use centralized logger (client-side path alias)
+import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
 
 // Define the expected result structure from the backend API (Already in types.ts)
 // export interface WalletTransactionResult { ... }
@@ -105,7 +103,86 @@ export async function payViaWallet(
      }
 }
 
+// Keep the internal function for potential use by other client-side services
+// if they need direct interaction without API call (though generally API is preferred).
 /**
- * @deprecated This client-side simulation is deprecated. Use the `payViaWallet` function to interact with the backend API.
+ * Internal client-side function for direct wallet debit/credit simulation or local state update.
+ * Handles balance check, atomic update (if interacting directly with Firestore), transaction logging, and WebSocket updates.
+ * Use this function internally within the frontend if needed, but prefer API calls for actual backend operations.
+ * IMPORTANT: Negative amount signifies a CREDIT to the wallet (like a top-up/refund).
+ *
+ * @param userId The ID of the user whose wallet is affected.
+ * @param identifier An identifier for the transaction (e.g., recipient UPI, biller ID, 'WALLET_RECOVERY').
+ * @param amount The amount (positive for debit, negative for credit).
+ * @param note A descriptive note for the transaction log.
+ * @returns A promise resolving to a WalletTransactionResult.
  */
-// export async function payViaWalletInternal(...) { ... } // Removed function
+export async function payViaWalletInternal(
+    userId: string,
+    identifier: string,
+    amount: number,
+    note?: string
+): Promise<WalletTransactionResult> {
+    console.warn("payViaWalletInternal called on client-side. Prefer using API via payViaWallet.");
+    // This function remains largely the same but uses client-side addTransaction
+    const isCredit = amount < 0;
+    const absoluteAmount = Math.abs(amount);
+    const operationType = isCredit ? 'credit' : 'debit';
+    let loggedTxId: string | undefined;
+    let newBalance = 0; // Placeholder
+
+    try {
+        // Simulate balance check client-side (less secure, backend should re-verify)
+        const currentBalance = await getWalletBalance(userId);
+        if (!isCredit && currentBalance < absoluteAmount) {
+             throw new Error(`Insufficient wallet balance. Available: ₹${currentBalance.toFixed(2)}`);
+         }
+         newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount; // Simulate balance update
+
+        // Log successful transaction using client-side logger
+         const logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
+             type: isCredit ? 'Received' : 'Sent',
+             name: identifier,
+             description: `${isCredit ? 'Credited via Wallet' : 'Paid via Wallet'} ${note ? `- ${note}` : ''}`,
+             amount: amount,
+             status: 'Completed',
+             userId: userId,
+             upiId: identifier.includes('@') ? identifier : undefined,
+             paymentMethodUsed: 'Wallet',
+         };
+         const loggedTx = await addTransaction(logData); // Use client-side logger
+         loggedTxId = loggedTx.id;
+
+         // Note: Client-side cannot reliably send balance updates via WebSocket; backend should do this.
+         // sendBalanceUpdate(userId, newBalance); // This would fail
+
+        console.log(`[Client Sim] Internal wallet ${operationType} successful for ${userId}. Tx ID: ${loggedTxId}`);
+        return { success: true, transactionId: loggedTxId, newBalance, message: `Wallet ${operationType} successful (Client Sim)` };
+
+    } catch (error: any) {
+         console.error(`[Client Sim] Internal wallet ${operationType} failed for ${userId}:`, error);
+         // Log failed attempt only if it was a debit attempt
+         let failedTxId: string | undefined;
+         if (!isCredit) {
+              const failLogData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
+                 type: 'Failed',
+                 name: identifier,
+                 description: `Wallet Payment Failed - ${error.message}`,
+                 amount: amount,
+                 status: 'Failed',
+                 userId: userId,
+                 upiId: identifier.includes('@') ? identifier : undefined,
+                 paymentMethodUsed: 'Wallet',
+             };
+             try {
+                 const failedTx = await addTransaction(failLogData);
+                 failedTxId = failedTx.id;
+                 // sendToUser(userId, { type: 'transaction_update', payload: failedTx }); // Cannot send WS from client reliably
+             } catch (logError) {
+                 console.error("[Client Sim] Failed to log failed internal wallet transaction:", logError);
+             }
+         }
+         return { success: false, transactionId: failedTxId, message: error.message || `Internal wallet ${operationType} failed.` };
+    }
+}
+
