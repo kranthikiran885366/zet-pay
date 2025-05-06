@@ -5,209 +5,114 @@
 
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, Timestamp, getDoc, runTransaction } from 'firebase/firestore';
-import { addTransaction } from '../../backend/services/transactionLogger'; // For logging the withdrawal/hold - Corrected path
-import { getWalletBalance, payViaWallet } from './wallet'; // To check/hold balance potentially
-import { addDays, differenceInMinutes } from 'date-fns'; // For expiry calculation
+// Removed addTransaction import
+import { getWalletBalance } from './wallet'; // Keep for client-side balance check before initiation
+import { addMinutes, differenceInMinutes } from 'date-fns'; // For expiry calculation
 import type { WithdrawalDetails, ZetAgent } from './types'; // Import shared types
+import { apiClient } from '@/lib/apiClient'; // For API interaction
 
 export type { WithdrawalDetails, ZetAgent }; // Re-export
 
 
 /**
- * Asynchronously retrieves a list of nearby Zet Agent shops.
- * SIMULATED: Uses mock data and calculates dummy distance.
+ * Asynchronously retrieves a list of nearby Zet Agent shops via the backend API.
  * @param latitude User's current latitude.
  * @param longitude User's current longitude.
  * @returns A promise that resolves to an array of ZetAgent objects sorted by distance.
  */
 export async function getNearbyAgents(latitude: number, longitude: number): Promise<ZetAgent[]> {
-    console.log(`Fetching nearby agents for location: ${latitude}, ${longitude}`);
-    // TODO: Implement API call to backend service that queries agents based on location.
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-
-    const mockAgentsData = [
-        { id: 'agent1', name: 'Ramesh Kirana Store', address: '123 MG Road, Bangalore', operatingHours: '8 AM - 9 PM' },
-        { id: 'agent2', name: 'Sri Sai Telecom', address: '45 Main St, Koramangala', operatingHours: '9 AM - 8 PM' },
-        { id: 'agent3', name: 'Pooja General Store', address: '78 Market Rd, Jayanagar', operatingHours: '7 AM - 10 PM' },
-    ];
-
-    return mockAgentsData.map(agent => ({
-        ...agent,
-        distanceKm: parseFloat((Math.random() * 5 + 0.5).toFixed(1))
-    })).sort((a, b) => a.distanceKm - b.distanceKm);
+    console.log(`Fetching nearby agents via API for location: ${latitude}, ${longitude}`);
+    try {
+        const agents = await apiClient<ZetAgent[]>('/cash-withdrawal/agents', {
+            params: { lat: latitude, lon: longitude } // Example query params
+        });
+        // Backend should ideally return sorted agents with distance
+        return agents;
+    } catch (error) {
+        console.error("Error fetching nearby agents via API:", error);
+        return []; // Return empty on error
+    }
 }
 
 /**
- * Initiates a cardless cash withdrawal request in Firestore.
- * Generates OTP and QR data. Places a temporary hold (simulated).
+ * Initiates a cardless cash withdrawal request via the backend API.
+ * Backend handles balance check, hold placement, OTP/QR generation, and initial logging.
  * @param agentId The ID of the selected Zet Agent.
  * @param amount The amount to withdraw.
- * @returns A promise resolving to the WithdrawalDetails object (including the Firestore document ID).
- * @throws Error if user is not logged in, balance is insufficient, or initiation fails.
+ * @returns A promise resolving to the WithdrawalDetails object returned by the backend.
+ * @throws Error if user is not logged in or initiation fails.
  */
 export async function initiateWithdrawal(agentId: string, amount: number): Promise<WithdrawalDetails> {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("User not logged in.");
     const userId = currentUser.uid;
-    const agentName = 'Zet Agent'; // Fetch agent name if needed
+    const agentName = 'Zet Agent'; // Backend should fetch/know agent name
 
-    console.log(`Initiating withdrawal of ₹${amount} at agent ${agentId} (${agentName}) for user ${userId}`);
-
-    // 1. Check User Balance (e.g., Wallet Balance)
-    const balance = await getWalletBalance(userId);
-    if (balance < amount) {
-        throw new Error(`Insufficient wallet balance (₹${balance.toFixed(2)}) to initiate withdrawal.`);
-    }
-
-    // TODO: Implement more robust limit checks (daily withdrawal limit, agent limit, etc.)
-
-    // Simulate placing a temporary hold on the balance (in a real app, use transactions)
-    console.log(`Simulating balance hold of ₹${amount} for user ${userId}`);
-    // await updateDoc(doc(db, 'wallets', userId), { balance: balance - amount }); // This is risky without transaction
-
-    // 2. Generate OTP & QR Data
-    const now = new Date();
-    const expiryMinutes = 5;
-    const expiresAt = addMinutes(now, expiryMinutes); // Use addMinutes from date-fns
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const transactionId = `CW_${Date.now()}_${userId.substring(0, 5)}`; // Unique enough for demo
-    const qrData = `zetpay://cashwithdrawal?txn=${transactionId}&agent=${agentId}&amount=${amount}&otp=${otp}`; // Example QR data format
-
-    // 3. Create Withdrawal Request Document in Firestore
-    const withdrawalData: Omit<WithdrawalDetails, 'id' | 'createdAt' | 'completedAt' | 'updatedAt' | 'expiresInSeconds' | 'transactionId'> = {
-        userId,
-        agentId,
-        agentName,
-        amount,
-        otp,
-        qrData,
-        status: 'Pending Confirmation',
-        expiresAt: Timestamp.fromDate(expiresAt),
-    };
+    console.log(`Initiating withdrawal via API: ₹${amount} at agent ${agentId} for user ${userId}`);
 
     try {
-        const withdrawalColRef = collection(db, 'cashWithdrawals'); // Top-level collection for requests
-        const docRef = await addDoc(withdrawalColRef, {
-            ...withdrawalData,
-            createdAt: serverTimestamp(), // Use server timestamp
-            updatedAt: serverTimestamp(),
+        // Backend performs balance check and creates request
+        const details = await apiClient<WithdrawalDetails>('/cash-withdrawal/initiate', {
+            method: 'POST',
+            body: JSON.stringify({ agentId, agentName, amount }), // Send agentName if available client-side
         });
-        console.log("Withdrawal request created with ID:", docRef.id);
 
-        // Log the initiated withdrawal transaction (as pending)
-        // This should ideally use the backend's addTransaction
-        // await addTransaction({
-        //     type: 'Sent', // Funds are 'sent' to the agent initially
-        //     name: `Cash Withdrawal @ ${agentName}`,
-        //     description: `Pending Agent Confirmation (Txn: ${docRef.id})`,
-        //     amount: -amount,
-        //     status: 'Pending', // Match withdrawal status
-        //     userId: userId,
-        //     // Add specific fields like withdrawalRequestId: docRef.id
-        // });
-
-         // Fetch the created doc to get the server timestamp resolved for return
-        const newDocSnap = await getDoc(docRef);
-        const savedData = newDocSnap.data()!;
-
+        // Convert timestamps from backend (likely ISO strings) to Date objects
         return {
-            id: docRef.id,
-            ...withdrawalData,
-            createdAt: (savedData.createdAt as Timestamp), // Use resolved timestamp
-            expiresAt: (savedData.expiresAt as Timestamp),
-            expiresInSeconds: differenceInMinutes(expiresAt, new Date()) * 60, // Calculate seconds remaining
-        } as WithdrawalDetails;
+            ...details,
+            createdAt: new Date(details.createdAt),
+            expiresAt: new Date(details.expiresAt),
+            updatedAt: details.updatedAt ? new Date(details.updatedAt) : undefined,
+            completedAt: details.completedAt ? new Date(details.completedAt) : undefined,
+            // Calculate expiresInSeconds client-side if needed, or get from backend
+            expiresInSeconds: differenceInMinutes(new Date(details.expiresAt), new Date()) * 60,
+        };
 
-    } catch (error) {
-        console.error("Error initiating withdrawal:", error);
-        // TODO: Rollback balance hold if implemented
-        throw new Error("Could not initiate cash withdrawal request.");
+    } catch (error: any) {
+        console.error("Error initiating withdrawal via API:", error);
+        throw error; // Re-throw API client error
     }
 }
 
+
 /**
- * Checks the status of a specific withdrawal request in Firestore.
+ * Checks the status of a specific withdrawal request via the backend API.
  * @param withdrawalId The Firestore document ID of the withdrawal request.
  * @returns A promise resolving to the current status of the withdrawal.
  */
 export async function checkWithdrawalStatus(withdrawalId: string): Promise<WithdrawalDetails['status']> {
-     console.log(`Checking status for withdrawal: ${withdrawalId}`);
+     console.log(`Checking status via API for withdrawal: ${withdrawalId}`);
      try {
-        const withdrawalDocRef = doc(db, 'cashWithdrawals', withdrawalId);
-        const withdrawalSnap = await getDoc(withdrawalDocRef);
-
-        if (!withdrawalSnap.exists()) {
-            throw new Error("Withdrawal request not found.");
-        }
-
-        const data = withdrawalSnap.data() as WithdrawalDetails;
-
-        // Check for expiry server-side (or client-side if reliable time sync)
-        if (data.status === 'Pending Confirmation' && Timestamp.now() > data.expiresAt) {
-             console.log(`Withdrawal ${withdrawalId} has expired. Updating status.`);
-             // Update status to Expired if it hasn't been completed/cancelled
-             // This should ideally be handled by a backend process checking expiry
-             await updateDoc(withdrawalDocRef, { status: 'Expired', failureReason: 'Timed out' });
-             // TODO: Release balance hold if implemented
-             return 'Expired';
-        }
-
-        return data.status;
-
+        // Backend endpoint handles expiry checks if needed
+        const result = await apiClient<{ status: WithdrawalDetails['status'] }>(`/cash-withdrawal/status/${withdrawalId}`);
+        return result.status;
      } catch (error: any) {
-         console.error(`Error checking withdrawal status for ${withdrawalId}:`, error);
+         console.error(`Error checking withdrawal status via API for ${withdrawalId}:`, error);
          throw new Error(error.message || "Could not check withdrawal status.");
      }
 }
 
 /**
- * Cancels a pending cash withdrawal request.
+ * Cancels a pending cash withdrawal request via the backend API.
  * @param withdrawalId The Firestore document ID of the withdrawal request.
  * @returns A promise resolving when cancellation is complete.
  */
 export async function cancelWithdrawal(withdrawalId: string): Promise<void> {
-     const currentUser = auth.currentUser;
+    const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("User not logged in.");
-    const userId = currentUser.uid;
-    console.log(`Cancelling withdrawal ${withdrawalId} for user ${userId}`);
+    console.log(`Cancelling withdrawal via API: ${withdrawalId}`);
 
     try {
-        const withdrawalDocRef = doc(db, 'cashWithdrawals', withdrawalId);
-         // Use a transaction to ensure we only cancel if it's still pending
-         await runTransaction(db, async (transaction) => {
-             const withdrawalSnap = await transaction.get(withdrawalDocRef);
-             if (!withdrawalSnap.exists()) throw new Error("Withdrawal request not found.");
-
-             const data = withdrawalSnap.data() as WithdrawalDetails;
-             if (data.userId !== userId) throw new Error("Permission denied.");
-             if (data.status !== 'Pending Confirmation') throw new Error(`Cannot cancel request with status: ${data.status}`);
-
-             transaction.update(withdrawalDocRef, {
-                 status: 'Cancelled',
-                 failureReason: 'Cancelled by user',
-                 updatedAt: serverTimestamp()
-             });
-             // TODO: Release balance hold if implemented
-         });
-
-         // Update the corresponding transaction log status
-         // Find transaction linked to this withdrawal (assuming withdrawalId was stored)
-         // const q = query(collection(db, 'transactions'), where('withdrawalRequestId', '==', withdrawalId), limit(1));
-         // const txSnap = await getDocs(q);
-         // if (!txSnap.empty) {
-         //     await updateDoc(doc(db, 'transactions', txSnap.docs[0].id), { status: 'Cancelled' });
-         // }
-
-        console.log(`Withdrawal ${withdrawalId} cancelled successfully.`);
-
+        // Backend handles permission checks, status updates, hold release, logging cancellation
+        await apiClient<void>(`/cash-withdrawal/cancel/${withdrawalId}`, {
+            method: 'POST', // Or DELETE depending on backend design
+        });
+        console.log(`Withdrawal ${withdrawalId} cancelled successfully via API.`);
     } catch (error: any) {
-         console.error(`Error cancelling withdrawal ${withdrawalId}:`, error);
+         console.error(`Error cancelling withdrawal ${withdrawalId} via API:`, error);
          throw new Error(error.message || "Could not cancel withdrawal.");
     }
 }
 
-
-// Helper function (import from date-fns if available)
-function addMinutes(date: Date, minutes: number): Date {
-  return new Date(date.getTime() + minutes * 60000);
-}
+// Note: confirmDispenseByAgent should only be callable by authenticated agents, likely via a separate agent app/portal calling the backend API.
+// No client-side function needed for this in the user app.

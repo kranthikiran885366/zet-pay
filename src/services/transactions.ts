@@ -5,8 +5,7 @@ import { apiClient } from '@/lib/apiClient';
 import type { Transaction } from './types'; // Import shared type
 import type { DateRange } from "react-day-picker";
 import { auth } from '@/lib/firebase'; // Keep auth for user ID if needed client-side
-// Removed Unsubscribe import as we return null now
-import { ensureWebSocketConnection, subscribeToWebSocketMessages, requestInitialData, sendWebSocketMessage } from '@/lib/websocket'; // Import WebSocket utility
+import { ensureWebSocketConnection, subscribeToWebSocketMessages, requestInitialData } from '@/lib/websocket'; // Import WebSocket utility
 
 export type { Transaction }; // Re-export for convenience
 
@@ -75,12 +74,11 @@ export function subscribeToTransactionHistory(
     onError: (error: Error) => void,
     filters?: TransactionFilters,
     count?: number
-): (() => void) | null { // Return type updated to include null
+): (() => void) | null {
     const currentUser = auth.currentUser;
     if (!currentUser) {
         console.log("No user logged in to subscribe to transaction history.");
         // Return null instead of calling onError here, let the component handle it
-        // onError(new Error("User not logged in."));
         return null; // Return null if no user
     }
     const userId = currentUser.uid;
@@ -97,40 +95,45 @@ export function subscribeToTransactionHistory(
         let updatedTransactions: Transaction[] = [];
          if (Array.isArray(payload)) {
              // Handle full list update (e.g., initial data)
-             console.log("Received initial/full transaction list update via WS.");
+             console.log("[Tx Subscribe] Received initial/full transaction list update via WS.");
              updatedTransactions = payload.map((tx: any) => ({
                  ...tx,
-                 date: new Date(tx.date),
+                 date: new Date(tx.date), // Convert timestamp string/object to Date
                  avatarSeed: tx.avatarSeed || tx.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
              }));
+             // Sort by date descending for consistent display
+             updatedTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
              onUpdate(updatedTransactions);
          } else if (payload && typeof payload === 'object' && payload.id && payload.date) {
              // Handle single transaction update
-             console.log("Received single transaction update via WS:", payload.id);
-             const newTransaction = {
+             console.log("[Tx Subscribe] Received single transaction update via WS:", payload.id);
+             const newTransaction: Transaction = {
                  ...payload,
-                 date: new Date(payload.date),
-                 avatarSeed: payload.avatarSeed || payload.name?.toLowerCase().replace(/\s+/g, '') || payload.id,
+                 date: new Date(payload.date), // Convert timestamp string/object to Date
+                 avatarSeed: payload.avatarSeed || payload.name?.toLowerCase().replace(/\s+/g, '') || tx.id,
              };
-             onUpdate([newTransaction]); // Pass only the single updated/new transaction
+             // Instead of managing the list here, pass the single update to the hook/component
+             // The hook/component will decide how to merge it (prepend, update, etc.)
+             onUpdate([newTransaction]);
          } else {
              console.warn("Received unexpected payload format for transaction update:", payload);
+             onError(new Error("Received invalid transaction update data."));
          }
     };
 
     // Subscribe to WebSocket messages for general updates and initial data response
-    const wsUnsubscribe = subscribeToWebSocketMessages('transaction_update', handleTransactionUpdate);
-    const wsInitialUnsubscribe = subscribeToWebSocketMessages('initial_transactions', handleTransactionUpdate);
+    const wsUnsubscribeUpdate = subscribeToWebSocketMessages('transaction_update', handleTransactionUpdate);
+    const wsUnsubscribeInitial = subscribeToWebSocketMessages('initial_transactions', handleTransactionUpdate);
 
     // Request initial data once WebSocket is connected and authenticated
-     requestInitialData('transactions', subscriptionFilters);
+    requestInitialData('transactions', subscriptionFilters);
 
 
     // Return cleanup function
     return () => {
         console.log("Cleaning up transaction subscription (WebSocket)...");
-        wsUnsubscribe(); // Unsubscribe from 'transaction_update'
-        wsInitialUnsubscribe(); // Unsubscribe from 'initial_transactions'
+        wsUnsubscribeUpdate(); // Unsubscribe from 'transaction_update'
+        wsUnsubscribeInitial(); // Unsubscribe from 'initial_transactions'
     };
 }
 
@@ -148,8 +151,6 @@ export async function cancelRecharge(transactionId: string): Promise<{ success: 
          const result = await apiClient<{ success: boolean; message: string }>(`/recharge/cancel/${transactionId}`, {
              method: 'POST',
          });
-         // Optional: Send a WS message to potentially trigger faster UI update if backend doesn't guarantee it
-         // sendWebSocketMessage({ type: 'request_refresh_transaction', payload: { transactionId } });
          return result;
      } catch (error: any) {
          console.error("Error cancelling recharge via API:", error);

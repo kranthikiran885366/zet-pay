@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Info, TrendingUp, Target, DollarSign, Settings, PlusCircle, Edit, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Info, TrendingUp, Target, DollarSign, Settings, PlusCircle, Edit, Trash2, Loader2, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { subscribeToTransactionHistory, Transaction } from '@/services/transactions'; // Use subscription
+import { Transaction } from '@/services/transactions'; // Use Transaction type
+import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions'; // Use real-time hook
 import { analyzeSpending, AnalyzeSpendingInput, AnalyzeSpendingOutput } from '@/ai/flows/spending-analysis';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -15,7 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Unsubscribe } from 'firebase/firestore'; // Import Unsubscribe type
+import { auth } from '@/lib/firebase'; // Import auth
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert components
+
 
 interface SpendingCategory {
   category: string;
@@ -47,14 +50,14 @@ const categorizeTransaction = (tx: Transaction): string => {
 };
 
 export default function SpendingAnalysisPage() {
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [transactions, isLoading, refreshTransactions] = useRealtimeTransactions(); // Use real-time hook
     const [analysis, setAnalysis] = useState<AnalyzeSpendingOutput | null>(null);
-    const [isLoading, setIsLoading] = useState(true); // Manages overall page loading (including initial transactions)
     const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false); // Manages AI analysis loading state
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [isBudgetDialogOpen, setIsBudgetDialogOpen] = useState(false);
     const [currentBudget, setCurrentBudget] = useState<Partial<Budget>>({});
     const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+    const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Track login state
 
     const { toast } = useToast();
 
@@ -67,35 +70,48 @@ export default function SpendingAnalysisPage() {
             }
         } catch (error) {
              console.error("Error loading budgets from localStorage:", error);
-             // Handle error appropriately, maybe clear corrupted data
              localStorage.removeItem('payfriend-budgets');
         }
     }, []);
 
+     // Check login status
+     useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            setIsLoggedIn(!!user);
+            if (!user) {
+                // Clear data if user logs out
+                setAnalysis(null);
+                // refreshTransactions(); // Trigger hook to clear transactions
+            }
+        });
+        return () => unsubscribe();
+     }, [refreshTransactions]);
+
+
     // Function to trigger AI analysis
     const triggerAnalysis = async (currentTransactions: Transaction[]) => {
+         if (!isLoggedIn) return; // Don't analyse if not logged in
         if (currentTransactions.length > 0) {
             setIsLoadingAnalysis(true);
             try {
                  const input: AnalyzeSpendingInput = {
-                    // Map only essential fields, keep it concise
                     transactionHistory: JSON.stringify(currentTransactions.map(tx => ({
                         name: tx.name,
                         description: tx.description,
                         amount: tx.amount,
-                        date: tx.date.toISOString().split('T')[0], // Just date YYYY-MM-DD
+                        date: tx.date ? new Date(tx.date).toISOString().split('T')[0] : undefined, // Handle potential string date
                         type: tx.type,
                         status: tx.status,
                     }))),
-                    // TODO: Add user preferences if available from profile/settings
-                    // userPreferences: JSON.stringify({ spendingGoals: ['Reduce Dining Out'], preferredCategories: ['Travel', 'Groceries'] })
                  };
                  const analysisResult = await analyzeSpending(input);
                  setAnalysis(analysisResult);
-                 toast({ title: "Spending Analysis Updated", description: "AI insights generated based on latest transactions." });
+                 // Toast removed, happens too often with real-time updates
+                 // toast({ title: "Spending Analysis Updated", description: "AI insights generated based on latest transactions." });
              } catch(error) {
                  console.error("Error analyzing spending:", error);
-                 toast({ variant: "destructive", title: "Analysis Error", description: "Could not generate spending analysis." });
+                 // Toast removed, can be annoying
+                 // toast({ variant: "destructive", title: "Analysis Error", description: "Could not generate spending analysis." });
                  setAnalysis(null);
              } finally {
                  setIsLoadingAnalysis(false);
@@ -107,49 +123,11 @@ export default function SpendingAnalysisPage() {
     };
 
 
-     // Fetch transactions using real-time subscription and trigger analysis
+     // Trigger analysis whenever transactions update from the hook
     useEffect(() => {
-        setIsLoading(true); // Set loading true when starting subscription
-        let unsubscribe: Unsubscribe | null = null;
+        triggerAnalysis(transactions);
+    }, [transactions]); // Re-run analysis when transactions change
 
-        const setupSubscription = () => {
-             unsubscribe = subscribeToTransactionHistory(
-                 (fetchedTransactions) => {
-                     setTransactions(fetchedTransactions);
-                     triggerAnalysis(fetchedTransactions); // Trigger analysis whenever transactions update
-                     setIsLoading(false); // Set loading false after first fetch completes
-                 },
-                 (error) => {
-                     console.error("Error fetching transactions:", error);
-                      if (error.message !== "User not logged in.") {
-                        toast({ variant: "destructive", title: "Error", description: "Could not load transaction data." });
-                      }
-                     setIsLoading(false); // Also stop loading on error
-                 }
-             );
-        }
-
-        // Wait for auth state before subscribing
-        const unsubscribeAuth = auth.onAuthStateChanged(user => {
-            if (user) {
-                setupSubscription();
-            } else {
-                setIsLoading(false);
-                setTransactions([]); // Clear data if logged out
-                setAnalysis(null);
-                 if (unsubscribe) unsubscribe(); // Clean up previous subscription if user logs out
-            }
-        });
-
-
-        // Cleanup subscription on unmount
-        return () => {
-            unsubscribeAuth(); // Cleanup auth listener
-            if (unsubscribe) {
-                unsubscribe();
-            }
-        };
-    }, [toast]); // Re-subscribe might not be needed often unless user context changes dramatically
 
     // Process data for charts and budgets based on the current transactions state
     const { spendingData, totalSpending, availableCategories } = useMemo(() => {
@@ -186,10 +164,8 @@ export default function SpendingAnalysisPage() {
 
         let updatedBudgets;
         if (editingBudgetId) {
-            // Update existing budget
             updatedBudgets = budgets.map(b => b.id === editingBudgetId ? { ...b, category: currentBudget.category!, limit: currentBudget.limit! } : b);
         } else {
-            // Add new budget - check if category already exists
             if (budgets.some(b => b.category === currentBudget.category)) {
                  toast({ variant: "destructive", title: "Duplicate Budget", description: `A budget for ${currentBudget.category} already exists.` });
                  return;
@@ -208,7 +184,6 @@ export default function SpendingAnalysisPage() {
          } catch (error) {
              console.error("Error saving budgets to localStorage:", error);
              toast({ variant: "destructive", title: "Save Error", description: "Could not save budget." });
-             // Optionally revert state change if saving failed
          }
         setIsBudgetDialogOpen(false);
         setCurrentBudget({});
@@ -230,7 +205,6 @@ export default function SpendingAnalysisPage() {
          } catch (error) {
              console.error("Error deleting budget from localStorage:", error);
              toast({ variant: "destructive", title: "Delete Error", description: "Could not delete budget." });
-              // Optionally revert state change if deleting failed
          }
         toast({ title: "Budget Deleted" });
     };
@@ -252,13 +226,25 @@ export default function SpendingAnalysisPage() {
                 </Link>
                 <TrendingUp className="h-6 w-6" />
                 <h1 className="text-lg font-semibold">Spending Analysis & Budgets</h1>
+                 {/* Add a refresh button for transactions */}
+                 <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={() => refreshTransactions()} disabled={isLoading}>
+                     {isLoading ? <Loader2 className="h-5 w-5 animate-spin"/> : <RefreshCw className="h-5 w-5"/>}
+                 </Button>
             </header>
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                 {isLoading && <div className="flex justify-center p-6"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <span className="ml-2">Loading data...</span></div>}
 
-                {!isLoading && transactions.length === 0 && (
+                {!isLoggedIn && !isLoading && (
+                     <Card className="shadow-md text-center">
+                         <CardContent className="p-6">
+                             <p className="text-muted-foreground">Please log in to view your spending analysis and budgets.</p>
+                         </CardContent>
+                     </Card>
+                 )}
+
+                {!isLoading && isLoggedIn && transactions.length === 0 && (
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
                             <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
@@ -268,7 +254,7 @@ export default function SpendingAnalysisPage() {
                      </Card>
                 )}
 
-                 {!isLoading && transactions.length > 0 && (
+                 {!isLoading && isLoggedIn && transactions.length > 0 && (
                     <>
                         {/* Spending Overview */}
                         <Card className="shadow-md">
@@ -293,7 +279,6 @@ export default function SpendingAnalysisPage() {
                                                         fill="#8884d8"
                                                         dataKey="amount"
                                                         nameKey="category"
-                                                        // label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`} // Label might clutter small charts
                                                     >
                                                         {spendingData.map((entry, index) => (
                                                             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -341,8 +326,9 @@ export default function SpendingAnalysisPage() {
                                 ) : !isLoadingAnalysis && transactions.length === 0 ? (
                                      <p className="text-muted-foreground text-center py-4">No transactions yet to generate insights.</p>
                                 ) : null }
-                                <Button variant="link" size="sm" className="w-full text-xs" onClick={() => triggerAnalysis(transactions)} disabled={isLoadingAnalysis || transactions.length === 0}>
-                                    <RefreshCw className="h-3 w-3 mr-1"/> Regenerate Analysis
+                                {/* Manual Refresh Button */}
+                                <Button variant="link" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => triggerAnalysis(transactions)} disabled={isLoadingAnalysis || transactions.length === 0}>
+                                    <RefreshCw className="h-3 w-3 mr-1"/> {!isLoadingAnalysis && 'Regenerate Analysis'}
                                 </Button>
                             </CardContent>
                         </Card>

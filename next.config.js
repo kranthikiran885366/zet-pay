@@ -26,6 +26,12 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
+       {
+        protocol: 'https',
+        hostname: 'example.com', // Allow example.com if needed for MiniApp icons
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   // Add webpack configuration
@@ -42,8 +48,12 @@ const nextConfig = {
       };
     }
 
+    // Ensure 'encoding' module is handled if needed by dependencies
+    // config.resolve.fallback = { ...config.resolve.fallback, encoding: false };
+
     return config;
   },
 };
 
 module.exports = nextConfig;
+
