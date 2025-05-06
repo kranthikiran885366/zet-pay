@@ -1,18 +1,21 @@
 // backend/controllers/authController.js
-const admin = require('firebase-admin');
+const admin = require('../config/firebaseAdmin'); // Use admin SDK from config
+const asyncHandler = require('../middleware/asyncHandler');
 
-// Placeholder for potential backend auth functions if needed later
-// (e.g., creating custom tokens, handling specific auth flows)
+// Verify token validity and return basic user info
+exports.verifyToken = asyncHandler(async (req, res, next) => {
+    // Token is already verified by authMiddleware, user UID is in req.user.uid
+    const userId = req.user.uid;
+    console.log(`[Auth Ctrl] Verifying token for user: ${userId}`);
 
-// Example: Verify token validity (can be useful for custom backend logic)
-exports.verifyToken = async (req, res, next) => {
-    // Token is already verified by authMiddleware
-    // This endpoint could return additional user info or roles if needed
+    // Fetch user data from Firebase Auth and Firestore profile
     try {
-        const userId = req.user.uid;
-        // Fetch additional user data from Firestore if necessary
-        const userRecord = await admin.auth().getUser(userId);
-        const userProfile = await admin.firestore().collection('users').doc(userId).get();
+        const [userRecord, userProfileSnap] = await Promise.all([
+            admin.auth().getUser(userId),
+            admin.firestore().collection('users').doc(userId).get()
+        ]);
+
+        const userProfileData = userProfileSnap.exists ? userProfileSnap.data() : null;
 
         res.status(200).json({
             message: "Token verified successfully.",
@@ -20,17 +23,26 @@ exports.verifyToken = async (req, res, next) => {
                 uid: userId,
                 email: userRecord.email,
                 emailVerified: userRecord.emailVerified,
-                displayName: userRecord.displayName,
-                // Add profile data if needed
-                profileData: userProfile.exists ? userProfile.data() : null,
+                displayName: userRecord.displayName || userProfileData?.name || 'PayFriend User', // Use profile name as fallback
+                photoURL: userRecord.photoURL || userProfileData?.avatarUrl,
+                phoneNumber: userRecord.phoneNumber || userProfileData?.phone,
+                kycStatus: userProfileData?.kycStatus || 'Not Verified', // Include KYC status
+                createdAt: userRecord.metadata.creationTime,
+                lastSignInTime: userRecord.metadata.lastSignInTime,
+                // Add other profile data as needed, excluding sensitive info
+                profileData: {
+                    notificationsEnabled: userProfileData?.notificationsEnabled ?? true,
+                    isSmartWalletBridgeEnabled: userProfileData?.isSmartWalletBridgeEnabled ?? false,
+                     smartWalletBridgeLimit: userProfileData?.smartWalletBridgeLimit ?? 0,
+                }
             }
         });
     } catch (error) {
+        console.error(`[Auth Ctrl] Error fetching user data for ${userId}:`, error);
+        // Let the central error handler manage the response
         next(error);
     }
-};
+});
 
-// Note: Login, Signup, Logout, Password Reset are typically handled
-// directly by the client using the Firebase JS SDK.
-// Backend involvement is usually for verifying tokens (middleware)
-// or managing users via Admin SDK.
+// Note: Login, Signup, Logout, Password Reset are primarily handled client-side.
+// Backend role is token verification (middleware) and potentially user management via Admin SDK if needed.
