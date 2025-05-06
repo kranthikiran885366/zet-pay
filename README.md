@@ -318,3 +318,24 @@ Open [http://localhost:9002](http://localhost:9002) (or your frontend port). The
 ---
 
 *This README provides a comprehensive overview. Refer to specific files and comments for detailed implementation notes.*
+
+# Full Stack Application Features
+
+Here's a more detailed breakdown of the features implemented in this full stack application:
+
+*   **Darshan Slot Booking:**
+    *   The backend fetches available Darshan slots from a temple API (if available) or manages an internal slot booking system.
+    *   The frontend allows users to view available slots and select their desired time.
+    *   Upon booking, the backend processes the request and confirms the slot reservation.
+*   **Live Darshan Videos:**
+    *   The frontend embeds official live streaming videos of temple Darshans directly within the application, providing real-time access.
+*   **Virtual Pooja Booking:**
+    *   The backend records the details of virtual Pooja bookings made by users.
+    *   It processes the payment for the virtual Pooja.
+*   **Prasadam Delivery:**
+    *   The backend handles Prasadam delivery orders, including taking the order details and processing the payment.
+    *   It then forwards the order information to a designated delivery partner or directly to the temple for fulfillment.
+*   **Temple Donations:**
+    *   The backend securely processes donations made to the temple through the application.
+    *   It logs the donation details for record-keeping.
+*   **Digital Vouchers:** Users can purchase digital vouchers within the app. The backend manages the processing states of these voucher purchases, ensuring successful transactions and delivery of voucher information.

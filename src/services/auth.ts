@@ -1,6 +1,5 @@
-
 /**
- * @fileOverview Service functions for authentication using Firebase.
+ * @fileOverview Service functions for authentication using Firebase, interacting with the backend API.
  */
 import {
     signOut,
@@ -11,7 +10,8 @@ import {
     User // Import User type
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase'; // Import initialized Firebase auth instance
-import { upsertUserProfile } from './user'; // To create profile on signup
+import { apiClient } from '@/lib/apiClient'; // Import API client
+import type { UserProfile } from './types'; // Import shared types
 
 // --- Auth State Observation ---
 
@@ -22,9 +22,9 @@ import { upsertUserProfile } from './user'; // To create profile on signup
  * @returns An unsubscribe function to stop listening.
  */
 export function subscribeToAuthState(callback: (user: User | null) => void): () => void {
-  console.log("Subscribing to auth state changes...");
+  console.log("[Auth Service] Subscribing to auth state changes...");
   const unsubscribe = onAuthStateChanged(auth, (user) => {
-    console.log("Auth state changed, user:", user?.uid || 'null');
+    console.log("[Auth Service] Auth state changed, user:", user?.uid || 'null');
     callback(user);
   });
   return unsubscribe;
@@ -34,6 +34,7 @@ export function subscribeToAuthState(callback: (user: User | null) => void): () 
 
 /**
  * Logs the user in using Firebase Email/Password Authentication.
+ * Verifies token with backend after successful Firebase login.
  *
  * @param email User's email.
  * @param password User's password.
@@ -41,13 +42,15 @@ export function subscribeToAuthState(callback: (user: User | null) => void): () 
  * @throws Error if login fails.
  */
 export async function login(email: string, password: string): Promise<User> {
-    console.log(`Attempting login for email: ${email}`);
+    console.log(`[Auth Service] Attempting login for email: ${email}`);
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        console.log("Firebase login successful for:", userCredential.user.uid);
+        console.log("[Auth Service] Firebase login successful for:", userCredential.user.uid);
+        // Optionally verify token with backend immediately after login if needed
+        // await apiClient('/auth/verify'); // Backend infers user from token
         return userCredential.user;
     } catch (error: any) {
-        console.error("Firebase login error:", error.code, error.message);
+        console.error("[Auth Service] Firebase login error:", error.code, error.message);
         // Provide user-friendly error messages
         let errorMessage = "Login failed. Please check your credentials.";
         if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -63,7 +66,7 @@ export async function login(email: string, password: string): Promise<User> {
 
 /**
  * Signs up a new user with Firebase Email/Password Authentication.
- * Creates a basic user profile document in Firestore upon successful signup.
+ * Backend handles profile creation via token verification on first protected route access or explicitly.
  *
  * @param name User's full name.
  * @param email User's email.
@@ -72,20 +75,21 @@ export async function login(email: string, password: string): Promise<User> {
  * @throws Error if signup fails.
  */
 export async function signup(name: string, email: string, password: string): Promise<User> {
-    console.log(`Attempting signup for email: ${email}`);
+    console.log(`[Auth Service] Attempting signup for email: ${email}`);
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
-        console.log("Firebase signup successful for:", user.uid);
+        console.log("[Auth Service] Firebase signup successful for:", user.uid);
 
-        // Create initial user profile in Firestore
-        // Ensure upsertUserProfile handles both creation and update safely
-        await upsertUserProfile({ name, email }); // Pass required fields
-        console.log(`Initial user profile created/updated for ${user.uid}`);
+        // Backend will typically create the profile on the first authenticated API call
+        // (like fetching profile) or you could explicitly call a backend signup endpoint.
+        // For simplicity, we assume the backend handles profile creation via token verification.
+        // Example explicit call (if backend has POST /api/auth/signup):
+        // await apiClient('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email }) });
 
         return user;
     } catch (error: any) {
-        console.error("Firebase signup error:", error.code, error.message);
+        console.error("[Auth Service] Firebase signup error:", error.code, error.message);
         let errorMessage = "Signup failed. Please try again.";
         if (error.code === 'auth/email-already-in-use') {
             errorMessage = "This email address is already registered.";
@@ -107,12 +111,12 @@ export async function signup(name: string, email: string, password: string): Pro
  * @throws Error if sending fails.
  */
 export async function sendPasswordReset(email: string): Promise<void> {
-    console.log(`Sending password reset email to: ${email}`);
+    console.log(`[Auth Service] Sending password reset email to: ${email}`);
     try {
         await sendPasswordResetEmail(auth, email);
-        console.log("Password reset email sent successfully.");
+        console.log("[Auth Service] Password reset email sent successfully.");
     } catch (error: any) {
-        console.error("Password reset error:", error.code, error.message);
+        console.error("[Auth Service] Password reset error:", error.code, error.message);
         let errorMessage = "Failed to send password reset email.";
         if (error.code === 'auth/user-not-found') {
              errorMessage = "No account found with this email address.";
@@ -130,15 +134,46 @@ export async function sendPasswordReset(email: string): Promise<void> {
  * @returns A promise that resolves when logout is complete.
  */
 export async function logout(): Promise<void> {
-    console.log("Logging out user via Firebase...");
+    console.log("[Auth Service] Logging out user via Firebase...");
     try {
         await signOut(auth);
-        console.log("Firebase logout successful.");
+        console.log("[Auth Service] Firebase logout successful.");
         // Additional client-side cleanup (e.g., clearing user state in context/zustand)
         // should be handled by the component initiating the logout.
     } catch (error) {
-        console.error("Firebase logout error:", error);
+        console.error("[Auth Service] Firebase logout error:", error);
         // Re-throw the error so the calling component can handle it (e.g., show toast)
         throw new Error("Logout failed. Please try again.");
+    }
+}
+
+/**
+ * Fetches the current user's profile data after verifying the auth token with the backend.
+ * This ensures the backend has potentially created/updated the profile based on the auth token.
+ *
+ * @returns A promise resolving to the UserProfile object or null if not authenticated/error.
+ */
+export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
+    console.log("[Auth Service] Verifying token and fetching profile via API...");
+    try {
+        // The '/auth/verify' endpoint expects a valid Firebase ID token in the Authorization header.
+        // apiClient automatically includes the token.
+        // The backend controller verifies the token and returns the user's profile data.
+        const result = await apiClient<{ user: UserProfile }>('/auth/verify');
+        if (result && result.user) {
+            console.log("[Auth Service] Token verified, profile received:", result.user.uid);
+             // Convert dates if needed
+            return {
+                ...result.user,
+                createdAt: result.user.createdAt ? new Date(result.user.createdAt) : undefined,
+                updatedAt: result.user.updatedAt ? new Date(result.updatedAt) : undefined,
+            };
+        } else {
+            throw new Error("Verification failed or user profile not found.");
+        }
+    } catch (error) {
+        console.error("[Auth Service] Error verifying token or fetching profile:", error);
+        // Handle specific errors like token expired (often handled by apiClient's 401 error)
+        return null; // Return null on verification/fetch error
     }
 }

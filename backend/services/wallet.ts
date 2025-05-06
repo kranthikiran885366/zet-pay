@@ -1,11 +1,12 @@
 
-import { db, auth } from '@/lib/firebase'; // Use admin SDK db instance
-import { doc, getDoc, setDoc, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { addTransaction, logTransactionToBlockchain } from './transactionLogger'; // Use backend logger
+import admin from 'firebase-admin'; // Use admin SDK
+const db = admin.firestore();
+import { addTransaction, logTransactionToBlockchain } from './transactionLogger'; // Use backend logger service
 import { sendToUser } from '../server'; // Import WebSocket sender from backend server.js
+import { doc, getDoc, setDoc, runTransaction, serverTimestamp, Timestamp, updateDoc, FieldValue } from 'firebase-admin/firestore'; // Import admin SDK functions and types
 import type { Transaction } from './types'; // Use shared types
 
-// Define the expected result structure from the backend API
+// Define WalletTransactionResult interface if not already in a shared types file
 export interface WalletTransactionResult {
     success: boolean;
     transactionId?: string; // The ID of the transaction record created by the backend
@@ -13,225 +14,196 @@ export interface WalletTransactionResult {
     message?: string;
 }
 
+/**
+ * Sends a real-time balance update to the user via WebSocket.
+ * @param {string} userId The ID of the user.
+ * @param {number} newBalance The updated balance.
+ */
+function sendBalanceUpdate(userId: string, newBalance: number) {
+    if (userId && typeof newBalance === 'number') {
+        // Ensure sendToUser is available and callable
+        if (typeof sendToUser === 'function') {
+            sendToUser(userId, {
+                type: 'balance_update',
+                payload: { balance: newBalance }
+            });
+        } else {
+            console.error("[Wallet Service] sendToUser function is not available. Cannot send balance update.");
+        }
+    }
+}
 
 /**
- * Asynchronously retrieves the current user's Zet Pay Wallet balance from Firestore.
- * Creates a default wallet document if none exists.
- *
- * @param userId The ID of the user.
- * @returns A promise that resolves to the wallet balance number.
- * @throws Error if the Firestore operation fails.
+ * Fetches the current wallet balance for a user from Firestore. Creates the wallet if it doesn't exist.
+ * @param {string} userId - The ID of the user.
+ * @returns {Promise<number>} - A promise that resolves to the wallet balance.
  */
 export async function getWalletBalance(userId: string): Promise<number> {
     if (!userId) throw new Error("User ID required to get wallet balance.");
-    console.log(`[Service] Fetching wallet balance from Firestore for user: ${userId}`);
-
+    const walletDocRef = db.collection('wallets').doc(userId);
     try {
-        const walletDocRef = doc(db, 'wallets', userId); // Reference Firestore document
-        const walletDocSnap = await getDoc(walletDocRef);
-
-        if (walletDocSnap.exists()) {
-            return Number(walletDocSnap.data().balance) || 0;
-        } else {
-            // Wallet doesn't exist, create it with 0 balance
-            console.log(`[Service] Wallet not found for user ${userId}, creating...`);
-            await setDoc(walletDocRef, {
+        const walletDocSnap = await walletDocRef.get();
+        if (!walletDocSnap.exists) {
+            console.log(`[Wallet Service - Backend] Wallet for user ${userId} not found, creating...`);
+            await walletDocRef.set({
                 userId: userId,
                 balance: 0,
-                lastUpdated: serverTimestamp() // Use Firestore server timestamp
+                lastUpdated: FieldValue.serverTimestamp() // Use admin SDK FieldValue
             });
             return 0;
         }
+        return walletDocSnap.data()?.balance || 0;
     } catch (error) {
-        console.error("[Service] Error fetching/creating wallet balance:", error);
+        console.error(`[Wallet Service - Backend] Error fetching wallet balance for ${userId}:`, error);
         throw new Error("Could not fetch wallet balance.");
     }
 }
 
 /**
- * Asynchronously adds funds to the Zet Pay Wallet in Firestore via backend operation.
- * Assumes payment from funding source is already verified/processed by the calling function/controller.
- * Logs the transaction and sends real-time updates.
- *
- * @param userId The ID of the user.
- * @param amount The amount to add.
- * @param fundingSourceInfo Information about the funding source for logging.
- * @returns A promise resolving to an object indicating success and potentially the new balance and transaction ID.
+ * Helper to ensure wallet exists, create if not. Internal use.
+ * @param {string} userId - The ID of the user.
+ * @param {FirebaseFirestore.Transaction} [transaction] - Optional Firestore transaction.
+ * @returns {Promise<number>} - A promise that resolves to the current balance (or 0 if created).
  */
-export async function topUpWallet(userId: string, amount: number, fundingSourceInfo: string): Promise<WalletTransactionResult> {
-     console.log(`[Service] Attempting wallet top-up in Firestore for user ${userId} with ₹${amount} from ${fundingSourceInfo}`);
+export async function ensureWalletExistsInternal(userId: string, transaction?: FirebaseFirestore.Transaction): Promise<number> {
+    const walletDocRef = db.collection('wallets').doc(userId);
+    let walletDocSnap;
+    if (transaction) {
+        walletDocSnap = await transaction.get(walletDocRef);
+    } else {
+        walletDocSnap = await walletDocRef.get();
+    }
 
-     if (amount <= 0) {
-        return { success: false, message: "Invalid top-up amount." };
-     }
+    let currentBalance = 0;
 
-     const walletDocRef = doc(db, 'wallets', userId);
-     let newBalance = 0;
-     let loggedTxId: string | undefined;
-
-     try {
-         // Atomically update wallet balance
-         await runTransaction(db, async (transaction) => {
-            const walletDoc = await transaction.get(walletDocRef);
-            let currentBalance = 0;
-            if (!walletDoc.exists()) {
-                console.warn(`[Service] Wallet for user ${userId} not found during top-up, creating...`);
-            } else {
-                currentBalance = walletDoc.data().balance || 0;
-            }
-            newBalance = Number(currentBalance) + amount;
-
-            const updateData = {
-                 userId: userId, // Ensure userId is set if creating
-                 balance: newBalance,
-                 lastUpdated: serverTimestamp()
-            };
-
-             // Use set with merge: true if creating, or update if exists
-             if (!walletDoc.exists()) {
-                  transaction.set(walletDocRef, updateData );
-             } else {
-                  transaction.update(walletDocRef, updateData);
-             }
-         });
-
-         // Log successful top-up transaction using backend logger
-         const logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
-              type: 'Wallet Top-up',
-              name: 'Wallet Top-up',
-              description: `Added from ${fundingSourceInfo}`,
-              amount: amount, // Positive amount
-              status: 'Completed',
-              userId: userId,
-              paymentMethodUsed: 'Wallet', // Indicate it affects wallet
-          };
-         const loggedTx = await addTransaction(logData); // Use backend logger
-         loggedTxId = loggedTx.id;
-
-         // Send real-time balance update via WebSocket (backend function)
-         sendToUser(userId, { type: 'balance_update', payload: { balance: newBalance }});
-
-         // Blockchain log handled by addTransaction if configured
-
-         return { success: true, newBalance, message: 'Wallet topped up successfully.', transactionId: loggedTxId };
-
-     } catch (error: any) {
-         console.error("[Service] Error topping up wallet:", error);
-         return { success: false, message: error.message || "Failed to process top-up." };
-     }
+    if (!walletDocSnap.exists) {
+        console.log(`[Wallet Service - Backend] Wallet for user ${userId} not found, creating within transaction...`);
+        const initialData = {
+            userId: userId,
+            balance: 0,
+            lastUpdated: FieldValue.serverTimestamp()
+        };
+        if (transaction) {
+            transaction.set(walletDocRef, initialData);
+        } else {
+            // This case should ideally not happen if called from within a transaction context where creation is needed
+            await walletDocRef.set(initialData);
+        }
+    } else {
+        currentBalance = walletDocSnap.data()?.balance || 0;
+    }
+    return Number(currentBalance);
 }
 
 
 /**
- * Internal backend function for direct wallet debit/credit.
- * Handles balance check, atomic update, transaction logging, and WebSocket updates.
- * Use this function internally within the backend (e.g., called by bill payment controller, recovery service).
+ * Internal function to perform wallet debit/credit. Handles logging and WS updates.
+ * Used by other services like UPI fallback, recovery, rewards, etc.
  * IMPORTANT: Negative amount signifies a CREDIT to the wallet (like a top-up/refund).
- *
- * @param userId The ID of the user whose wallet is affected.
- * @param identifier An identifier for the transaction (e.g., recipient UPI, biller ID, 'WALLET_RECOVERY').
- * @param amount The amount (positive for debit, negative for credit).
- * @param note A descriptive note for the transaction log.
- * @returns A promise resolving to a WalletTransactionResult.
+ * Positive amount signifies a DEBIT from the wallet (like a payment).
+ * @param {string} userId The user ID.
+ * @param {string} referenceId Identifier for the transaction (e.g., recipient UPI, biller ID, 'RECOVERY_CREDIT').
+ * @param {number} amount Amount (positive for debit, negative for credit).
+ * @param {string} note Transaction description/note.
+ * @param {string} [transactionType=null] Optional override for the transaction log type.
+ * @returns {Promise<WalletTransactionResult>} Result object.
  */
 export async function payViaWalletInternal(
     userId: string,
-    identifier: string,
+    referenceId: string,
     amount: number,
-    note?: string
+    note?: string,
+    transactionType: Transaction['type'] | null = null // Allow specific type override
 ): Promise<WalletTransactionResult> {
-    const walletDocRef = doc(db, 'wallets', userId);
+    if (!userId || !referenceId || typeof amount !== 'number') {
+        console.error("[Wallet Service - Internal] Invalid parameters", { userId, referenceId, amount });
+        return { success: false, message: "Invalid parameters for internal wallet operation." };
+    }
+
+    const walletDocRef = db.collection('wallets').doc(userId);
     let newBalance = 0;
-    let transactionId: string | undefined;
+    let loggedTxId: string | undefined;
     const isCredit = amount < 0;
     const absoluteAmount = Math.abs(amount);
-     console.log(`[Service] Executing internal wallet ${isCredit ? 'credit' : 'payment'} for user ${userId}. Amount: ${amount}, Identifier: ${identifier}`);
+    const operationType = isCredit ? 'credit' : 'debit';
+    // Determine log type based on operation, allow override
+    const finalLogType = transactionType || (isCredit ? 'Received' : 'Sent');
 
+    console.log(`[Wallet Service - Backend] Attempting wallet ${operationType} for user ${userId}, amount ${amount}, ref ${referenceId}`);
 
     try {
-        await runTransaction(db, async (transaction) => {
-             const walletDoc = await transaction.get(walletDocRef);
-             let currentBalance = 0;
-              if (!walletDoc.exists()) {
-                 // Wallet needs to exist for debits, but can be created for credits
-                 if (!isCredit) throw new Error("Wallet not found.");
-                 console.warn(`[Service] Wallet for user ${userId} not found, creating for credit...`);
-             } else {
-                 currentBalance = walletDoc.data().balance || 0;
-             }
+        await db.runTransaction(async (transaction) => {
+             // Ensure wallet exists and get current balance within transaction
+             const currentBalance = await ensureWalletExistsInternal(userId, transaction);
 
-              if (!isCredit && currentBalance < absoluteAmount) {
+             if (!isCredit && currentBalance < absoluteAmount) {
                  throw new Error(`Insufficient wallet balance. Available: ₹${currentBalance.toFixed(2)}`);
              }
-             // If it's a credit (amount is negative), add the absolute amount.
-             // If it's a debit (amount is positive), subtract the amount.
+
+             // Calculate new balance
              newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
 
              const updateData = {
-                 userId: userId, // Ensure userId is set if creating
                  balance: newBalance,
-                 lastUpdated: serverTimestamp()
+                 lastUpdated: FieldValue.serverTimestamp()
              };
-
-             // Use set with merge: true if creating, or update if exists
-             if (!walletDoc.exists()) {
-                  transaction.set(walletDocRef, updateData);
-             } else {
-                  transaction.update(walletDocRef, updateData);
-             }
+             transaction.update(walletDocRef, updateData); // Use update as ensureWalletExistsInternal guarantees existence
          });
 
-         // Log successful transaction using backend logger
-         const logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
-             // Determine type based on operation
-             type: isCredit ? 'Received' : 'Sent',
-             name: identifier, // Use identifier (e.g., 'WALLET_RECOVERY_CREDIT', 'merchant_upi@ok')
-             description: `${isCredit ? 'Credited via Wallet' : 'Paid via Wallet'} ${note ? `- ${note}` : ''}`,
+         // Log successful transaction AFTER Firestore transaction commits
+         const logData = {
+             type: finalLogType,
+             name: referenceId, // Use reference ID as name (e.g., recipient UPI, biller ID)
+             description: `${note || `Wallet ${operationType}`}`, // Combine note and operation type
              amount: amount, // Store the original amount (positive for debit, negative for credit)
              status: 'Completed',
              userId: userId,
-             upiId: identifier.includes('@') ? identifier : undefined,
-             billerId: !identifier.includes('@') ? identifier : undefined, // Assume identifier is biller if not UPI
-             paymentMethodUsed: 'Wallet', // Indicate payment method
+             upiId: referenceId.includes('@') ? referenceId : undefined, // Basic check if it's a UPI ID
+             billerId: !referenceId.includes('@') && referenceId !== 'WALLET_RECOVERY_CREDIT' ? referenceId : undefined, // Crude check if not UPI/internal
+             paymentMethodUsed: 'Wallet',
          };
-         const loggedTx = await addTransaction(logData);
-         transactionId = loggedTx.id;
+         const loggedTx = await addTransaction(logData as any); // Add transaction via logger service
+         loggedTxId = loggedTx.id;
 
-         // Send real-time balance update AFTER successful transaction logging
-         sendToUser(userId, { type: 'balance_update', payload: { balance: newBalance }});
+         // Send real-time balance update via WebSocket
+         sendBalanceUpdate(userId, newBalance);
 
-          // Blockchain log handled by addTransaction if configured
+          // Log to blockchain (optional, non-blocking)
+         // Ensure data passed matches expected structure for blockchain logger
+         logTransactionToBlockchain(loggedTxId, loggedTx) // Pass the full logged transaction object
+             .catch(err => console.error("[Wallet Service] Blockchain log failed:", err));
 
-         console.log(`[Service] Internal wallet ${isCredit ? 'credit' : 'payment'} successful for ${userId}. Tx ID: ${transactionId}`);
-         return { success: true, transactionId, newBalance, message: `Wallet ${isCredit ? 'credit' : 'payment'} successful` };
+         console.log(`[Wallet Service - Backend] Wallet ${operationType} successful for ${userId}. Tx ID: ${loggedTxId}`);
+         return { success: true, transactionId: loggedTxId, newBalance, message: `Wallet ${operationType} successful` };
 
     } catch (error: any) {
-         console.error(`[Service] Internal wallet ${isCredit ? 'credit' : 'payment'} failed for ${userId} to ${identifier}:`, error);
-         // Log failed attempt ONLY if it's a debit attempt (don't log failed credits usually)
-          let loggedTxId: string | undefined;
+         console.error(`[Wallet Service - Backend] Wallet ${operationType} failed for user ${userId}:`, error);
+         // Log failed attempt only if it was a DEBIT
+         let failedTxId: string | undefined;
          if (!isCredit) {
-             const failLogData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
-                 type: 'Failed',
-                 name: identifier,
+             const failLogData = {
+                 type: 'Failed', // Log type as Failed
+                 name: referenceId,
                  description: `Wallet Payment Failed - ${error.message}`,
-                 amount: amount,
+                 amount: amount, // Store the original positive amount
                  status: 'Failed',
                  userId: userId,
-                 upiId: identifier.includes('@') ? identifier : undefined,
-                 billerId: !identifier.includes('@') ? identifier : undefined,
+                 upiId: referenceId.includes('@') ? referenceId : undefined,
                  paymentMethodUsed: 'Wallet',
              };
              try {
-                 const failedTx = await addTransaction(failLogData);
-                 loggedTxId = failedTx.id;
-                 sendToUser(userId, { type: 'transaction_update', payload: failedTx }); // Send WS update for failure
+                 const failedTx = await addTransaction(failLogData as any);
+                 failedTxId = failedTx.id;
+                 sendBalanceUpdate(userId, await getWalletBalance(userId)); // Send updated balance even on failure if possible
+                 // Send failed transaction update via WebSocket
+                  if (typeof sendToUser === 'function') {
+                      sendToUser(userId, { type: 'transaction_update', payload: failedTx });
+                  }
              } catch (logError) {
-                 console.error("[Service] Failed to log failed internal wallet transaction:", logError);
+                  console.error("[Wallet Service] Failed to log failed internal wallet debit:", logError);
              }
          }
-         // Send error update via WebSocket? Could be noisy.
-         // sendToUser(userId, { type: 'payment_failed', payload: { recipientId, amount, reason: error.message } });
-         return { success: false, transactionId: loggedTxId, message: error.message || `Internal wallet ${isCredit ? 'credit' : 'payment'} failed.` };
+         return { success: false, transactionId: failedTxId, message: error.message || `Internal wallet ${operationType} failed.` };
     }
 }
 

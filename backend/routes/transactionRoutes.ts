@@ -4,6 +4,7 @@ import { query, param, validationResult } from 'express-validator'; // Added par
 import * as transactionController from '../controllers/transactionController'; // Import using * as
 import asyncHandler from '../middleware/asyncHandler'; // Import asyncHandler
 import { Request, Response, NextFunction } from 'express'; // Import Express types
+import authMiddleware from '../middleware/authMiddleware'; // Import auth middleware
 
 const router = express.Router();
 
@@ -13,11 +14,15 @@ const handleValidationErrors = (req: Request, res: Response, next: NextFunction)
     if (!errors.isEmpty()) {
         const errorMessages = errors.array().map(err => err.msg).join(', ');
         res.status(400); // Set status code
-        throw new Error(`Validation Failed: ${errorMessages}`); // Throw error for asyncHandler
+        // Throw error for asyncHandler to catch and pass to errorMiddleware
+        return next(new Error(`Validation Failed: ${errorMessages}`));
     }
     next();
 };
 
+
+// Apply auth middleware to all transaction routes
+router.use(authMiddleware);
 
 // GET /api/transactions - Fetch transaction history with optional filters
 router.get('/',
@@ -46,14 +51,15 @@ router.get('/:id',
 );
 
 // POST /api/transactions - Add a new transaction (mainly for internal backend use or testing)
-router.post('/',
-    // Add necessary body validations here based on the Transaction type
-    // Example: body('type').isString().notEmpty(), body('amount').isNumeric(), etc.
-    handleValidationErrors,
-    asyncHandler(transactionController.addTransactionController)
-);
+// This endpoint might not be directly exposed if transactions are only logged internally by other actions.
+// If exposed, add strong validation and ensure it's only used appropriately.
+// router.post('/',
+//     // Add necessary body validations here based on the Transaction type
+//     // Example: body('type').isString().notEmpty(), body('amount').isNumeric(), etc.
+//     handleValidationErrors,
+//     asyncHandler(transactionController.addTransactionController)
+// );
 
 
 export default router;
 
-    

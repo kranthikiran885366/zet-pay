@@ -1,5 +1,5 @@
 // backend/services/auth.js
-const admin = require('../config/firebaseAdmin');
+const { authAdmin, db } = require('../config/firebaseAdmin'); // Import admin SDK components
 
 /**
  * Placeholder service for potential future backend-specific authentication logic.
@@ -9,11 +9,20 @@ const admin = require('../config/firebaseAdmin');
  * - Server-side session management (if not using Firebase client-side sessions).
  */
 
-// Example: Function to check if a user has a specific role (if roles are stored in Firestore)
+/**
+ * Checks if a user has a specific role (if roles are stored in Firestore).
+ * @param {string} userId The user's Firebase UID.
+ * @param {string} requiredRole The role to check for (e.g., 'admin', 'agent').
+ * @returns {Promise<boolean>} True if the user has the role, false otherwise.
+ */
 async function checkUserRole(userId, requiredRole) {
+    if (!userId || !requiredRole) {
+        console.warn("[Auth Service] User ID and Required Role are necessary for role check.");
+        return false;
+    }
     console.log(`[Auth Service] Checking role '${requiredRole}' for user ${userId}`);
     try {
-        const userProfileRef = admin.firestore().collection('users').doc(userId);
+        const userProfileRef = db.collection('users').doc(userId);
         const userProfileSnap = await userProfileRef.get();
 
         if (!userProfileSnap.exists) {
@@ -35,7 +44,26 @@ async function checkUserRole(userId, requiredRole) {
     }
 }
 
+/**
+ * Verifies a Firebase ID token and returns user details.
+ * This is primarily handled by the authMiddleware, but could be used in specific scenarios.
+ * @param {string} idToken The Firebase ID token.
+ * @returns {Promise<admin.auth.DecodedIdToken | null>} The decoded token or null if invalid.
+ */
+async function verifyIdToken(idToken) {
+    if (!idToken) return null;
+    try {
+        const decodedToken = await authAdmin.verifyIdToken(idToken);
+        return decodedToken;
+    } catch (error) {
+        console.error("[Auth Service] Failed to verify ID token:", error.code);
+        return null;
+    }
+}
+
 module.exports = {
     checkUserRole,
+    verifyIdToken,
     // Add other backend auth helper functions here
 };
+
