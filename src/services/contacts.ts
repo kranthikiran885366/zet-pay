@@ -9,22 +9,6 @@ export type { PayeeClient, Payee };
 
 // **IMPORTANT**: Real-time subscription using Firestore `onSnapshot` is removed.
 // If real-time updates are needed, the backend must provide a WebSocket or SSE endpoint.
-// The `subscribeToContacts` function is now removed or needs complete reimplementation
-// to connect to a real-time backend endpoint.
-
-/*
-// Removed Firestore real-time subscription logic
-export function subscribeToContacts(
-  onUpdate: (contacts: PayeeClient[]) => void,
-  onError: (error: Error) => void,
-  searchTerm?: string
-): Unsubscribe | null {
-  // ... Firestore onSnapshot logic removed ...
-  console.warn("Real-time contact subscription via Firestore 'onSnapshot' is removed. Implement WebSocket/SSE for real-time updates.");
-  // Return a no-op unsubscribe function or null
-  return null;
-}
-*/
 
 /**
  * Asynchronously retrieves a list of the current user's saved contacts/payees from the backend API.
@@ -34,7 +18,7 @@ export function subscribeToContacts(
  * @returns A promise that resolves to an array of PayeeClient objects.
  */
 export async function getContacts(searchTerm?: string): Promise<PayeeClient[]> {
-  console.log(`Fetching contacts via API ${searchTerm ? `matching "${searchTerm}"` : ''}`);
+  console.log(`[Client Service] Fetching contacts via API ${searchTerm ? `matching "${searchTerm}"` : ''}`);
 
   const params = new URLSearchParams();
   if (searchTerm) {
@@ -54,7 +38,9 @@ export async function getContacts(searchTerm?: string): Promise<PayeeClient[]> {
     }));
   } catch (error) {
     console.error("Error fetching contacts via API:", error);
-    return []; // Return empty array on error
+    // Throw error to allow UI to handle different error states
+    throw error;
+    // return []; // Return empty array on error
   }
 }
 
@@ -65,7 +51,7 @@ export async function getContacts(searchTerm?: string): Promise<PayeeClient[]> {
  * @returns A promise that resolves to the PayeeClient object or null if not found or not accessible.
  */
 export async function getPayeeDetails(payeeId: string): Promise<PayeeClient | null> {
-     console.log(`Fetching details for payee ID via API: ${payeeId}`);
+     console.log(`[Client Service] Fetching details for payee ID via API: ${payeeId}`);
      const endpoint = `/contacts/${payeeId}`; // Assuming endpoint structure
 
      try {
@@ -94,14 +80,14 @@ export async function getPayeeDetails(payeeId: string): Promise<PayeeClient | nu
  * @returns A promise that resolves to the newly created PayeeClient object returned by the backend.
  */
 export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatarSeed' | 'createdAt' | 'updatedAt'>): Promise<PayeeClient> {
-    console.log("Saving new payee via API:", payeeData);
+    console.log("[Client Service] Saving new payee via API:", payeeData);
     try {
         // Backend handles assigning ID, userId, timestamps, and potentially avatarSeed
         const savedPayee = await apiClient<PayeeClient>('/contacts', {
             method: 'POST',
             body: JSON.stringify(payeeData),
         });
-        console.log("Payee saved via API with ID:", savedPayee.id);
+        console.log("[Client Service] Payee saved via API with ID:", savedPayee.id);
         // Convert dates if needed
          return {
              ...savedPayee,
@@ -124,7 +110,7 @@ export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatar
  * @returns A promise that resolves when the update is complete.
  */
 export async function updatePayee(payeeId: string, updateData: Partial<Omit<Payee, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-    console.log(`Updating payee ${payeeId} via API`);
+    console.log(`[Client Service] Updating payee ${payeeId} via API`);
     const endpoint = `/contacts/${payeeId}`; // Assuming endpoint structure
     try {
         await apiClient<void>(endpoint, {
@@ -145,7 +131,7 @@ export async function updatePayee(payeeId: string, updateData: Partial<Omit<Paye
  * @returns A promise that resolves when deletion is complete.
  */
 export async function deletePayee(payeeId: string): Promise<void> {
-    console.log(`Deleting payee ID via API: ${payeeId}`);
+    console.log(`[Client Service] Deleting payee ID via API: ${payeeId}`);
     const endpoint = `/contacts/${payeeId}`; // Assuming endpoint structure
      try {
         await apiClient<void>(endpoint, {

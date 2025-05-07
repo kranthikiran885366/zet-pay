@@ -2,7 +2,7 @@
  * @fileOverview Service functions for managing UPI linked accounts and processing payments via the backend API.
  */
 import { apiClient } from '@/lib/apiClient';
-import type { BankAccount, UpiTransactionResult } from './types'; // Import shared types
+import type { BankAccount, UpiTransactionResult, Transaction } from './types'; // Import shared types, added Transaction
 import { auth } from '@/lib/firebase'; // Keep for potential client-side user checks if needed
 
 // Re-export types if components import them directly from here
@@ -121,6 +121,9 @@ export async function verifyUpiId(upiId: string): Promise<string> {
     console.log(`Verifying UPI ID via API: ${upiId}`);
     try {
         const response = await apiClient<{ verifiedName: string }>(`/upi/verify?upiId=${encodeURIComponent(upiId)}`);
+        if (!response || !response.verifiedName) {
+             throw new Error("Verification failed: No name returned.");
+        }
         return response.verifiedName;
     } catch (error) {
         console.error("UPI ID Verification failed via API:", error);
@@ -133,44 +136,44 @@ export async function verifyUpiId(upiId: string): Promise<string> {
  * Asynchronously processes a UPI payment via the backend API.
  * The backend handles PIN verification, payment execution, wallet fallback, transaction logging, and recovery scheduling.
  *
- * @param recipientUpiId The UPI ID of the recipient.
+ * @param recipientIdentifier The UPI ID or Mobile Number of the recipient.
  * @param amount The amount to transfer.
  * @param pin The UPI PIN for authentication.
  * @param note An optional transaction note/description.
- * @param sourceAccountUpiId The specific UPI ID to use for payment.
+ * @param sourceAccountUpiId Optional: The specific UPI ID to use for payment.
  * @returns A promise that resolves to a UpiTransactionResult object.
  */
 export async function processUpiPayment(
-  recipientUpiId: string,
+  recipientIdentifier: string,
   amount: number,
   pin: string,
   note?: string,
-  // userId is inferred from the token on the backend
-  sourceAccountUpiId?: string // Backend should ideally use default if not provided
+  sourceAccountUpiId?: string
 ): Promise<UpiTransactionResult> {
-    console.log(`Processing UPI payment via API to ${recipientUpiId} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}`);
+    console.log(`Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}`);
 
     const payload = {
-        recipientUpiId,
+        recipientUpiId: recipientIdentifier, // Backend expects this key
         amount,
         pin,
-        note: note || undefined, // Don't send empty string
-        sourceAccountUpiId: sourceAccountUpiId || undefined, // Send if provided
+        note: note || undefined,
+        sourceAccountUpiId: sourceAccountUpiId || undefined,
     };
 
     try {
+        // Backend /upi/pay endpoint returns the UpiTransactionResult structure
         const result = await apiClient<UpiTransactionResult>('/upi/pay', {
             method: 'POST',
             body: JSON.stringify(payload),
         });
         console.log("UPI Payment API result:", result);
-        return result; // Return the result directly from the backend
+        return result;
     } catch (error: any) {
         console.error("UPI Payment failed via API:", error);
         // Return a standardized error format if API call fails fundamentally
         return {
             amount,
-            recipientUpiId,
+            recipientUpiId: recipientIdentifier,
             status: 'Failed',
             message: error.message || "Failed to process payment.",
             usedWalletFallback: false,
@@ -180,16 +183,17 @@ export async function processUpiPayment(
 
 /**
  * Fetches the status of a bank's UPI server via the backend API.
- * @param bankIdentifier A unique identifier for the bank.
+ * @param bankIdentifier A unique identifier for the bank (e.g., the handle like 'oksbi').
  * @returns A promise resolving to the status: 'Active', 'Slow', or 'Down'.
  */
 export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
     console.log(`Checking server status via API for bank: ${bankIdentifier}`);
     try {
-        const response = await apiClient<{ status: 'Active' | 'Slow' | 'Down' }>(`/banks/status/${encodeURIComponent(bankIdentifier)}`); // Example endpoint
+        // Endpoint expects the identifier in the path
+        const response = await apiClient<{ status: 'Active' | 'Slow' | 'Down' }>(`/banks/status/${encodeURIComponent(bankIdentifier)}`);
         return response.status;
     } catch (error) {
         console.error(`Error checking bank status via API for ${bankIdentifier}:`, error);
-        return 'Active'; // Default to 'Active' on error to avoid blocking unnecessarily? Or throw?
+        return 'Active'; // Default to 'Active' on error to avoid blocking unnecessarily
     }
 }
