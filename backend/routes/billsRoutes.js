@@ -27,19 +27,19 @@ router.get('/billers',
 
 
 // GET /api/bills/details/:type/:identifier - Fetch bill details for a specific type and identifier
-router.get('/details/:type/:identifier', // Keep original structure for simplicity
-    param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'), // Validate type param
-    param('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number) parameter is required.'), // Validate identifier param
-    query('billerId').isString().trim().notEmpty().withMessage('Biller ID query parameter is required.'), // Biller ID from query
+router.get('/details/:type/:identifier',
+    param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'),
+    param('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number, student ID) parameter is required.'),
+    query('billerId').isString().trim().notEmpty().withMessage('Biller ID query parameter is required.'),
     handleValidationErrors,
     asyncHandler(billsController.fetchBillDetails)
 );
 
 // POST /api/bills/pay/:type - Process a bill payment for a specific type
-router.post('/pay/:type', // Keep original structure
-    param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'), // Validate type param
+router.post('/pay/:type',
+    param('type').isString().trim().notEmpty().withMessage('Bill type parameter is required.'),
     body('billerId').isString().trim().notEmpty().withMessage('Biller ID is required.'),
-    body('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number) is required.'),
+    body('identifier').isString().trim().notEmpty().withMessage('Identifier (e.g., consumer number, student ID) is required.'),
     body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid positive amount is required.'),
     body('billerName').optional().isString().trim(),
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),

@@ -12,7 +12,7 @@ const { sendToUser } = require('../server'); // Import WebSocket sender
 import type { Transaction } from '../services/types'; // Adjust path as needed
 
 // Types of bills this controller handles (can be extended)
-const SUPPORTED_BILL_TYPES = ['Electricity', 'Water', 'Insurance', 'Credit Card', 'Loan', 'Gas', 'Broadband', 'Education', 'Mobile Postpaid', 'Cable TV', 'Housing Society', 'Club Fee', 'Donation', 'Property Tax', 'FASTag']; // Added FASTag
+const SUPPORTED_BILL_TYPES = ['Electricity', 'Water', 'Insurance', 'Credit Card', 'Loan', 'Gas', 'Broadband', 'Education', 'Mobile Postpaid', 'Cable TV', 'Housing Society', 'Club Fee', 'Donation', 'Property Tax', 'FASTag']; // Added Education
 
 // Fetch Bill Amount (if supported by provider)
 exports.fetchBillDetails = async (req, res, next) => {
@@ -31,7 +31,8 @@ exports.fetchBillDetails = async (req, res, next) => {
     }
 
     try {
-        const billDetails = await billProviderService.fetchBill(billerId, identifier, type);
+        // Pass the original type string (e.g., "Education") to the service
+        const billDetails = await billProviderService.fetchBill(billerId, identifier, capitalize(type.replace(/-/g, ' ')));
 
         if (!billDetails || billDetails.success === false) {
             // Biller doesn't support fetch or details not found, allow manual entry
@@ -42,7 +43,7 @@ exports.fetchBillDetails = async (req, res, next) => {
             const responseData = {
                 success: true,
                 amount: billDetails.amount,
-                dueDate: billDetails.dueDate ? billDetails.dueDate.toISOString() : null, // Send as ISO string
+                dueDate: billDetails.dueDate ? (billDetails.dueDate instanceof Date ? billDetails.dueDate.toISOString() : billDetails.dueDate) : null, // Send as ISO string
                 consumerName: billDetails.consumerName,
                 status: billDetails.status,
                 minAmountDue: billDetails.minAmountDue,
@@ -76,7 +77,7 @@ exports.processBillPayment = async (req, res, next) => {
     let paymentResult: any = { success: false, transactionId: null, message: 'Payment processing failed initially.', usedWalletFallback: false };
     let finalStatus: Transaction['status'] = 'Failed';
     let failureReason = 'Payment or bill processing failed.';
-    const transactionType = type === 'donation' ? 'Donation' : type === 'fastag' ? 'Recharge' : 'Bill Payment'; // Specific type for Donations/FASTag
+    const transactionType = type === 'donation' ? 'Donation' : type === 'fastag' ? 'Recharge' : type === 'education' ? 'Education Fee' : 'Bill Payment'; // Specific type
     const transactionName = `${billerName || capitalize(type.replace('-', ' '))}`; // Format name correctly
     let paymentMethodUsed = paymentMethod; // Initial payment method
 
@@ -134,9 +135,9 @@ exports.processBillPayment = async (req, res, next) => {
 
         // --- Step 2: Bill Payment / Donation / Recharge Execution with Biller/Provider ---
          // Call the appropriate provider service
-         const providerBillType = type === 'donation' ? 'Donation' : capitalize(type.replace(/-/g, ' '));
+         const providerBillType = type === 'donation' ? 'Donation' : type === 'education' ? 'Education' : capitalize(type.replace(/-/g, ' '));
          // Map specific types if needed by provider service
-         const finalProviderType = type === 'mobile-postpaid' ? 'Mobile Postpaid' : type === 'fastag' ? 'FASTag' : providerBillType; // Added FASTag
+         const finalProviderType = type === 'mobile-postpaid' ? 'Mobile Postpaid' : type === 'fastag' ? 'FASTag' : providerBillType;
 
          let executionResult;
          if (finalProviderType === 'Donation') {
@@ -259,14 +260,14 @@ exports.getBillers = async (req, res, next) => {
     if (!type || typeof type !== 'string') {
         return res.status(400).json({ message: 'Biller type query parameter is required.' });
     }
-    // Use the exact type string for fetching billers (e.g., 'Electricity', 'Credit Card')
+    // Use the exact type string for fetching billers (e.g., 'Electricity', 'Credit Card', 'Education')
     const billers = await billProviderService.fetchBillers(type);
     res.status(200).json(billers);
 };
 
 
 // Helper function to convert Firestore doc to Transaction type
-function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnapshot): Transaction {
+function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnapshot): Transaction | null { // Added null return possibility
     if (!docSnap.exists) return null; // Handle case where doc might not exist
     const data = docSnap.data()!;
     return {
@@ -280,4 +281,3 @@ function convertFirestoreDocToTransaction(docSnap: admin.firestore.DocumentSnaps
         avatarSeed: data.avatarSeed || data.name?.toLowerCase().replace(/\s+/g, '') || docSnap.id,
     } as Transaction;
 }
-

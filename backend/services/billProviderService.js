@@ -1,6 +1,6 @@
 // backend/services/billProviderService.js
 // Placeholder for actual BBPS / Biller Aggregator interaction
-const { addDays } = require('date-fns'); // Import if needed
+const { addDays, format } = require('date-fns'); // Import if needed
 
 // --- Biller Fetching (Simulated) ---
 const mockBillersByType = {
@@ -28,17 +28,28 @@ const mockBillersByType = {
     ],
     Gas: [ { billerId: 'igl', billerName: 'Indraprastha Gas (IGL)', billerType: 'Gas' } ],
     Broadband: [ { billerId: 'act', billerName: 'ACT Fibernet', billerType: 'Broadband' } ],
-    Education: [ { billerId: 'mock-school-1', billerName: 'ABC Public School (Mock)', billerType: 'Education' } ],
-    // Add other types: Cable TV, Housing Society, Club Fee, Donation (maybe separate handling?)
+    Education: [ // Added Education billers
+        { billerId: 'mock-school-1', billerName: 'ABC Public School', billerType: 'Education', logoUrl: '/logos/abc_school.png' },
+        { billerId: 'mock-college-1', billerName: 'XYZ Engineering College', billerType: 'Education', logoUrl: '/logos/xyz_college.png' },
+        { billerId: 'mock-uni-1', billerName: 'University of Example', billerType: 'Education', logoUrl: '/logos/uni_example.png' },
+    ],
     'Cable TV': [ { billerId: 'hathway-cable', billerName: 'Hathway Cable TV', billerType: 'Cable TV' }],
     'Housing Society': [ { billerId: 'mygate', billerName: 'MyGate Society (Mock)', billerType: 'Housing Society' }],
     'Club Fee': [ { billerId: 'city-sports', billerName: 'City Sports Club (Mock)', billerType: 'Club Fee' }],
     Donation: [ { billerId: 'akshaya-patra', billerName: 'Akshaya Patra Foundation', billerType: 'Donation' }],
+    Fastag: [ // Added Fastag billers for consistency if this service manages them
+             { billerId: 'paytm-fastag', billerName: 'Paytm Payments Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/paytm.png'},
+             { billerId: 'icici-fastag', billerName: 'ICICI Bank FASTag', billerType: 'Fastag', logoUrl: '/logos/icici.png'},
+    ],
+    'Mobile Postpaid': [ // If mobile postpaid is handled via bill payment system
+        { billerId: 'airtel-postpaid', billerName: 'Airtel Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/airtel.png' },
+        { billerId: 'jio-postpaid', billerName: 'Jio Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/jio.png' },
+    ]
 };
 
 /**
  * Fetches billers based on type. SIMULATED.
- * @param {string} type - The type of biller (e.g., 'Electricity', 'Water').
+ * @param {string} type - The type of biller (e.g., 'Electricity', 'Water', 'Education').
  * @returns {Promise<object[]>} A list of biller objects.
  */
 async function fetchBillers(type) {
@@ -55,8 +66,8 @@ async function fetchBillers(type) {
  * SIMULATED.
  *
  * @param {string} billerId Biller ID from BBPS or aggregator.
- * @param {string} identifier Consumer number, account ID, policy number, etc.
- * @param {string} billType Type of bill (e.g., 'electricity', 'water'). Used for potential logic differentiation.
+ * @param {string} identifier Consumer number, account ID, policy number, student ID, etc.
+ * @param {string} billType Type of bill (e.g., 'Electricity', 'Water', 'Education'). Used for potential logic differentiation.
  * @returns {Promise<object|null>} Bill details or null if not found/applicable.
  */
 async function fetchBill(billerId, identifier, billType) {
@@ -70,15 +81,18 @@ async function fetchBill(billerId, identifier, billType) {
     if (billerId === 'bwssb' && identifier === 'W9876') {
          return { success: true, amount: 420.00, dueDate: addDays(new Date(), 5), consumerName: 'Test User', status: 'DUE' };
     }
-     if (billerId === 'mock-school-1' && identifier === 'S101') {
-         return { success: true, amount: 5000.00, dueDate: addDays(new Date(), 20), consumerName: 'Student Name', status: 'DUE' };
-     }
-      if (billerId === 'hdfc-cc' && identifier === '4111********1111') {
+    if (billerId === 'mock-school-1' && identifier === 'S101' && billType === 'Education') {
+         return { success: true, amount: 5000.00, dueDate: addDays(new Date(), 20), consumerName: 'Student Mock Name', status: 'DUE' };
+    }
+    if (billerId === 'mock-college-1' && identifier === 'C202' && billType === 'Education') {
+         return { success: true, amount: 15000.00, dueDate: addDays(new Date(), 25), consumerName: 'College Student Mock', status: 'DUE' };
+    }
+    if (billerId === 'hdfc-cc' && identifier === '4111********1111') {
           return { success: true, amount: 12345.67, dueDate: addDays(new Date(), 15), consumerName: 'Card Holder', status: 'DUE', minAmountDue: 1000 };
-      }
+    }
      // Add more mock cases as needed...
 
-    console.log(`[Bill Provider Sim] No mock bill found for ${billerId}, ${identifier}. Manual entry allowed.`);
+    console.log(`[Bill Provider Sim] No mock bill found for ${billerId}, ${identifier}, ${billType}. Manual entry allowed.`);
     // Return object indicating fetch failed but manual entry is allowed
     return { success: false, message: 'Bill details not found. Manual entry allowed.', amount: null };
 }
@@ -100,7 +114,7 @@ async function payBill(details) {
          console.warn('[Bill Provider Sim] Bill payment failed (Simulated Biller).');
          return { status: 'Failed', message: 'Payment rejected by biller (Simulated).', operatorMessage: 'BILLER_REJECTED' };
     }
-     if (amount > 50000) { // Simulate failure for large amounts
+     if (amount > 50000 && type !== 'Education') { // Allow larger amounts for Education
          console.warn('[Bill Provider Sim] Bill payment failed (Simulated Amount Limit).');
          return { status: 'Failed', message: 'Payment amount exceeds limit (Simulated).', operatorMessage: 'AMOUNT_LIMIT_EXCEEDED' };
      }
@@ -116,7 +130,7 @@ async function payBill(details) {
     }
 
     console.log('[Bill Provider Sim] Bill payment successful.');
-    return { status: 'Completed', message: 'Bill paid successfully.', operatorMessage: 'Success', billerReferenceId: `BILLPAY_${Date.now()}` };
+    return { status: 'Completed', message: `${type} payment of ₹${amount} successful.`, operatorMessage: 'Success', billerReferenceId: `BILLPAY_${Date.now()}` };
 }
 
 
@@ -125,5 +139,3 @@ module.exports = {
     fetchBill,
     payBill,
 };
-
-    

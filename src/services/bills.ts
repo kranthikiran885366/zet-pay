@@ -4,17 +4,15 @@
  */
 
 import type { Transaction } from './types'; // Use the common Transaction interface
-// Removed incorrect import of addTransaction from client-side
 import { apiClient } from '@/lib/apiClient';
 import { format } from 'date-fns';
 
 export interface BillPaymentDetails {
     billerId: string;
-    identifier: string; // Consumer number, Policy number, etc.
+    identifier: string; // Consumer number, Policy number, Student ID, etc.
     amount: number;
-    billerType: string; // Electricity, Water, Insurance etc.
+    billerType: string; // Electricity, Water, Insurance, Education etc.
     billerName?: string; // Optional: For display/confirmation
-    // paymentMethod?: 'wallet' | 'upi' | 'card'; // Optional: If client wants to suggest a method
 }
 
 /**
@@ -22,31 +20,31 @@ export interface BillPaymentDetails {
  * The backend handles the actual interaction with BBPS or biller APIs.
  *
  * @param billerId Biller ID from BBPS or aggregator.
- * @param identifier Consumer number, account ID, policy number, etc.
+ * @param identifier Consumer number, account ID, policy number, student ID etc.
+ * @param billType The specific type of bill (e.g., 'electricity', 'education') for the API path.
  * @returns A promise that resolves to bill details (amount, dueDate, etc.) or null if not found.
  */
-export async function fetchBillDetails(billerId: string, identifier: string): Promise<{ amount: number | null; dueDate?: Date | null; consumerName?: string } | null> {
-    console.log(`[Client Service] Fetching bill details via API for Biller: ${billerId}, Identifier: ${identifier}`);
-    const endpoint = `/bills/${billerId}/details?identifier=${encodeURIComponent(identifier)}`; // Assuming endpoint structure
+export async function fetchBillDetails(billerId: string, identifier: string, billType: string): Promise<{ amount: number | null; dueDate?: Date | null; consumerName?: string } | null> {
+    console.log(`[Client Service] Fetching bill details via API for Type: ${billType}, Biller: ${billerId}, Identifier: ${identifier}`);
+    // Use the :type/:identifier structure with billerId as query param
+    const endpoint = `/bills/details/${billType.toLowerCase().replace(/\s+/g, '-')}/${encodeURIComponent(identifier)}?billerId=${encodeURIComponent(billerId)}`;
 
     try {
-        // Type assertion for the expected API response structure
         const result = await apiClient<{ success: boolean; message?: string; amount?: number; dueDate?: string; consumerName?: string }>(endpoint);
 
         if (result.success && result.amount !== undefined) {
             return {
-                amount: result.amount,
+                amount: result.amount, // Can be null if manual entry is needed
                 dueDate: result.dueDate ? new Date(result.dueDate) : null,
                 consumerName: result.consumerName
             };
         } else {
-            // Handle cases where API indicates success: false or amount is missing
-            console.log(`[Client Service] Bill details not found or fetch failed: ${result.message || 'No amount returned.'}`);
-            return { amount: null, dueDate: null, consumerName: undefined }; // Return null amount to indicate manual entry needed
+            console.log(`[Client Service] Bill details not found or fetch failed for ${billType}: ${result.message || 'No amount returned.'}`);
+            return { amount: null, dueDate: null, consumerName: undefined };
         }
     } catch (error: any) {
-        console.error(`Error fetching bill details for ${billerId} via API:`, error);
-        throw error; // Re-throw error to be caught by UI
+        console.error(`Error fetching bill details for ${billType} via API:`, error);
+        throw error;
     }
 }
 
@@ -61,26 +59,26 @@ export async function fetchBillDetails(billerId: string, identifier: string): Pr
  */
 export async function processBillPayment(paymentDetails: BillPaymentDetails): Promise<Transaction> {
     console.log("Processing bill payment via API:", paymentDetails);
-    // Endpoint includes type, e.g., /api/bills/electricity
-    const endpoint = `/bills/pay/${paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-')}`;
+    // Ensure billerType is correctly formatted for the API endpoint
+    const apiType = paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-');
+    const endpoint = `/bills/pay/${apiType}`;
 
     try {
-        // Backend API handles payment deduction and logging
         const resultTransaction = await apiClient<Transaction>(endpoint, {
             method: 'POST',
             body: JSON.stringify(paymentDetails),
         });
         console.log("Bill Payment API response (Transaction):", resultTransaction);
 
-        // Convert date string from API response to Date object
         return {
             ...resultTransaction,
             date: new Date(resultTransaction.date),
              avatarSeed: resultTransaction.avatarSeed || resultTransaction.name?.toLowerCase().replace(/\s+/g, '') || resultTransaction.id,
+            createdAt: resultTransaction.createdAt ? new Date(resultTransaction.createdAt) : undefined,
+            updatedAt: resultTransaction.updatedAt ? new Date(resultTransaction.updatedAt) : undefined,
         };
     } catch (error: any) {
          console.error("Error processing bill payment via API:", error);
-         throw error; // Re-throw the error for UI handling
+         throw error;
     }
 }
-
