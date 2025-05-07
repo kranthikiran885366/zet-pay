@@ -2,9 +2,8 @@
 // backend/services/scanService.js
 const { admin, db } = require('../config/firebaseAdmin');
 const { Timestamp, FieldValue, GeoPoint } = admin.firestore;
-const { collection, doc, getDoc, setDoc, addDoc, query, where, orderBy, limit, getDocs } = db; // Firestore admin SDK functions
+const { collection, doc, getDoc, setDoc, addDoc, query, where, orderBy, limit, getDocs } = db;
 
-const RECENT_SCAN_WINDOW_MINUTES = 5; // Check for duplicates within last 5 minutes by same user
 const SCAN_LOG_COLLECTION = 'scan_logs';
 const VERIFIED_MERCHANTS_COLLECTION = 'verified_merchants';
 const BLACKLISTED_QRS_COLLECTION = 'blacklisted_qrs';
@@ -31,25 +30,24 @@ function parseUpiDataFromQr(qrDataString) {
  * - Checks if it's a valid UPI QR.
  * - Checks against verified merchants list.
  * - Checks against blacklisted QR/UPI IDs.
- * - Checks for recent duplicate scans by the same user.
  * - Logs the scan attempt.
+ * - Does NOT penalize for repeated scans of the same valid QR by the same user.
  * @param {string} userId - The ID of the user scanning.
  * @param {string} qrData - The raw string data from the QR code.
  * @returns {Promise<object>} Validation result.
  */
 async function validateScannedQr(userId, qrData) {
-    console.log(`[Scan Service] Validating QR for user ${userId}: ${qrData.substring(0, 50)}...`);
+    console.log(`[Scan Service Backend] Validating QR for user ${userId}: ${qrData.substring(0, 50)}...`);
     let isVerifiedMerchant = false;
     let isBlacklisted = false;
-    let isDuplicateRecent = false;
     let merchantNameFromDb = null;
-    let message = "QR code processed.";
+    let message = "QR code processed."; // Default message
 
     const parsedUpi = parseUpiDataFromQr(qrData);
 
     if (!parsedUpi || !parsedUpi.isValidUpi || !parsedUpi.pa) {
-        await logScan(userId, qrData, false, false, false, null, "Invalid UPI QR format");
-        return { isVerifiedMerchant, isBlacklisted, isDuplicateRecent, merchantName: null, message: "Invalid UPI QR format." };
+        await logScan(userId, qrData, false, false, "Invalid UPI QR format", null);
+        return { isVerifiedMerchant, isBlacklisted, merchantNameFromDb: null, message: "Invalid UPI QR format." };
     }
 
     const upiId = parsedUpi.pa;
@@ -60,17 +58,19 @@ async function validateScannedQr(userId, qrData) {
         const merchantSnap = await getDoc(merchantRef);
         if (merchantSnap.exists()) {
             isVerifiedMerchant = true;
-            merchantNameFromDb = merchantSnap.data().merchantName || parsedUpi.pn; // Use DB name if available
-            console.log(`[Scan Service] QR payee ${upiId} is a verified merchant: ${merchantNameFromDb}`);
+            merchantNameFromDb = merchantSnap.data().merchantName || parsedUpi.pn;
+            message = "Verified merchant."; // Update message
+            console.log(`[Scan Service Backend] QR payee ${upiId} is a verified merchant: ${merchantNameFromDb}`);
+        } else {
+             message = "Payee is not a verified merchant. Proceed with caution."; // Update for unverified
         }
     } catch (e) {
-        console.error("[Scan Service] Error checking verified merchants:", e);
+        console.error("[Scan Service Backend] Error checking verified merchants:", e);
     }
 
     // 2. Check against blacklisted QRs/UPI IDs
     try {
-        // Can blacklist by full QR hash or just UPI ID
-        const qrHash = simpleHash(qrData); // Basic hash, consider stronger for production
+        const qrHash = simpleHash(qrData);
         const blacklistRefByHash = doc(db, BLACKLISTED_QRS_COLLECTION, qrHash);
         const blacklistSnapByHash = await getDoc(blacklistRefByHash);
 
@@ -81,57 +81,35 @@ async function validateScannedQr(userId, qrData) {
             isBlacklisted = true;
             const reason = blacklistSnapByHash.data()?.reason || blacklistSnapByUpi.data()?.reason || "Flagged as suspicious";
             message = `Warning: This QR code (${upiId}) is potentially fraudulent. Reason: ${reason}`;
-            console.warn(`[Scan Service] Blacklisted QR/UPI detected: ${upiId}. Reason: ${reason}`);
+            console.warn(`[Scan Service Backend] Blacklisted QR/UPI detected: ${upiId}. Reason: ${reason}`);
         }
     } catch (e) {
-        console.error("[Scan Service] Error checking blacklist:", e);
+        console.error("[Scan Service Backend] Error checking blacklist:", e);
     }
 
-    // 3. Check for recent duplicate scans by this user
-    try {
-        const fiveMinutesAgo = Timestamp.fromMillis(Date.now() - RECENT_SCAN_WINDOW_MINUTES * 60 * 1000);
-        const recentScansQuery = query(
-            collection(db, SCAN_LOG_COLLECTION, userId, 'scans'),
-            where('qrDataHash', '==', simpleHash(qrData)),
-            where('timestamp', '>=', fiveMinutesAgo),
-            limit(1)
-        );
-        const recentScansSnap = await getDocs(recentScansQuery);
-        if (!recentScansSnap.empty) {
-            isDuplicateRecent = true;
-            if (!isBlacklisted) { // Don't overwrite blacklist message
-                 message = "This QR code was scanned recently. Proceed with caution.";
-            }
-            console.log(`[Scan Service] Duplicate scan detected for user ${userId}, QR hash ${simpleHash(qrData)}`);
-        }
-    } catch (e) {
-        console.error("[Scan Service] Error checking duplicate scans:", e);
-    }
-
-    // 4. Log the scan attempt
-    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, isDuplicateRecent, parsedUpi, message);
+    // 3. Log the scan attempt (isDuplicateRecent is now purely informational and handled client-side based on local checks)
+    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, message, parsedUpi);
 
     return {
         isVerifiedMerchant,
         isBlacklisted,
-        isDuplicateRecent,
-        merchantName: merchantNameFromDb || parsedUpi.pn, // Return name from DB or QR
-        payeeAddress: parsedUpi.pa,
-        amount: parsedUpi.am,
-        note: parsedUpi.tn,
-        message
+        isDuplicateRecent: false, // Backend doesn't gate on this. Client handles informational display.
+        merchantNameFromDb: merchantNameFromDb, // Return name from DB or null
+        message, // Return the final message
+        upiId, // Return the parsed UPI ID for easier use by controller
     };
 }
 
 /**
  * Logs a scan attempt to Firestore.
  */
-async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicate, parsedUpiDetails, validationMessage) {
+async function logScan(userId, qrData, isVerified, isBlacklisted, validationMessage, parsedUpiDetails) {
     try {
-        const scanLogRef = collection(db, SCAN_LOG_COLLECTION, userId, 'scans');
-        await addDoc(scanLogRef, {
+        // Store scans in a top-level collection, queryable by userId
+        const scanLogColRef = collection(db, SCAN_LOG_COLLECTION);
+        await addDoc(scanLogColRef, {
             userId,
-            qrData, // Store raw QR data for reference/analysis
+            qrData,
             qrDataHash: simpleHash(qrData),
             parsedPayeeUpi: parsedUpiDetails?.pa || null,
             parsedPayeeName: parsedUpiDetails?.pn || null,
@@ -139,47 +117,47 @@ async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicate, p
             timestamp: FieldValue.serverTimestamp(),
             isVerifiedMerchant: isVerified,
             isFlaggedBlacklisted: isBlacklisted,
-            isDuplicateRecentScan: isDuplicate,
             validationMessage: validationMessage,
-            // location: location ? new GeoPoint(location.latitude, location.longitude) : null, // Store GeoPoint if available
+            // location: location ? new GeoPoint(location.latitude, location.longitude) : null,
         });
-        console.log(`[Scan Service] Scan logged for user ${userId}`);
+        console.log(`[Scan Service Backend] Scan logged for user ${userId}`);
     } catch (e) {
-        console.error("[Scan Service] Error logging scan:", e);
+        console.error("[Scan Service Backend] Error logging scan:", e);
     }
 }
 
 /**
- * Saves a user's report about a QR code.
+ * Saves a user's report about a QR code to Firestore.
  * @param {string} userId - The ID of the user reporting.
  * @param {string} qrData - The raw QR data.
  * @param {string} reason - The reason for reporting.
- * @returns {Promise<void>}
+ * @returns {Promise<string>} The ID of the saved report document.
  */
 async function reportQrCode(userId, qrData, reason) {
-    console.log(`[Scan Service] User ${userId} reporting QR: ${qrData.substring(0,30)}... Reason: ${reason}`);
+    console.log(`[Scan Service Backend] User ${userId} reporting QR. Reason: ${reason}`);
+    if (!userId || !qrData || !reason) {
+        throw new Error("User ID, QR Data, and Reason are required for reporting.");
+    }
     try {
         const reportColRef = collection(db, REPORTED_QRS_COLLECTION);
-        await addDoc(reportColRef, {
-            userId,
+        const docRef = await addDoc(reportColRef, {
+            reporterUserId: userId,
             qrData,
-            qrDataHash: simpleHash(qrData), // For easier lookup
+            qrDataHash: simpleHash(qrData),
             parsedPayeeUpi: parseUpiDataFromQr(qrData)?.pa || null,
             reason,
-            status: 'pending_review', // Initial status
+            status: 'pending_review', // Initial status for admin review
             reportedAt: FieldValue.serverTimestamp(),
         });
-        console.log(`[Scan Service] QR report saved from user ${userId}`);
-
-        // Optional: Trigger an alert/notification to admin system
-        // Optional: Automatically add to a temporary blacklist or increase suspicion score
+        console.log(`[Scan Service Backend] QR report saved from user ${userId}. Report ID: ${docRef.id}`);
+        return docRef.id;
     } catch (e) {
-        console.error("[Scan Service] Error saving QR report:", e);
-        throw new Error("Failed to submit QR report.");
+        console.error("[Scan Service Backend] Error saving QR report:", e);
+        throw new Error("Failed to submit QR report due to a server error.");
     }
 }
 
-// Simple hash function
+// Simple hash function (can be improved if needed)
 function simpleHash(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -190,9 +168,8 @@ function simpleHash(str) {
     return hash.toString();
 }
 
-
 module.exports = {
     validateScannedQr,
     reportQrCode,
-    parseUpiDataFromQr // Export for potential use in controller
+    parseUpiDataFromQr,
 };
