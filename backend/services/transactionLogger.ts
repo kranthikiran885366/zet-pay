@@ -3,9 +3,9 @@
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
-import { admin, db } from '../config/firebaseAdmin.js'; // Use configured admin instance - Assuming JS file
-import blockchainLogger from './blockchainLogger.ts'; // Import the backend blockchain service using relative path - Assuming TS file
-import { sendToUser } from '../server.js'; // Correct path to import WebSocket sender from backend server.js - Assuming JS file
+import { admin, db } from '../config/firebaseAdmin'; // Use configured admin instance - Correct path for backend
+import blockchainLogger from './blockchainLogger'; // Correct relative path for backend service
+import { sendToUser } from '../server'; // Correct path to import WebSocket sender from backend server.js
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
 

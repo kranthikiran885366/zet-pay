@@ -3,7 +3,7 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-// Removed incorrect client-side import: import { addTransaction } from './transactionLogger';
+// Removed import: import { addTransaction, logTransactionToBlockchain } from '@/services/transactionLogger';
 import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
 
 // Define the expected result structure from the backend API (Already in types.ts)
@@ -140,7 +140,8 @@ export async function payViaWalletInternal(
          newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount; // Simulate balance update
 
         // WARNING: No backend logging happens here. Only local simulation.
-        // const loggedTx = await addTransaction(logData); // Removed client-side logging call
+        // Client-side addTransaction call was removed.
+        // If local logging/optimistic update is needed, implement it here without admin SDK.
 
         // Note: Client-side cannot reliably send balance updates via WebSocket; backend should do this.
         // sendBalanceUpdate(userId, newBalance); // This would fail

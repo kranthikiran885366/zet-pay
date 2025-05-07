@@ -11,7 +11,7 @@ import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Mes
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
-import { addTransaction } from '@/services/transactionLogger'; // Correct import
+import { addTransaction } from '../../../services/transactionLogger'; // Corrected import to relative path
 import type { Transaction } from '@/services/types'; // Import Transaction
 import { payViaWallet, getWalletBalance } from '@/services/wallet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -287,20 +287,20 @@ export default function PaymentConfirmationPage() {
                  descriptionSuffix = ' (Paid via Wallet)';
              }
 
+             // The addTransaction function here is the client-side one that calls the backend.
              const historyEntry = await addTransaction({
-                userId: userId,
                 type: finalStatus === 'Completed' ? 'Sent' : finalStatus,
                 name: payeeName,
                 description: `${note || `Payment to ${payeeName}`}${descriptionSuffix}${!paymentSuccess ? ` (${finalStatus} - ${resultMessage})` : ''}`,
                 amount: -currentAmount,
                 status: finalStatus,
                 upiId: payeeAddress,
-                billerId: undefined,
+                paymentMethodUsed: sourceToUse === 'upi' ? 'UPI' : 'Wallet', // Log the payment method
             });
 
             setPaymentResult({
                 ...historyEntry,
-                id: transactionId || historyEntry.id,
+                id: transactionId || historyEntry.id, // Use backend's ID if available
                 ticketId: upiPaymentResult?.ticketId,
                 refundEta: upiPaymentResult?.refundEta,
              });
@@ -335,14 +335,13 @@ export default function PaymentConfirmationPage() {
 
              try {
                  const failedEntry = await addTransaction({
-                    userId: userId,
                     type: 'Failed',
                     name: payeeName,
                     description: `Payment Failed - ${message}`,
                     amount: -currentAmount,
                     status: 'Failed',
                     upiId: payeeAddress,
-                    billerId: undefined,
+                    paymentMethodUsed: sourceToUse === 'upi' ? 'UPI' : 'Wallet',
                  });
                   setPaymentResult({
                       ...failedEntry,
