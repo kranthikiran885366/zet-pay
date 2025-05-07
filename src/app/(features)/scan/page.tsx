@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase'; // Import auth
-import { getCurrentUserProfile } from '@/services/user'; // To get user's name for QR
+import { getCurrentUserProfile, UserProfile } from '@/services/user'; // To get user's name for QR
 
 // Placeholder for QR decoding library - in real app, use jsQR, zxing-js, etc.
 // Simulating jsQR-like behavior
@@ -91,21 +91,24 @@ export default function ScanPage() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         try {
-          const profile = await getCurrentUserProfile(); // Assuming this fetches primary UPI ID or relevant details
+          const profile = await getCurrentUserProfile();
           const name = profile?.name || currentUser.displayName || "PayFriend User";
-          // Assuming profile or a dedicated service provides the primary UPI ID for QR
-          const upiId = profile?.defaultPaymentMethod?.startsWith('upi:') ? profile.defaultPaymentMethod.split(':')[1] : (profile as any)?.upiId || `${currentUser.uid.substring(0,5)}@payfriend`;
+          // Derive UPI ID from profile
+          let upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`; // Fallback
+          if (profile?.defaultPaymentMethod?.startsWith('upi:')) {
+            upiIdToUse = profile.defaultPaymentMethod.split(':')[1];
+          } else if ((profile as any)?.upiId) { // Temporary type assertion if upiId might exist directly
+            upiIdToUse = (profile as any).upiId;
+          }
 
           setUserName(name);
-          setUserUpiId(upiId);
-          setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(name)}`);
+          setUserUpiId(upiIdToUse);
+          setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(name)}`);
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
-          // Use default/fallback if fetch fails
           setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(userUpiId)}&pn=${encodeURIComponent(userName)}`);
         }
       } else {
-         // Fallback if no user is logged in (though ideally this page is protected)
          setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(userUpiId)}&pn=${encodeURIComponent(userName)}`);
       }
     };
@@ -113,7 +116,7 @@ export default function ScanPage() {
     if (activeTab === 'myQR') {
       fetchUserDataForQR();
     }
-  }, [activeTab]); // Refetch if tab changes to myQR and user might have logged in
+  }, [activeTab, userUpiId, userName]); // userName, userUpiId for fallback case stability
 
 
   // Get Camera Stream and Check Torch Support
@@ -121,7 +124,7 @@ export default function ScanPage() {
     setHasCameraPermission(null);
     setTorchSupported(false);
     setTorchOn(false);
-    if (streamRef.current) { // Stop existing stream before starting new one
+    if (streamRef.current) {
         stopCameraStream();
     }
 
@@ -148,25 +151,20 @@ export default function ScanPage() {
         setTorchSupported(false);
       }
 
-      // SIMULATE real-time QR scanning logic here
-      // In a real app, you'd use a library like jsQR on a canvas.
-      // For demo, we'll use a timeout to simulate a scan.
-      const scanInterval = setInterval(() => {
-        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-          // Simulate a scan after a few seconds for demonstration
-          if (Math.random() < 0.1) { // Simulate finding a QR code 10% of the time
-            const simulatedData = "upi://pay?pa=camera-scan@payfriend&pn=LiveScanPayee&am=25&tn=CameraTest";
-            console.log("[Client Scan] Simulated QR code detected from camera stream:", simulatedData);
-            processScannedData(simulatedData);
-            // In a real app, you'd stop the interval/scanning here once a QR is found.
-            // For continuous demo, we'll let it keep "scanning".
-          }
-        }
-      }, 3000); // Check every 3 seconds
+      // Simulate a one-time scan after a delay
+      if (streamRef.current) {
+          const scanTimeoutId = setTimeout(() => {
+              if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && streamRef.current) {
+                  const simulatedData = "upi://pay?pa=camera-scan@payfriend&pn=LiveScanPayee&am=25&tn=CameraTest";
+                  console.log("[Client Scan] Simulated QR code detected from camera stream:", simulatedData);
+                  processScannedData(simulatedData);
+                  // After successful "scan", you might want to stop the camera stream or provide feedback
+                  // stopCameraStream(); // Example: stop after one scan
+              }
+          }, 3000); // Simulate scan after 3 seconds
 
-      // Store interval ID to clear it on cleanup
-      (streamRef.current as any).scanIntervalId = scanInterval;
-
+          (streamRef.current as any).scanTimeoutId = scanTimeoutId;
+      }
 
     } catch (error) {
       console.error('Error accessing camera:', error);
@@ -178,7 +176,8 @@ export default function ScanPage() {
         description: 'Please enable camera permissions in your browser settings to scan QR codes.',
       });
     }
-  }, [toast]); // Removed stopCameraStream from dependency array to avoid re-running getCameraStream when torchOn changes
+  }, [toast, stopCameraStream]); // Added stopCameraStream as dependency
+
 
    // Function to stop the camera stream
     const stopCameraStream = useCallback(() => {
@@ -191,19 +190,17 @@ export default function ScanPage() {
                  }
                  track.stop();
              });
-             // Clear scan interval if it exists
-             if ((streamRef.current as any).scanIntervalId) {
-                clearInterval((streamRef.current as any).scanIntervalId);
-                (streamRef.current as any).scanIntervalId = null;
-             }
+            // Clear scan timeout if it exists
+            if ((streamRef.current as any).scanTimeoutId) {
+                clearTimeout((streamRef.current as any).scanTimeoutId);
+                (streamRef.current as any).scanTimeoutId = null;
+            }
             streamRef.current = null;
             if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
             setTorchOn(false);
             console.log("[Client Scan] Camera stream stopped.");
-        } else {
-            // console.log("[Client Scan] No active camera stream to stop.");
         }
     }, [torchOn]);
 
@@ -214,12 +211,11 @@ export default function ScanPage() {
     } else {
         stopCameraStream();
     }
-    return () => { // Cleanup on component unmount
+    return () => {
         stopCameraStream();
     };
   }, [activeTab, getCameraStream, stopCameraStream]);
 
-  // Function to toggle torch
   const toggleTorch = async () => {
     if (!streamRef.current || !torchSupported) {
         toast({ variant: "destructive", title: "Torch Not Available"});
@@ -265,7 +261,6 @@ export default function ScanPage() {
     }
   };
 
-  // Processes scanned data (from camera or upload) and navigates
   const processScannedData = (data: string) => {
       if (!data) return;
 
