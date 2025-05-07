@@ -5,14 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff } from 'lucide-react';
+import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { auth } from '@/lib/firebase'; // Import auth
-import { getCurrentUserProfile, UserProfile } from '@/services/user'; // To get user's name for QR
+import { auth } from '@/lib/firebase';
+import { getCurrentUserProfile, UserProfile } from '@/services/user';
 
 // Placeholder for QR decoding library - in real app, use jsQR, zxing-js, etc.
 // Simulating jsQR-like behavior
@@ -30,6 +30,7 @@ async function decodeQrCodeFromImage(file: File): Promise<string | null> {
       img.onload = () => {
         // Simulate some delay for processing
         setTimeout(() => {
+          // Simulate different QR code contents based on filename for testing
           if (file.name.toLowerCase().includes("valid_upi")) {
             resolve("upi://pay?pa=image-scan@payfriend&pn=Scanned%20From%20Image&am=50&tn=ImageUploadTest");
           } else if (file.name.toLowerCase().includes("nonupi_qr")) {
@@ -79,28 +80,29 @@ export default function ScanPage() {
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const [userName, setUserName] = useState<string>("Your Name"); // Default name
   const [userUpiId, setUserUpiId] = useState<string>("user@payfriend"); // Default UPI ID
   const [userQRCodeUrl, setUserQRCodeUrl] = useState<string>('');
+  const [isQrLoading, setIsQrLoading] = useState(true);
 
   // Fetch user details for "My QR"
   useEffect(() => {
     const fetchUserDataForQR = async () => {
+      setIsQrLoading(true);
       const currentUser = auth.currentUser;
       if (currentUser) {
         try {
           const profile = await getCurrentUserProfile();
           const name = profile?.name || currentUser.displayName || "PayFriend User";
-          // Derive UPI ID from profile
-          let upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`; // Fallback
+          let upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`;
           if (profile?.defaultPaymentMethod?.startsWith('upi:')) {
             upiIdToUse = profile.defaultPaymentMethod.split(':')[1];
-          } else if ((profile as any)?.upiId) { // Temporary type assertion if upiId might exist directly
+          } else if ((profile as any)?.upiId) {
             upiIdToUse = (profile as any).upiId;
           }
-
           setUserName(name);
           setUserUpiId(upiIdToUse);
           setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(name)}`);
@@ -111,12 +113,38 @@ export default function ScanPage() {
       } else {
          setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(userUpiId)}&pn=${encodeURIComponent(userName)}`);
       }
+      setIsQrLoading(false);
     };
 
     if (activeTab === 'myQR') {
       fetchUserDataForQR();
     }
-  }, [activeTab, userUpiId, userName]); // userName, userUpiId for fallback case stability
+  }, [activeTab, userUpiId, userName]);
+
+
+  // Function to stop the camera stream
+  const stopCameraStream = useCallback(() => {
+    if (streamRef.current) {
+         const tracks = streamRef.current.getTracks();
+         console.log(`[Client Scan] Stopping ${tracks.length} camera tracks.`);
+         tracks.forEach(track => {
+             if (torchOn && track.kind === 'video' && 'applyConstraints' in track) {
+                (track as any).applyConstraints({ advanced: [{ torch: false }] }).catch((e: any) => console.warn("Error turning off torch before stopping track:", e));
+             }
+             track.stop();
+         });
+        if ((streamRef.current as any).scanTimeoutId) {
+            clearTimeout((streamRef.current as any).scanTimeoutId);
+            (streamRef.current as any).scanTimeoutId = null;
+        }
+        streamRef.current = null;
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setTorchOn(false);
+        console.log("[Client Scan] Camera stream stopped.");
+    }
+  }, [torchOn]);
 
 
   // Get Camera Stream and Check Torch Support
@@ -140,10 +168,10 @@ export default function ScanPage() {
 
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack && 'getCapabilities' in videoTrack) {
-        const capabilities = videoTrack.getCapabilities();
+        const capabilities = (videoTrack as any).getCapabilities();
         if (capabilities?.torch) {
           setTorchSupported(true);
-          videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e => console.warn("Could not ensure torch is off initially:", e));
+          (videoTrack as any).applyConstraints({ advanced: [{ torch: false }] }).catch((e: any) => console.warn("Could not ensure torch is off initially:", e));
         } else {
           setTorchSupported(false);
         }
@@ -155,6 +183,9 @@ export default function ScanPage() {
       if (streamRef.current) {
           const scanTimeoutId = setTimeout(() => {
               if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && streamRef.current) {
+                  // Simulate QR code scanning if you don't have a real QR library
+                  // For testing, you can use a known UPI string or trigger a QR scan event
+                  // Example: A mock UPI string
                   const simulatedData = "upi://pay?pa=camera-scan@payfriend&pn=LiveScanPayee&am=25&tn=CameraTest";
                   console.log("[Client Scan] Simulated QR code detected from camera stream:", simulatedData);
                   processScannedData(simulatedData);
@@ -176,33 +207,7 @@ export default function ScanPage() {
         description: 'Please enable camera permissions in your browser settings to scan QR codes.',
       });
     }
-  }, [toast, stopCameraStream]); // Added stopCameraStream as dependency
-
-
-   // Function to stop the camera stream
-    const stopCameraStream = useCallback(() => {
-        if (streamRef.current) {
-             const tracks = streamRef.current.getTracks();
-             console.log(`[Client Scan] Stopping ${tracks.length} camera tracks.`);
-             tracks.forEach(track => {
-                 if (torchOn && track.kind === 'video' && 'applyConstraints' in track) {
-                    track.applyConstraints({ advanced: [{ torch: false }] }).catch(e => console.warn("Error turning off torch before stopping track:", e));
-                 }
-                 track.stop();
-             });
-            // Clear scan timeout if it exists
-            if ((streamRef.current as any).scanTimeoutId) {
-                clearTimeout((streamRef.current as any).scanTimeoutId);
-                (streamRef.current as any).scanTimeoutId = null;
-            }
-            streamRef.current = null;
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
-            setTorchOn(false);
-            console.log("[Client Scan] Camera stream stopped.");
-        }
-    }, [torchOn]);
+  }, [toast, stopCameraStream]);
 
 
   useEffect(() => {
@@ -225,7 +230,7 @@ export default function ScanPage() {
     const videoTrack = streamRef.current.getVideoTracks()[0];
     const newTorchState = !torchOn;
     try {
-      await videoTrack.applyConstraints({
+      await (videoTrack as any).applyConstraints({
         advanced: [{ torch: newTorchState }],
       });
       setTorchOn(newTorchState);
@@ -256,7 +261,7 @@ export default function ScanPage() {
         toast({ variant: "destructive", title: "Processing Error", description: "Failed to process the image." });
       } finally {
          setIsProcessingUpload(false);
-         if (event.target) event.target.value = '';
+         if (event.target) event.target.value = ''; // Reset file input to allow re-upload of same file
       }
     }
   };
@@ -275,24 +280,19 @@ export default function ScanPage() {
           if (params.amount) query.set('am', params.amount);
           if (params.note) query.set('tn', params.note);
 
-          if (params.payeeAddress) {
+          if (params.payeeAddress) { // Only proceed if payee address is present
              toast({ title: "UPI QR Detected", description: "Redirecting to payment..." });
-             stopCameraStream();
+             stopCameraStream(); // Stop camera before navigating
              router.push(`/pay?${query.toString()}`);
           } else {
               toast({ variant: "destructive", title: "Invalid UPI QR", description: "Missing payee address in QR code." });
-              setScannedData(null);
+              setScannedData(null); // Clear invalid data
           }
       } else {
+          // If not a UPI QR, just show the data
           toast({ title: "QR Code Scanned", description: "Data does not appear to be a UPI payment QR. Displaying raw data below." });
+          // No navigation, data is displayed in the Alert below
       }
-  }
-
-  // Simulate Scan (e.g., from camera feed)
-  const simulateScan = () => {
-     const simulatedUPI = "upi://pay?pa=simulated@payfriend&pn=SimulatedPayee&am=101.50&tn=Testing";
-     toast({ title: "QR Code Scanned (Simulated)", description: "Navigating to payment..." });
-     processScannedData(simulatedUPI);
   }
 
   return (
@@ -310,7 +310,7 @@ export default function ScanPage() {
 
       {/* Main Content */}
       <main className="flex-grow p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setScannedData(null); /* Clear scanned data on tab change */ }} className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="scan">Scan QR</TabsTrigger>
             <TabsTrigger value="myQR">My QR Code</TabsTrigger>
@@ -320,7 +320,7 @@ export default function ScanPage() {
           <TabsContent value="scan">
             <Card className="shadow-md">
               <CardHeader>
-                <CardTitle>Scan QR Code</CardTitle>
+                <CardTitle>Scan UPI QR Code</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="relative aspect-square sm:aspect-video bg-muted rounded-md overflow-hidden border border-border">
@@ -355,29 +355,30 @@ export default function ScanPage() {
                                     <span className="sr-only">{torchOn ? 'Turn Torch Off' : 'Turn Torch On'}</span>
                                 </Button>
                             )}
+                            {/* Simulated Scan button (for testing without camera) */}
+                            {/* <Button onClick={simulateScan} className="absolute bottom-4 left-4 pointer-events-auto z-10">Simulate Scan</Button> */}
                        </div>
                    )}
                 </div>
 
-                 <Button onClick={simulateScan} className="w-full" variant="secondary">Simulate Scan (Test)</Button>
-
-                <Button variant="outline" className="w-full" asChild>
-                  <label htmlFor="qr-upload" className="cursor-pointer">
+                {/* Upload QR from Gallery Button */}
+                <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={isProcessingUpload}>
                     {isProcessingUpload ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                     {isProcessingUpload ? 'Processing Image...' : 'Upload QR from Gallery'}
-                    <input
-                      id="qr-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="sr-only"
-                      disabled={isProcessingUpload}
-                    />
-                  </label>
                 </Button>
+                <input
+                    id="qr-upload-input" // Added id for label association if needed
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="sr-only"
+                    disabled={isProcessingUpload}
+                />
 
                 {scannedData && !scannedData.startsWith('upi://pay') && (
                     <Alert variant="default" className="mt-4">
+                        <AlertTriangle className="h-4 w-4 text-yellow-500"/>
                         <AlertTitle>Scanned Data (Non-UPI)</AlertTitle>
                         <AlertDescription className="break-all text-xs">
                            {scannedData}
@@ -395,7 +396,9 @@ export default function ScanPage() {
                 <CardTitle>Your UPI QR Code</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col items-center justify-center space-y-4">
-                 {userQRCodeUrl ? (
+                 {isQrLoading ? (
+                     <Loader2 className="h-10 w-10 animate-spin text-primary my-10"/>
+                 ) : userQRCodeUrl ? (
                     <div className="bg-white p-4 rounded-lg border border-border">
                         <Image
                         src={userQRCodeUrl}
@@ -407,14 +410,14 @@ export default function ScanPage() {
                         />
                     </div>
                  ) : (
-                    <Loader2 className="h-10 w-10 animate-spin text-primary my-10"/>
+                    <p className="text-muted-foreground">Could not generate QR code.</p>
                  )}
                  <p className="text-sm font-medium">{userName}</p>
                  <p className="text-sm text-muted-foreground">{userUpiId}</p>
                 <p className="text-center text-muted-foreground text-sm">
                   Show this code to receive payments via UPI.
                 </p>
-                 <Button variant="outline">Share QR Code</Button>
+                 <Button variant="outline" onClick={() => alert("Share QR functionality to be implemented.")}>Share QR Code</Button>
               </CardContent>
             </Card>
           </TabsContent>
