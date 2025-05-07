@@ -1,70 +1,144 @@
 /**
- * @fileOverview Centralized CLIENT-SIDE service for logging transactions (or interacting with backend logger).
- * NOTE: Actual transaction logging should primarily happen on the backend for security and reliability.
- * This client-side service might be used for triggering backend logging or handling UI updates related to transactions.
+ * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
-import { db, auth } from '@/lib/firebase'; // Use client-side firebase
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-// import blockchainLogger from './blockchainLogger'; // Client-side probably shouldn't interact directly with blockchain logger service
-import type { Transaction } from './types'; // Import shared Transaction type
+import { admin, db } from '../config/firebaseAdmin'; // Use configured admin instance
+import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
+import { sendToUser } from '@/lib/websocket'; // Correct path to import WebSocket sender from frontend lib
+import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
+import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
+
 
 /**
- * Placeholder function - Client-side should likely trigger backend actions
- * that then log transactions, rather than logging directly from the client.
- * Direct Firestore writes from the client for financial transactions are insecure.
+ * Adds a new transaction record to Firestore and logs it to the blockchain.
+ * Called by various backend controllers AFTER payment/action is processed.
  *
- * If used, this would be for non-critical, client-side only logging or
- * potentially sending a request to a secure backend endpoint to log.
- *
- * @param {Partial<Omit<Transaction, 'id' | 'date'>>} transactionData Transaction details.
- * @returns {Promise<string>} A promise resolving to the Firestore document ID (if logged client-side).
+ * @param {Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string }} transactionData Transaction details (userId is required).
+ * @returns {Promise<Transaction>} A promise resolving to the full transaction object including Firestore ID and resolved timestamp.
  */
-export async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 'date'>>): Promise<string> {
-    const userId = auth.currentUser?.uid;
+export async function addTransaction(transactionData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string }): Promise<Transaction> {
+    const { userId, ...rest } = transactionData;
     if (!userId) {
-        console.error("[Client Logger] User not logged in, cannot log transaction.");
-        throw new Error("User not authenticated.");
+        console.error("[Backend Logger] User ID is missing, cannot log transaction.");
+        throw new Error("User ID is required to log transaction.");
     }
 
-    console.warn(`[Client Logger] Attempting client-side transaction log for user ${userId}. Type: ${transactionData.type}. THIS IS GENERALLY INSECURE for financial data.`);
+    console.log(`[Backend Logger] Logging transaction for user ${userId}. Type: ${rest.type}, Status: ${rest.status}`);
 
     try {
-        const transactionsColRef = collection(db, 'transactions'); // Use client-side db
+        const transactionsColRef = db.collection('transactions');
         const dataToSave = {
-            ...transactionData,
+            ...rest,
             userId: userId,
-            date: serverTimestamp(), // Use Firestore server timestamp
-            // Add other necessary fields, ensure consistency with backend logger
-             avatarSeed: transactionData.avatarSeed || transactionData.name?.toLowerCase().replace(/\s+/g, '') || `cl_${Date.now()}`,
-             createdAt: serverTimestamp(),
-             updatedAt: serverTimestamp(),
+            date: FieldValue.serverTimestamp(), // Use Firestore server timestamp for creation/update
+            avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
+            billerId: rest.billerId ?? null,
+            upiId: rest.upiId ?? null,
+            loanId: rest.loanId ?? null,
+            ticketId: rest.ticketId ?? null,
+            refundEta: rest.refundEta ?? null,
+            blockchainHash: rest.blockchainHash ?? null,
+            paymentMethodUsed: rest.paymentMethodUsed ?? null,
+            originalTransactionId: rest.originalTransactionId ?? null,
+            operatorReferenceId: (rest as any).operatorReferenceId ?? null,
+            billerReferenceId: (rest as any).billerReferenceId ?? null,
+            planId: (rest as any).planId ?? null,
+            identifier: (rest as any).identifier ?? null,
+            withdrawalRequestId: (rest as any).withdrawalRequestId ?? null,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
         };
 
-        // Remove undefined keys before saving
         Object.keys(dataToSave).forEach(key => {
             if (dataToSave[key as keyof typeof dataToSave] === undefined) {
-                delete dataToSave[key as keyof typeof dataToSave];
+                 delete dataToSave[key as keyof typeof dataToSave];
             }
         });
 
 
-        const docRef = await addDoc(transactionsColRef, dataToSave);
-        console.log("[Client Logger] Transaction logged client-side with ID:", docRef.id);
+        const docRef = await transactionsColRef.add(dataToSave);
+        console.log("[Backend Logger] Transaction logged to Firestore with ID:", docRef.id);
 
-        // Blockchain logging should happen on the backend AFTER the backend logs the transaction.
-        // Calling it here is not appropriate.
-        // logTransactionToBlockchain(docRef.id, { id: docRef.id, ...dataToSave, date: new Date() } as Transaction) ...
+        const newDocSnap = await docRef.get();
+        const savedData = newDocSnap.data();
 
-        return docRef.id; // Return Firestore ID
+        if (!savedData || !savedData.date) {
+            console.error("[Backend Logger] Failed to retrieve saved transaction data or timestamp for ID:", docRef.id);
+            throw new Error("Failed to retrieve saved transaction data.");
+        }
 
-    } catch (error) {
-        console.error(`[Client Logger] Error logging transaction client-side for user ${userId}:`, error);
-        throw new Error("Could not log transaction (client-side).");
+        const finalTransaction: Transaction = {
+            id: docRef.id,
+            ...savedData,
+            date: (savedData.date as Timestamp).toDate(),
+            createdAt: savedData.createdAt ? (savedData.createdAt as Timestamp).toDate() : undefined,
+            updatedAt: savedData.updatedAt ? (savedData.updatedAt as Timestamp).toDate() : undefined,
+        } as Transaction;
+
+
+        if (typeof sendToUser === 'function') {
+            const wsPayload = {
+                ...finalTransaction,
+                date: finalTransaction.date.toISOString(),
+                createdAt: finalTransaction.createdAt?.toISOString(),
+                updatedAt: finalTransaction.updatedAt?.toISOString(),
+            };
+            const sent = sendToUser(userId, {
+                type: 'transaction_update',
+                payload: wsPayload,
+            });
+            if (!sent) {
+                console.warn(`[Backend Logger] WebSocket not connected for user ${userId}. Transaction update not sent in real-time.`);
+            }
+        } else {
+             console.error("[Backend Logger] sendToUser function is not available. Cannot send WebSocket update.");
+        }
+
+        // Ensure data passed to blockchainLogger matches its expected structure
+        const blockchainPayload = {
+            userId: finalTransaction.userId,
+            type: finalTransaction.type,
+            amount: finalTransaction.amount,
+            date: finalTransaction.date.toISOString(), // Blockchain logger expects ISO string
+            recipient: finalTransaction.upiId || finalTransaction.billerId || undefined,
+            name: finalTransaction.name,
+            description: finalTransaction.description,
+            status: finalTransaction.status,
+            originalId: finalTransaction.id,
+        };
+
+        if (blockchainLogger && typeof blockchainLogger.logTransaction === 'function') {
+            blockchainLogger.logTransaction(finalTransaction.id, blockchainPayload)
+                .then(hash => {
+                    if (hash) {
+                        docRef.update({ blockchainHash: hash, updatedAt: FieldValue.serverTimestamp() }).catch(err => console.error("[Backend Logger] Failed to update tx with blockchain hash:", err));
+                    }
+                })
+                .catch(err => console.error("[Backend Logger] Blockchain logging failed:", err));
+        } else {
+            console.error("[Backend Logger] blockchainLogger or its logTransaction method is not available.");
+        }
+
+        return finalTransaction;
+
+    } catch (error: any) {
+        console.error(`[Backend Logger] Error logging transaction for user ${userId}:`, error);
+        throw new Error(error.message || "Could not log transaction.");
     }
 }
 
 
-// Client-side should NOT directly call blockchain logging. Remove this function.
-// export async function logTransactionToBlockchain(transactionId: string, data: Transaction): Promise<string | null> { ... }
+// This function is not typically called from client-side services directly.
+// It's part of the backend's internal transaction logging flow.
+export async function logTransactionToBlockchain(transactionId: string, data: any): Promise<string | null> {
+    const { userId, amount, type, date, name, description, status, id } = data;
+    const isoDate = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? date : new Date().toISOString());
+    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id };
 
+    if (blockchainLogger && typeof blockchainLogger.logTransaction === 'function') {
+        return blockchainLogger.logTransaction(transactionId, blockchainPayload);
+    } else {
+        console.error("[Backend Logger] Blockchain logger or logTransaction method not available for explicit call.");
+        return null;
+    }
+}

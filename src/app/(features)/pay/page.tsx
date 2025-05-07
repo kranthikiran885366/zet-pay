@@ -7,17 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff } from 'lucide-react'; // Added CircleAlert, WifiOff
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi'; // Import getBankStatus
-import { addTransaction, Transaction } from '@/services/transactions';
-import { payViaWallet, getWalletBalance } from '@/services/wallet'; // Import wallet services
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
+import { addTransaction } from '@/services/transactionLogger'; // Correct import
+import type { Transaction } from '@/services/types'; // Import Transaction
+import { payViaWallet, getWalletBalance } from '@/services/wallet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { auth } from '@/lib/firebase'; // Import auth
-import { format } from "date-fns"; // Import format
-import { Badge } from '@/components/ui/badge'; // Import Badge
+import { auth } from '@/lib/firebase';
+import { format } from "date-fns";
+import { Badge } from '@/components/ui/badge';
 
 // Helper to parse UPI URL (basic example)
 const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; amount?: string, note?: string } => {
@@ -46,16 +47,15 @@ export default function PaymentConfirmationPage() {
     const router = useRouter();
     const { toast } = useToast();
 
-    // State for payment details
     const [payeeName, setPayeeName] = useState<string>('Verifying Payee...');
     const [payeeAddress, setPayeeAddress] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
     const [note, setNote] = useState<string>('');
     const [upiPin, setUpiPin] = useState<string>('');
-    const [isLoading, setIsLoading] = useState(false); // General loading state for async operations like verify/pay
-    const [isVerifying, setIsVerifying] = useState(true); // Specifically for UPI ID verification
-    const [paymentResult, setPaymentResult] = useState<PaymentResultState | null>(null); // Store final transaction outcome including potential failure details
-    const [error, setError] = useState<string | null>(null); // Store general error messages
+    const [isLoading, setIsLoading] = useState(false);
+    const [isVerifying, setIsVerifying] = useState(true);
+    const [paymentResult, setPaymentResult] = useState<PaymentResultState | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
     const [selectedAccountUpiId, setSelectedAccountUpiId] = useState<string>('');
     const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -63,29 +63,26 @@ export default function PaymentConfirmationPage() {
     const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
     const pinPromiseResolverRef = useRef<{ resolve: (pin: string | null) => void } | null>(null);
     const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-    const [userId, setUserId] = useState<string | null>(null); // Store user ID
-    const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({}); // Bank status state
-    const [showRetryOptions, setShowRetryOptions] = useState(false); // State to show retry/fallback options
+    const [userId, setUserId] = useState<string | null>(null);
+    const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
+    const [showRetryOptions, setShowRetryOptions] = useState(false);
 
-    // Check login status and fetch initial data
     useEffect(() => {
         const unsubscribeAuth = auth.onAuthStateChanged(user => {
             const loggedIn = !!user;
             setIsLoggedIn(loggedIn);
-            setUserId(user ? user.uid : null); // Store user ID
+            setUserId(user ? user.uid : null);
             if (!loggedIn) {
                 setError("User not logged in. Please log in to make payments.");
                 setIsLoading(false);
                 setIsVerifying(false);
             } else {
-                fetchInitialData(user.uid); // Pass UID directly
+                fetchInitialData(user.uid);
             }
         });
         return () => unsubscribeAuth();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run only on mount
+    }, []);
 
-     // Fetch linked accounts, wallet balance, and bank statuses
      const fetchInitialData = useCallback(async (currentUserId: string) => {
          setIsLoading(true);
          try {
@@ -101,12 +98,10 @@ export default function PaymentConfirmationPage() {
                  const defaultAccount = userAccounts.find(acc => acc.isDefault);
                  const initialAccountUpiId = defaultAccount?.upiId || userAccounts[0]?.upiId || '';
                  setSelectedAccountUpiId(initialAccountUpiId);
-                 // Fetch statuses for all linked accounts
                  fetchBankStatuses(userAccounts);
-                  // Default to UPI if accounts exist, otherwise Wallet if balance > 0
                  setSelectedPaymentSource(userAccounts.length > 0 ? 'upi' : (currentWalletBalance > 0 ? 'wallet' : 'upi'));
              } else if (currentWalletBalance > 0) {
-                  setSelectedPaymentSource('wallet'); // Default to wallet if no bank accounts but has balance
+                  setSelectedPaymentSource('wallet');
              } else {
                   setError("No linked bank accounts or wallet balance found. Please link an account or add funds.");
              }
@@ -118,113 +113,105 @@ export default function PaymentConfirmationPage() {
          } finally {
              setIsLoading(false);
          }
-     }, [toast]); // Keep toast dependency
+     }, [toast]);
 
-     // Function to fetch bank statuses
      const fetchBankStatuses = async (accountsToFetch: BankAccount[]) => {
          const statuses: Record<string, 'Active' | 'Slow' | 'Down'> = {};
          for (const acc of accountsToFetch) {
-             // In a real app, you might extract the bank identifier from the UPI ID
-             const bankIdentifier = acc.upiId.split('@')[1]; // Simplified example
+             const bankIdentifier = acc.upiId.split('@')[1];
              if (bankIdentifier) {
-                 statuses[acc.upiId] = await getBankStatus(bankIdentifier); // Fetch status for each bank
+                 statuses[acc.upiId] = await getBankStatus(bankIdentifier);
              }
          }
          setBankStatuses(statuses);
      };
 
 
-    // Extract details from URL parameters and verify UPI ID
     useEffect(() => {
-        if (!userId) return; // Don't run if not logged in (check userId)
+        if (!userId) return;
 
-        const directPayeeId = searchParams.get('pa');
-        const directPayeeName = searchParams.get('pn');
-        const directAmount = searchParams.get('am');
-        const directNote = searchParams.get('tn');
-        const upiData = searchParams.get('data');
-
-        let details = {
-            payeeName: directPayeeName,
-            payeeAddress: directPayeeId,
-            amount: directAmount,
-            note: directNote,
-        };
-
-        if (upiData) {
+        // Check for 'data' query parameter first (from QR scan page)
+        const upiDataFromQR = searchParams.get('data');
+        let detailsFromQR = null;
+        if (upiDataFromQR) {
             try {
-                const parsed = parseUpiUrl(upiData);
-                details = { ...details, ...parsed };
+                detailsFromQR = parseUpiUrl(upiDataFromQR);
             } catch (parseError) {
-                 setError("Invalid QR code data.");
-                 setIsVerifying(false);
-                 return;
+                setError("Invalid QR code data from scan.");
+                setIsVerifying(false);
+                return;
             }
         }
 
-        if (!details.payeeAddress) {
+        const payeeAddressFromParam = searchParams.get('pa');
+        const payeeNameFromParam = searchParams.get('pn');
+        const amountFromParam = searchParams.get('am');
+        const noteFromParam = searchParams.get('tn');
+
+        const finalPayeeAddress = detailsFromQR?.payeeAddress || payeeAddressFromParam;
+        const finalPayeeName = detailsFromQR?.payeeName || payeeNameFromParam;
+        const finalAmount = detailsFromQR?.amount || amountFromParam;
+        const finalNote = detailsFromQR?.note || noteFromParam;
+
+
+        if (!finalPayeeAddress) {
             setError("Recipient UPI ID is missing.");
             setIsVerifying(false);
+            // router.push('/'); // Redirect if critical info missing
             return;
         }
 
-        setPayeeAddress(details.payeeAddress);
-        setAmount(details.amount || '');
-        setNote(details.note || '');
-        setPayeeName(details.payeeName || 'Verifying Payee...');
-        setError(null); // Clear previous errors
-        setShowRetryOptions(false); // Reset retry options
+        setPayeeAddress(finalPayeeAddress);
+        setAmount(finalAmount || '');
+        setNote(finalNote || '');
+        setPayeeName(finalPayeeName || 'Verifying Payee...');
+        setError(null);
+        setShowRetryOptions(false);
 
-        // Verify UPI ID
         const verifyRecipient = async (address: string) => {
             setIsVerifying(true);
-            setError(null); // Clear error before verification
+            setError(null);
             try {
                  const verifiedName = await verifyUpiId(address);
                  setPayeeName(verifiedName);
-                 // Don't toast here, verification status is shown in UI
             } catch (verificationError: any) {
                  console.error("UPI ID Verification failed:", verificationError);
                  setPayeeName('Verification Failed');
-                 setError(`Could not verify UPI ID: ${address}. Please check and try again.`); // Set error message
+                 setError(`Could not verify UPI ID: ${address}. Please check and try again.`);
             } finally {
                 setIsVerifying(false);
             }
         };
 
-        verifyRecipient(details.payeeAddress);
+        verifyRecipient(finalPayeeAddress);
 
-    }, [searchParams, userId, toast]); // Rerun if searchParams or userId changes
+    }, [searchParams, userId, toast, router]);
 
-    // Function to show PIN dialog and return a Promise
     const promptForPin = (): Promise<string | null> => {
         return new Promise((resolve) => {
-            setUpiPin(''); // Clear previous PIN
-            pinPromiseResolverRef.current = { resolve }; // Store the resolver
+            setUpiPin('');
+            pinPromiseResolverRef.current = { resolve };
             setIsPinDialogOpen(true);
         });
     };
 
-    // Handle PIN submission from dialog
     const handlePinSubmit = () => {
         const expectedLength = accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength;
         if (expectedLength && upiPin.length === expectedLength && pinPromiseResolverRef.current) {
             pinPromiseResolverRef.current.resolve(upiPin);
         } else if (!expectedLength && (upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
-            // Fallback if length not specified
             pinPromiseResolverRef.current.resolve(upiPin);
         } else {
             toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
-            pinPromiseResolverRef.current?.resolve(null); // Resolve null on error
+            pinPromiseResolverRef.current?.resolve(null);
         }
         pinPromiseResolverRef.current = null;
         setIsPinDialogOpen(false);
     };
 
-    // Handle PIN cancellation
     const handlePinCancel = () => {
         if (pinPromiseResolverRef.current) {
-            pinPromiseResolverRef.current.resolve(null); // Resolve with null on cancel
+            pinPromiseResolverRef.current.resolve(null);
             pinPromiseResolverRef.current = null;
         }
         setIsPinDialogOpen(false);
@@ -232,7 +219,7 @@ export default function PaymentConfirmationPage() {
 
     const handlePayment = async (e?: React.FormEvent, paymentSrcOverride?: PaymentSource, accountUpiOverride?: string) => {
         e?.preventDefault();
-        setShowRetryOptions(false); // Hide retry options when initiating payment
+        setShowRetryOptions(false);
         const currentAmount = Number(amount);
         const sourceToUse = paymentSrcOverride || selectedPaymentSource;
         const accountToUse = accountUpiOverride || selectedAccountUpiId;
@@ -245,10 +232,9 @@ export default function PaymentConfirmationPage() {
              setError("Please select a bank account to pay from.");
              return;
          }
-          // Check bank status before UPI payment
           if (sourceToUse === 'upi' && bankStatuses[accountToUse] === 'Down') {
             setError(`Bank server for ${accountToUse} is currently down. Please try another account or Wallet.`);
-            setShowRetryOptions(true); // Show options if bank is down
+            setShowRetryOptions(true);
             return;
           }
          if (sourceToUse === 'wallet' && walletBalance < currentAmount) {
@@ -260,12 +246,12 @@ export default function PaymentConfirmationPage() {
              setError("Cannot proceed with unverified recipient.");
              return;
          }
-         if (!userId) { // Added check for userId
+         if (!userId) {
              setError("User session expired. Please log in again.");
              return;
          }
 
-        setError(null); // Clear previous errors
+        setError(null);
         setIsLoading(true);
         setPaymentResult(null);
 
@@ -274,7 +260,7 @@ export default function PaymentConfirmationPage() {
         let finalStatus: Transaction['status'] = 'Failed';
         let transactionId: string | undefined = undefined;
         let descriptionSuffix = '';
-        let upiPaymentResult: UpiTransactionResult | null = null; // Store the full UPI result
+        let upiPaymentResult: UpiTransactionResult | null = null;
 
         try {
              if (sourceToUse === 'upi') {
@@ -285,15 +271,14 @@ export default function PaymentConfirmationPage() {
                      return;
                  }
 
-                 // Pass userId to processUpiPayment for fallback check
-                 upiPaymentResult = await processUpiPayment(payeeAddress, currentAmount, enteredPin, note || `Payment to ${payeeName}`, userId, accountToUse); // Pass accountToUse
+                 upiPaymentResult = await processUpiPayment(payeeAddress, currentAmount, enteredPin, note || `Payment to ${payeeName}`, accountToUse); // Pass accountToUse
                  paymentSuccess = upiPaymentResult.status === 'Completed' || upiPaymentResult.status === 'FallbackSuccess';
-                 finalStatus = upiPaymentResult.status === 'FallbackSuccess' ? 'Completed' : upiPaymentResult.status; // Map FallbackSuccess to Completed for history
+                 finalStatus = upiPaymentResult.status === 'FallbackSuccess' ? 'Completed' : upiPaymentResult.status;
                  resultMessage = upiPaymentResult.message || (paymentSuccess ? "Transaction Successful" : `Payment ${upiPaymentResult.status}`);
-                 transactionId = upiPaymentResult.transactionId || upiPaymentResult.walletTransactionId; // Use wallet txn ID if fallback used
+                 transactionId = upiPaymentResult.transactionId || upiPaymentResult.walletTransactionId;
                  if(upiPaymentResult.usedWalletFallback) descriptionSuffix = ' (Paid via Wallet)';
 
-             } else { // Paying via Wallet
+             } else {
                  const result = await payViaWallet(userId, payeeAddress, currentAmount, note || `Payment to ${payeeName}`);
                  paymentSuccess = result.success;
                  finalStatus = result.success ? 'Completed' : 'Failed';
@@ -302,23 +287,20 @@ export default function PaymentConfirmationPage() {
                  descriptionSuffix = ' (Paid via Wallet)';
              }
 
-
-            // Add transaction to Firestore history
              const historyEntry = await addTransaction({
-                type: finalStatus === 'Completed' ? 'Sent' : finalStatus, // Use Sent for success, Failed for failure
+                userId: userId,
+                type: finalStatus === 'Completed' ? 'Sent' : finalStatus,
                 name: payeeName,
                 description: `${note || `Payment to ${payeeName}`}${descriptionSuffix}${!paymentSuccess ? ` (${finalStatus} - ${resultMessage})` : ''}`,
                 amount: -currentAmount,
                 status: finalStatus,
                 upiId: payeeAddress,
                 billerId: undefined,
-                // avatarSeed is now handled within addTransaction
             });
 
-            // Combine history entry with potential ticket/ETA from UPI result
             setPaymentResult({
                 ...historyEntry,
-                id: transactionId || historyEntry.id, // Use payment system ID if available
+                id: transactionId || historyEntry.id,
                 ticketId: upiPaymentResult?.ticketId,
                 refundEta: upiPaymentResult?.refundEta,
              });
@@ -331,18 +313,16 @@ export default function PaymentConfirmationPage() {
                      duration: 5000
                  });
             } else {
-                 // Error toast now shown in the catch block to include ticket info
                  setError(`Payment ${finalStatus}. ${resultMessage}`);
-                 if (finalStatus === 'Failed') setShowRetryOptions(true); // Show retry options on failure
+                 if (finalStatus === 'Failed') setShowRetryOptions(true);
             }
         } catch (err: any) {
              console.error("Payment processing error:", err);
              const message = err.message || "Payment failed due to an unexpected error.";
              setError(message);
-             finalStatus = 'Failed'; // Ensure status is Failed
-             setShowRetryOptions(true); // Show retry options on error
+             finalStatus = 'Failed';
+             setShowRetryOptions(true);
 
-             // Check if UPI result contains ticket info (only if UPI was attempted)
              const ticketInfo = upiPaymentResult && upiPaymentResult.status === 'Failed'
                  ? { ticketId: upiPaymentResult.ticketId, refundEta: upiPaymentResult.refundEta }
                  : {};
@@ -353,20 +333,17 @@ export default function PaymentConfirmationPage() {
                  description: `${message} ${ticketInfo.ticketId ? `(Ticket: ${ticketInfo.ticketId})` : ''}`
              });
 
-
-             // Add failed transaction to history
              try {
                  const failedEntry = await addTransaction({
-                     type: 'Failed',
-                     name: payeeName,
-                     description: `Payment Failed - ${message}`,
-                     amount: -currentAmount,
-                     status: 'Failed',
-                     upiId: payeeAddress,
-                     billerId: undefined,
-                     // avatarSeed handled by addTransaction
+                    userId: userId,
+                    type: 'Failed',
+                    name: payeeName,
+                    description: `Payment Failed - ${message}`,
+                    amount: -currentAmount,
+                    status: 'Failed',
+                    upiId: payeeAddress,
+                    billerId: undefined,
                  });
-                  // Show result view even for failure, including ticket info
                   setPaymentResult({
                       ...failedEntry,
                       ticketId: ticketInfo.ticketId,
@@ -374,7 +351,6 @@ export default function PaymentConfirmationPage() {
                   });
              } catch (historyError) {
                  console.error("Failed to log failed transaction:", historyError);
-                 // Show a basic failure message if history logging also fails
                  setPaymentResult({
                      id: `local_${Date.now()}`,
                      type: 'Failed',
@@ -383,20 +359,19 @@ export default function PaymentConfirmationPage() {
                      amount: -currentAmount,
                      status: 'Failed',
                      date: new Date(),
-                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress, // Manual seed generation
-                     userId: userId || 'local_error', // Use userId if available
+                     avatarSeed: payeeName.toLowerCase().replace(/\s+/g, '') || payeeAddress,
+                     userId: userId || 'local_error',
                      upiId: payeeAddress,
-                     ticketId: ticketInfo.ticketId, // Include ticket info even if logging fails
+                     ticketId: ticketInfo.ticketId,
                      refundEta: ticketInfo.refundEta,
                  });
              }
         } finally {
             setIsLoading(false);
-            setUpiPin(''); // Clear PIN field after attempt
+            setUpiPin('');
         }
     };
 
-     // Determine if the payment button should be disabled
      const isPayDisabled = isLoading || isVerifying || !!error || !payeeAddress || !amount || Number(amount) <= 0 || payeeName === 'Verification Failed' || (selectedPaymentSource === 'upi' && (!selectedAccountUpiId || bankStatuses[selectedAccountUpiId] === 'Down')) || (selectedPaymentSource === 'wallet' && walletBalance < Number(amount));
 
      const getBankStatusBadge = (status: 'Active' | 'Slow' | 'Down' | undefined) => {
@@ -411,18 +386,16 @@ export default function PaymentConfirmationPage() {
 
     const renderContent = () => {
          if (paymentResult) {
-             const isSuccess = paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess';
+             const isSuccess = paymentResult.status === 'Completed'; // Simplified success check
              const iconColor = isSuccess ? 'text-green-600' : 'text-destructive';
              const titleText = isSuccess ? 'Payment Successful' : 'Payment Failed';
              const amountText = `₹${Math.abs(paymentResult.amount).toFixed(2)}`;
              let descText = isSuccess
                  ? `Successfully sent ${amountText} to ${paymentResult.name}`
                  : `Failed to send ${amountText} to ${paymentResult.name}`;
-             if (paymentResult.status === 'FallbackSuccess') { // Should not happen if mapping status correctly, but keep for safety
-                 descText += ` (via Wallet)`;
-             }
+
              if (paymentResult.description?.includes('(Paid via Wallet)')) {
-                  descText += ` (via Wallet)`; // Ensure fallback info is shown if present in description
+                  descText += ` (via Wallet)`;
              }
 
              return (
@@ -442,11 +415,11 @@ export default function PaymentConfirmationPage() {
                          <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
                             <p><strong>Amount:</strong> {amountText}</p>
                             <p><strong>To:</strong> {paymentResult.name} ({paymentResult.upiId})</p>
-                            <p><strong>Date:</strong> {format(paymentResult.date, 'PPp')}</p>
+                            <p><strong>Date:</strong> {format(new Date(paymentResult.date), 'PPp')}</p>
                              {paymentResult.description?.includes('(Paid via Wallet)') && (
                                 <p className="font-medium text-blue-600 flex items-center justify-center gap-1"><Wallet className="h-3 w-3"/> Paid via Wallet (Recovery Scheduled)</p>
                              )}
-                              {!isSuccess && paymentResult.description && <p><strong>Reason:</strong> {paymentResult.description.replace('Payment Failed - ', '')}</p>}
+                              {!isSuccess && paymentResult.description && !paymentResult.description.includes('(Paid via Wallet)') && <p><strong>Reason:</strong> {paymentResult.description.replace('Payment Failed - ', '')}</p>}
                               {paymentResult.ticketId && (
                                   <p className='font-medium text-orange-600'>
                                       <span className="flex items-center justify-center gap-1">
@@ -462,9 +435,9 @@ export default function PaymentConfirmationPage() {
                              <Button className="w-full">Go to Home</Button>
                          </Link>
                           {!isSuccess && (
-                              <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); setShowRetryOptions(false); /* Reset other fields? */ }}>Try Again</Button>
+                              <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); setShowRetryOptions(false); }}>Try Again</Button>
                           )}
-                           {paymentResult.ticketId && ( // Show support link only if ticket generated
+                           {paymentResult.ticketId && (
                                 <Link href={`/support?ticketId=${paymentResult.ticketId}`} passHref>
                                     <Button variant="link" className="w-full flex items-center gap-1"><HelpCircle className="h-4 w-4"/> Get Help</Button>
                                 </Link>
@@ -476,7 +449,6 @@ export default function PaymentConfirmationPage() {
                  </Card>
              );
         } else {
-             // Payment Confirmation View
              return (
                  <Card className="shadow-md">
                     <CardHeader className="items-center text-center">
@@ -489,19 +461,17 @@ export default function PaymentConfirmationPage() {
                              {isVerifying && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
                          </CardTitle>
                         <CardDescription>{payeeAddress}</CardDescription>
-                         {/* Show permanent error if verification failed */}
                         {error && payeeName === 'Verification Failed' && (
                             <p className="text-sm text-destructive pt-2">{error}</p>
                          )}
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handlePayment} className="space-y-6">
-                             {/* Amount Display/Input */}
                              <div className="space-y-2 text-center">
                                 <Label htmlFor="amount" className="text-sm text-muted-foreground">Amount to Pay</Label>
                                 <div className="text-4xl font-bold flex items-center justify-center">
                                     <span className="mr-1">₹</span>
-                                     {searchParams.get('am') ? (
+                                     {searchParams.get('am') && !detailsFromQR?.amount ? ( // Check if amount came from direct param AND not from QR scan data
                                          <span>{Number(amount).toFixed(2)}</span>
                                      ) : (
                                          <Input
@@ -514,13 +484,12 @@ export default function PaymentConfirmationPage() {
                                             step="0.01"
                                             className="text-4xl font-bold h-auto p-0 border-0 text-center bg-transparent focus-visible:ring-0 shadow-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-grow w-32"
                                             placeholder="0.00"
-                                            disabled={isLoading || isVerifying || payeeName === 'Verification Failed'} // Disable if verification failed
+                                            disabled={isLoading || isVerifying || payeeName === 'Verification Failed'}
                                         />
                                      )}
                                 </div>
                             </div>
 
-                            {/* Note Input */}
                             <div className="space-y-2">
                                 <Label htmlFor="note">Note (Optional)</Label>
                                 <Input
@@ -534,7 +503,6 @@ export default function PaymentConfirmationPage() {
                                 />
                             </div>
 
-                             {/* Bank Status Info (if UPI selected) */}
                              {selectedPaymentSource === 'upi' && selectedAccountUpiId && bankStatuses[selectedAccountUpiId] && bankStatuses[selectedAccountUpiId] !== 'Active' && (
                                 <Alert variant={bankStatuses[selectedAccountUpiId] === 'Down' ? "destructive" : "default"} className={`${bankStatuses[selectedAccountUpiId] === 'Slow' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
                                      <AlertTitle className="flex items-center gap-1 text-sm">
@@ -547,10 +515,18 @@ export default function PaymentConfirmationPage() {
                                 </Alert>
                              )}
 
-                            {/* Payment Source Selection */}
                              <div className="space-y-2">
                                 <Label htmlFor="paymentSource">Pay Using</Label>
-                                <Select value={selectedPaymentSource} onValueChange={(value) => { setSelectedPaymentSource(value as PaymentSource); setError(null); setShowRetryOptions(false);}} disabled={isLoading || isVerifying}>
+                                <Select value={selectedAccountUpiId || (selectedPaymentSource === 'wallet' ? 'wallet' : '')} onValueChange={(value) => {
+                                    if (value === 'wallet') {
+                                        setSelectedPaymentSource('wallet');
+                                        setSelectedAccountUpiId(''); // Clear bank selection
+                                    } else {
+                                        setSelectedPaymentSource('upi');
+                                        setSelectedAccountUpiId(value);
+                                    }
+                                    setError(null); setShowRetryOptions(false);
+                                }} disabled={isLoading || isVerifying}>
                                      <SelectTrigger id="paymentSource">
                                          <SelectValue placeholder="Select payment method"/>
                                      </SelectTrigger>
@@ -579,52 +555,28 @@ export default function PaymentConfirmationPage() {
                                          )}
                                      </SelectContent>
                                  </Select>
-
-                                 {/* Show specific bank account selector only if UPI is chosen and multiple accounts exist */}
-                                 {/* {selectedPaymentSource === 'upi' && accounts.length > 1 && (
-                                     <Select value={selectedAccountUpiId} onValueChange={(upiId) => {setSelectedAccountUpiId(upiId); setError(null); setShowRetryOptions(false);}} disabled={isLoading || isVerifying || accounts.length === 0}>
-                                        <SelectTrigger id="account" className="mt-2">
-                                            <SelectValue placeholder={accounts.length > 0 ? "Select account" : "No accounts linked"}/>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {accounts.map(acc => (
-                                                 <SelectItem key={acc.upiId} value={acc.upiId}>
-                                                    <div className="flex items-center justify-between w-full">
-                                                         <span>{acc.bankName} - {acc.accountNumber}</span>
-                                                         {getBankStatusBadge(bankStatuses[acc.upiId])}
-                                                    </div>
-                                                 </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                 )} */}
                                 {accounts.length === 0 && selectedPaymentSource === 'upi' && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
                             </div>
 
 
-                             {/* Display error message (not verification error) */}
                              {error && payeeName !== 'Verification Failed' && (
                                 <p className="text-sm text-destructive text-center">{error}</p>
                              )}
 
-                              {/* Retry/Fallback Options */}
                               {showRetryOptions && (
                                 <Card className="bg-amber-50 border-amber-200 p-3">
                                     <p className="text-sm font-medium text-amber-800 mb-2">Payment Failed. Try:</p>
                                     <div className="space-y-2">
-                                         {/* Retry with Wallet */}
                                          {walletBalance >= currentAmount && (
                                             <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => handlePayment(undefined, 'wallet')}>
                                                 <Wallet className="mr-2 h-4 w-4"/> Pay via Wallet (Balance: ₹{walletBalance.toFixed(2)})
                                             </Button>
                                          )}
-                                         {/* Retry with another Bank */}
                                          {accounts.filter(acc => acc.upiId !== selectedAccountUpiId && bankStatuses[acc.upiId] !== 'Down').map(acc => (
                                              <Button key={acc.upiId} type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => handlePayment(undefined, 'upi', acc.upiId)}>
                                                  <Landmark className="mr-2 h-4 w-4"/> Pay via {acc.bankName} (...{acc.accountNumber.slice(-4)}) {getBankStatusBadge(bankStatuses[acc.upiId])}
                                              </Button>
                                          ))}
-                                         {/* TODO: Add Offline SMS Pay option here if desired */}
                                          <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => alert("Offline SMS Pay: Feature coming soon!")}>
                                              <MessageCircle className="mr-2 h-4 w-4"/> Try Offline SMS Pay
                                          </Button>
@@ -632,8 +584,6 @@ export default function PaymentConfirmationPage() {
                                 </Card>
                               )}
 
-
-                            {/* Primary Action Button */}
                             <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isPayDisabled}>
                                 {isLoading ? (
                                 <>
@@ -653,9 +603,6 @@ export default function PaymentConfirmationPage() {
                                 </>
                                 )}
                             </Button>
-
-                             {/* Emergency / Offline Payment Options (Removed from here, shown in retry options) */}
-                             {/* ... */}
                         </form>
                     </CardContent>
                  </Card>
@@ -665,9 +612,7 @@ export default function PaymentConfirmationPage() {
 
     return (
     <div className="min-h-screen bg-secondary flex flex-col">
-        {/* Header */}
         <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-             {/* Conditionally render Link or disabled Button based on state */}
              {(isLoading || paymentResult) ? (
                  <Button variant="ghost" size="icon" className="text-primary-foreground opacity-50 cursor-not-allowed">
                      <ArrowLeft className="h-5 w-5" />
@@ -683,12 +628,10 @@ export default function PaymentConfirmationPage() {
             <h1 className="text-lg font-semibold">Confirm Payment</h1>
         </header>
 
-        {/* Main Content */}
         <main className="flex-grow p-4">
             {renderContent()}
         </main>
 
-        {/* UPI PIN Dialog */}
         <AlertDialog open={isPinDialogOpen} onOpenChange={(open) => { if (!open) handlePinCancel(); }}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -703,11 +646,11 @@ export default function PaymentConfirmationPage() {
                         id="pin-input-dialog"
                         type="password"
                         inputMode="numeric"
-                        maxLength={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6} // Use dynamic length or default 6
+                        maxLength={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6}
                         value={upiPin}
                         onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         className="text-center text-xl tracking-[0.3em]"
-                        placeholder={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******"} // Dynamic placeholder
+                        placeholder={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******"}
                         autoFocus
                     />
                 </div>
@@ -718,7 +661,7 @@ export default function PaymentConfirmationPage() {
                         disabled={!(
                             (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 && upiPin.length === 4) ||
                             (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 6 && upiPin.length === 6) ||
-                            (!accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength && (upiPin.length === 4 || upiPin.length === 6)) // Fallback check
+                            (!accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength && (upiPin.length === 4 || upiPin.length === 6))
                         )}
                     >
                         <Lock className="mr-2 h-4 w-4" /> Confirm Payment
