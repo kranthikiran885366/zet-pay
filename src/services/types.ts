@@ -37,12 +37,21 @@ export interface Transaction {
   upiId?: string;
   billerId?: string;
   loanId?: string;
-  ticketId?: string;
+  ticketId?: string; // Can be booking ID, PNR, etc.
   refundEta?: string;
   blockchainHash?: string;
-  paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking'; // Optional: How was it paid?
-  originalTransactionId?: string; // For refunds/chargebacks
+  paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking';
+  originalTransactionId?: string;
+  // Fields from backend Transaction type
+  operatorReferenceId?: string;
+  billerReferenceId?: string;
+  planId?: string;
+  identifier?: string;
+  withdrawalRequestId?: string;
+  createdAt?: Date | string; // Allow string initially
+  updatedAt?: Date | string;
 }
+
 
 export interface BankAccount {
   id?: string; // Firestore document ID or backend ID
@@ -182,21 +191,21 @@ export interface BnplDetails {
     creditLimit: number;
     providerName?: string;
     partnerBank?: string;
-    activationDate?: Timestamp | Date; // Allow Date for client
-    lastUpdated?: Timestamp | Date;
+    activationDate?: Timestamp | Date | string; // Allow Date for client, string from API
+    lastUpdated?: Timestamp | Date | string;
 }
 
 export interface BnplStatement {
     id?: string; // Firestore document ID
     userId: string;
     statementId: string; // e.g., YYYYMM format
-    statementPeriodStart: Timestamp | Date;
-    statementPeriodEnd: Timestamp | Date;
-    dueDate: Timestamp | Date;
+    statementPeriodStart: Timestamp | Date | string;
+    statementPeriodEnd: Timestamp | Date | string;
+    dueDate: Timestamp | Date | string;
     dueAmount: number;
     minAmountDue: number;
     isPaid: boolean; // New field to track payment status
-    paidDate?: Timestamp | Date;
+    paidDate?: Timestamp | Date | string;
     transactions?: BnplTransaction[]; // Embed or fetch separately
 }
 
@@ -205,7 +214,7 @@ export interface BnplTransaction {
     userId: string;
     statementId: string; // Link to the statement
     transactionId: string; // Original transaction ID (e.g., from UPI/Card)
-    date: Timestamp | Date;
+    date: Timestamp | Date | string;
     merchantName: string;
     amount: number;
 }
@@ -245,17 +254,78 @@ export interface RecoveryTask {
     amount: number;
     originalRecipientUpiId: string;
     recoveryStatus: 'Scheduled' | 'Processing' | 'Completed' | 'Failed';
-    scheduledTime: Timestamp | Date;
-    createdAt: Timestamp | Date;
-    updatedAt: Timestamp | Date;
+    scheduledTime: Timestamp | Date | string;
+    createdAt: Timestamp | Date | string;
+    updatedAt: Timestamp | Date | string;
     failureReason?: string;
     bankUpiId?: string; // The bank account used/attempted for recovery
     recoveryTransactionId?: string; // ID of the successful debit transaction
     walletCreditTransactionId?: string; // ID of the successful wallet credit transaction
 }
 
+// --- Booking Types ---
+// For Search results
+export interface BookingSearchResult {
+    id: string;
+    name: string;
+    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage';
+    imageUrl?: string;
+    priceRange?: string;
+    rating?: number;
+    location?: string;
+    capacity?: number;
+}
+// For specific entity details
+export interface FlightListing {
+    id: string;
+    airline: string;
+    flightNumber: string;
+    departureAirport: string;
+    arrivalAirport: string;
+    departureTime: string; // HH:mm
+    arrivalTime: string; // HH:mm
+    duration: string; // e.g., "2h 30m"
+    stops: number;
+    price: number;
+    refundable?: boolean;
+    baggage: { cabin: string; checkin: string };
+    imageUrl?: string;
+}
+// Add other specific listing types like BusListing, TrainListing if needed
+
+// For general booking confirmation (align with backend)
+export interface BookingConfirmation {
+    status: Transaction['status'];
+    message?: string;
+    transactionId?: string; // For payment transaction
+    bookingId?: string; // Specific booking ID from provider or system
+    bookingDetails?: {
+        pnr?: string;
+        seatNumbers?: string;
+        providerMessage?: string;
+    } | null;
+}
+
+// For Marriage Venue Bookings
+export interface MarriageVenue extends BookingSearchResult {
+    city: string;
+    description?: string;
+    amenities?: string[];
+    price: number; // Base or starting price
+}
+
+export interface MarriageBookingDetails {
+    venueId: string;
+    venueName: string;
+    city: string;
+    date: string; // YYYY-MM-DD
+    guestCount?: string;
+    userName: string;
+    userContact: string;
+    totalAmount?: number; // Actual booking fee paid
+}
+
 
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
 // Backend types might use Timestamp directly.
-

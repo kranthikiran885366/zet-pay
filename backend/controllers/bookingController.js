@@ -5,30 +5,42 @@ const { addTransaction, logTransactionToBlockchain } = require('../services/tran
 const bookingProviderService = require('../services/bookingProviderService'); // Unified booking service
 const { payViaWalletInternal } = require('../services/wallet'); // Use internal wallet service function
 const { sendToUser } = require('../server'); // For WebSocket updates
-const { getDoc, doc } = require('firebase/firestore'); // Import firestore functions if needed directly
+const { getDoc, doc, collection, addDoc, serverTimestamp } = require('firebase/firestore'); // Import firestore functions
+import type { Transaction, MarriageBookingDetails } from '../services/types'; // Import shared Transaction type & MarriageBookingDetails
 
-// Search for available bookings (e.g., buses, flights, movies)
+// Search for available bookings (e.g., buses, flights, movies, marriage halls)
 exports.searchBookings = async (req, res, next) => {
-    const { type } = req.params; // 'bus', 'flight', 'train', 'movie', 'event'
-    const queryParams = req.query; // Contains search criteria like from, to, date, city etc.
+    const { type } = req.params; // 'bus', 'flight', 'train', 'movie', 'event', 'marriage'
+    const queryParams = req.query; // Contains search criteria
 
-    console.log(`Searching bookings for type: ${type}, Params:`, queryParams);
+    console.log(`[Booking Ctrl] Searching bookings for type: ${type}, Params:`, queryParams);
     try {
-        const results = await bookingProviderService.search(type, queryParams);
+        let results;
+        if (type === 'marriage') {
+            results = await bookingProviderService.searchMarriageVenues(queryParams);
+        } else {
+            results = await bookingProviderService.search(type, queryParams);
+        }
         res.status(200).json(results);
     } catch (error) {
         next(error);
     }
 };
 
-// Get details for a specific booking option (e.g., bus seat layout, movie showtimes)
+// Get details for a specific booking option
 exports.getBookingDetails = async (req, res, next) => {
-    const { type, id } = req.params; // type: 'bus', 'movie', etc. id: serviceId, movieId
-    const queryParams = req.query; // Contains additional criteria like date, cinemaId
+    const { type, id } = req.params;
+    const queryParams = req.query;
 
-    console.log(`Fetching details for booking type: ${type}, ID: ${id}, Params:`, queryParams);
+    console.log(`[Booking Ctrl] Fetching details for booking type: ${type}, ID: ${id}, Params:`, queryParams);
     try {
-        const details = await bookingProviderService.getDetails(type, id, queryParams);
+        let details;
+        if (type === 'marriage') {
+            details = await bookingProviderService.getMarriageVenueDetails(id);
+        } else {
+            details = await bookingProviderService.getDetails(type, id, queryParams);
+        }
+
         if (!details) {
             return res.status(404).json({ message: 'Details not found.' });
         }
@@ -39,199 +51,297 @@ exports.getBookingDetails = async (req, res, next) => {
 };
 
 
-// Initiate and confirm a booking
+// Initiate and confirm a generic booking (movies, bus, train, event etc.)
 exports.confirmBooking = async (req, res, next) => {
     const userId = req.user.uid;
-    const { type } = req.params; // 'bus', 'flight', 'movie', etc.
-    // bookingData includes details like providerId, selection (seats, showtime etc.), passenger info, totalAmount, paymentMethod
+    const { type } = req.params;
     const bookingData = req.body;
-    const paymentMethod = bookingData.paymentMethod || 'wallet'; // Default to wallet
+    const paymentMethod = bookingData.paymentMethod || 'wallet';
 
-    console.log(`Initiating booking confirmation for type: ${type}, User: ${userId}, Data:`, bookingData);
+    console.log(`[Booking Ctrl] Initiating generic booking for type: ${type}, User: ${userId}`);
 
     let paymentSuccess = false;
-    let paymentResult: any = {};
-    let bookingResult: any = {};
-    let finalStatus: Transaction['status'] = 'Failed';
+    let paymentResult = {};
+    let bookingResult = {};
+    let finalStatus = 'Failed';
     let failureReason = 'Booking or payment failed.';
-    const bookingName = `${capitalize(type)} Booking: ${bookingData.selection?.movieName || bookingData.selection?.routeName || bookingData.providerId || 'Details'}`; // More descriptive name
+    const bookingName = `${capitalize(type)} Booking: ${bookingData.selection?.movieName || bookingData.selection?.routeName || bookingData.providerId || 'Details'}`;
 
-    let logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = { // Use Omit for partial data
+    let logData = {
         userId,
         type: `${capitalize(type)} Booking`,
         name: bookingName,
-        description: `Details: ${JSON.stringify(bookingData.selection || {})}`, // Log selection details
-        amount: -(bookingData.totalAmount || 0), // Negative amount
-        status: 'Failed', // Initial status
-        billerId: bookingData.providerId || bookingData.selection?.cinemaId || undefined, // Use billerId for provider/cinema
-        paymentMethodUsed: paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'card' ? 'Card' : undefined,
+        description: `Details: ${JSON.stringify(bookingData.selection || {})}`,
+        amount: -(bookingData.totalAmount || 0),
+        status: 'Failed',
+        billerId: bookingData.providerId || bookingData.selection?.cinemaId || undefined,
+        paymentMethodUsed: paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'upi' ? 'UPI' : 'Card',
     };
+    let paymentTransactionId;
 
     try {
-        // --- Step 1: Payment Processing ---
-        if (bookingData.totalAmount <= 0) {
-            paymentSuccess = true; // No payment needed for free bookings
-            paymentResult.message = "No payment required.";
-        } else if (paymentMethod === 'wallet') {
-             // Use internal wallet function - IMPORTANT: Ensure amount is positive for debit
-            const walletResult = await payViaWalletInternal(userId, `booking_${type}_${bookingData.providerId || bookingData.selection?.movieId || Date.now()}`, bookingData.totalAmount, bookingName);
-            if (!walletResult.success) throw new Error(walletResult.message || 'Wallet payment failed.');
-            paymentSuccess = true;
-            paymentResult = walletResult; // Contains transactionId, newBalance
-            logData.description += ' (Paid via Wallet)';
-        } else if (paymentMethod === 'upi') {
-            // TODO: Integrate UPI payment logic (using backend service like upiProviderService)
-             console.warn("UPI payment for bookings not fully implemented backend-side.");
-             throw new Error("UPI payment for bookings not implemented yet.");
-        } else if (paymentMethod === 'card') {
-             // TODO: Integrate Card payment logic (using backend service like paymentGatewayService)
-              console.warn("Card payment for bookings not fully implemented backend-side.");
-             throw new Error("Card payment for bookings not implemented yet.");
+        if (bookingData.totalAmount > 0) {
+            if (paymentMethod === 'wallet') {
+                const walletResult = await payViaWalletInternal(userId, `booking_${type}_${Date.now()}`, bookingData.totalAmount, bookingName);
+                if (!walletResult.success) throw new Error(walletResult.message || 'Wallet payment failed.');
+                paymentSuccess = true;
+                paymentResult = walletResult;
+                paymentTransactionId = walletResult.transactionId;
+                logData.description += ' (Paid via Wallet)';
+            } else {
+                // TODO: Implement UPI/Card payment based on bookingData.paymentMethod
+                throw new Error(`Payment method ${paymentMethod} not fully implemented for generic bookings.`);
+            }
         } else {
-             throw new Error('Invalid payment method specified.');
+            paymentSuccess = true; // No payment needed
+            paymentResult.message = "No payment required.";
         }
 
-        // --- Step 2: Booking Confirmation with Provider ---
         if (paymentSuccess) {
-             console.log("Payment successful (or not needed), proceeding with booking provider confirmation...");
-             // Pass necessary details and payment reference (if any) to the provider service
-             bookingResult = await bookingProviderService.confirmBooking(type, {
-                 ...bookingData,
-                 userId,
-                 paymentTransactionId: paymentResult.transactionId || null, // Pass payment ID if applicable
-             });
+            bookingResult = await bookingProviderService.confirmBooking(type, {
+                ...bookingData,
+                userId,
+                paymentTransactionId: paymentTransactionId,
+            });
 
-              // Check provider confirmation status
-             if (bookingResult.status === 'Confirmed' || bookingResult.status === 'Pending Confirmation') {
-                 finalStatus = 'Completed'; // Treat confirmed/pending as completed in transaction log initially
-                 failureReason = '';
-                 logData.status = finalStatus;
-                  // Update description with booking ID or PNR
-                 logData.description = bookingResult.providerMessage || `Booking Ref: ${bookingResult.bookingId || bookingResult.pnr || 'N/A'}`;
-                 logData.ticketId = bookingResult.bookingId || bookingResult.pnr || undefined; // Store PNR/Booking ID in ticketId field
-                 paymentResult.message = bookingResult.message || 'Booking successful/pending.';
+            if (bookingResult.status === 'Confirmed' || bookingResult.status === 'Pending Confirmation') {
+                finalStatus = 'Completed';
+                logData.status = finalStatus;
+                logData.description = bookingResult.providerMessage || `Booking Ref: ${bookingResult.bookingId || bookingResult.pnr || 'N/A'}`;
+                logData.ticketId = bookingResult.bookingId || bookingResult.pnr || undefined;
+                paymentResult.message = bookingResult.message || 'Booking successful/pending.';
 
-                 // Add booking to user's bookings subcollection (optional, depends on data model)
-                  const userBookingsRef = collection(db, 'users', userId, 'bookings'); // Example path
-                  await addDoc(userBookingsRef, {
-                       bookingId: bookingResult.bookingId || bookingResult.pnr || `local-${Date.now()}`, // Use provider ID or generate local
-                       type: type,
-                       details: bookingData.selection, // Store selection details
-                       totalAmount: bookingData.totalAmount,
-                       bookingDate: serverTimestamp(),
-                       providerId: bookingData.providerId || bookingData.selection?.cinemaId,
-                       status: bookingResult.status, // 'Confirmed' or 'Pending Confirmation'
-                       userId: userId, // Store userId for querying
-                  });
+                // Update transaction log or create new one
+                if (paymentTransactionId) {
+                    await updateDoc(doc(db, 'transactions', paymentTransactionId), {
+                        status: finalStatus,
+                        description: logData.description,
+                        ticketId: logData.ticketId,
+                        updatedAt: serverTimestamp()
+                    });
+                } else { // If no payment, log a new 'Completed' transaction for the booking itself
+                    const bookingLog = await addTransaction({ ...logData, amount: 0, status: 'Completed', date: serverTimestamp()});
+                    paymentTransactionId = bookingLog.id;
+                }
 
-             } else {
-                 // Booking failed AFTER successful payment -> Refund required
-                 finalStatus = 'Failed';
-                 failureReason = bookingResult.message || `Booking failed at ${type} provider.`;
-                 logData.status = 'Failed';
-                 logData.description += ` - Booking Failed: ${failureReason}`;
-                 console.error(`CRITICAL: Payment successful but booking failed for user ${userId}, type ${type}, amount ${bookingData.totalAmount}. Reason: ${failureReason}. Initiating refund simulation.`);
-                 // TODO: Trigger refund process for the original payment method (wallet, UPI, card).
-                 paymentResult.message = failureReason + " Refund initiated.";
-             }
+                // Add to user's generic bookings subcollection
+                const userBookingsRef = collection(db, 'users', userId, 'bookings');
+                await addDoc(userBookingsRef, {
+                    type,
+                    bookingId: bookingResult.bookingId || bookingResult.pnr || `local-${Date.now()}`,
+                    details: bookingData.selection,
+                    totalAmount: bookingData.totalAmount,
+                    bookingDate: serverTimestamp(),
+                    status: bookingResult.status,
+                    userId,
+                    paymentTransactionId,
+                });
+            } else {
+                finalStatus = 'Failed';
+                failureReason = bookingResult.message || `Booking failed at ${type} provider.`;
+                logData.status = 'Failed';
+                logData.description += ` - Booking Failed: ${failureReason}`;
+                if (paymentTransactionId) {
+                    await updateDoc(doc(db, 'transactions', paymentTransactionId), { status: 'Failed', description: logData.description });
+                     // TODO: Refund if payment was made.
+                }
+                paymentResult.message = failureReason + " Refund initiated if applicable.";
+                throw new Error(failureReason);
+            }
         } else {
-            // Payment itself failed before booking attempt
             throw new Error(paymentResult.message || "Payment failed before booking attempt.");
         }
 
-         // --- Step 3: Logging Final Transaction ---
-         // Log transaction AFTER booking attempt to capture the final status and booking details
-         const loggedTx = await addTransaction(logData as any); // Add log with final status/details
-         paymentResult.finalTransactionId = loggedTx.id; // Use Firestore transaction ID for reference in response
+        if (paymentTransactionId) {
+            logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() })
+                 .catch(err => console.error("[Booking Ctrl] Blockchain log failed:", err));
+            const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
+            if (finalTxDoc.exists()) sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(finalTxDoc) });
+        }
+        sendToUser(userId, { type: 'booking_update', payload: { id: bookingResult.bookingId, status: finalStatus, type, details: bookingResult } });
 
-         // --- Step 4: Blockchain Logging (Optional) ---
-         logTransactionToBlockchain(loggedTx.id, { userId, type: logData.type, amount: bookingData.totalAmount, details: bookingName, status: finalStatus })
-              .catch(err => console.error("Blockchain log failed:", err));
-
-        // --- Step 5: Send WebSocket Update (Optional) ---
-        sendToUser(userId, { type: 'booking_update', payload: { id: loggedTx.id, status: finalStatus, details: bookingResult } });
-        sendToUser(userId, { type: 'transaction_update', payload: { ...loggedTx, date: loggedTx.date } }); // Send full transaction update
-
-         // --- Step 6: Respond to Client ---
-          res.status(finalStatus === 'Completed' ? 201 : 400).json({
+        res.status(finalStatus === 'Completed' ? 201 : 400).json({
             status: finalStatus,
             message: paymentResult.message,
-            transactionId: loggedTx.id,
-            bookingDetails: finalStatus === 'Completed' ? bookingResult : null, // Include booking details on success
+            transactionId: paymentTransactionId,
+            bookingId: bookingResult.bookingId,
+            bookingDetails: finalStatus === 'Completed' ? bookingResult : null,
         });
 
-    } catch (error: any) {
-         console.error(`Booking confirmation failed for user ${userId}, type ${type}:`, error.message);
-         logData.status = 'Failed';
-         logData.description = `Booking Failed - ${error.message}`;
-         // Attempt to log failed transaction attempt if it wasn't logged by payment method
-         let failedTxId = paymentResult.finalTransactionId; // Use ID if logging already occurred
-         if (!failedTxId) {
-             try {
-                 const failedTx = await addTransaction(logData as any);
-                 failedTxId = failedTx.id;
-                 sendToUser(userId, { type: 'transaction_update', payload: { ...failedTx, date: failedTx.date } }); // Send WS update for failure
-             } catch (logError) {
-                 console.error("Failed to log failed booking transaction:", logError);
-             }
-         }
-         // Return failure response
-         res.status(400).json({
-             status: 'Failed',
-             message: error.message || failureReason,
-             transactionId: failedTxId
-         });
+    } catch (error) {
+        console.error(`[Booking Ctrl] Generic ${type} booking failed for user ${userId}:`, error.message);
+        logData.status = 'Failed';
+        logData.description = `Booking Failed - ${error.message}`;
+        let failedTxId = paymentTransactionId;
+        if (!failedTxId) {
+            try {
+                const failedTx = await addTransaction(logData);
+                failedTxId = failedTx.id;
+                sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(await getDoc(doc(db, 'transactions', failedTx.id))) });
+            } catch (logError) { console.error("Failed to log failed booking tx:", logError); }
+        }
+        res.status(400).json({ status: 'Failed', message: error.message || failureReason, transactionId: failedTxId });
     }
 };
+
+// Confirm a marriage venue booking
+exports.confirmMarriageVenueBooking = async (req, res, next) => {
+    const userId = req.user.uid;
+    const { venueId } = req.params;
+    const bookingData = req.body; // Includes venueName, city, date, guestCount, userName, userContact, totalAmount (booking fee)
+    const paymentMethod = bookingData.paymentMethod || 'wallet';
+
+    console.log(`[Booking Ctrl] Confirming Marriage Venue Booking for User: ${userId}, Venue: ${venueId}`);
+
+    let paymentSuccess = false;
+    let paymentResult = {};
+    let bookingSystemResult = {};
+    let finalStatus = 'Failed';
+    const bookingFee = bookingData.totalAmount || 0; // Booking fee if any
+
+    let logData = {
+        userId,
+        type: 'Marriage Booking', // Specific type
+        name: `Booking: ${bookingData.venueName}`,
+        description: `Venue: ${venueId}, Date: ${bookingData.date}, Guests: ${bookingData.guestCount || 'N/A'}`,
+        amount: -bookingFee, // Booking fee is a debit
+        status: 'Failed',
+        billerId: venueId, // Use venueId as billerId
+        paymentMethodUsed: paymentMethod,
+    };
+    let paymentTransactionId;
+
+    try {
+        // --- Step 1: Payment Processing for Booking Fee (if applicable) ---
+        if (bookingFee > 0) {
+            if (paymentMethod === 'wallet') {
+                const walletResult = await payViaWalletInternal(userId, `marriage_booking_fee_${venueId}`, bookingFee, `Booking fee for ${bookingData.venueName}`);
+                if (!walletResult.success) throw new Error(walletResult.message || 'Wallet payment for booking fee failed.');
+                paymentSuccess = true;
+                paymentTransactionId = walletResult.transactionId;
+                logData.paymentMethodUsed = 'Wallet';
+            } else {
+                // TODO: Implement UPI/Card payment for booking fee
+                throw new Error(`Payment method ${paymentMethod} for booking fee not implemented.`);
+            }
+        } else {
+            paymentSuccess = true; // No booking fee
+            paymentResult.message = "No booking fee required, proceeding with enquiry/hold.";
+        }
+
+        // --- Step 2: Confirm Booking with Provider/Venue System ---
+        if (paymentSuccess) {
+            bookingSystemResult = await bookingProviderService.confirmMarriageVenueBooking({
+                ...bookingData, // Includes venueId, date, guestCount, userName, userContact
+                userId,
+                paymentTransactionId: paymentTransactionId, // Pass payment ref for booking fee
+            });
+
+            if (bookingSystemResult.status === 'Confirmed' || bookingSystemResult.status === 'Pending Approval') {
+                finalStatus = bookingSystemResult.status === 'Confirmed' ? 'Completed' : 'Pending';
+                logData.status = finalStatus;
+                logData.ticketId = bookingSystemResult.bookingId || undefined;
+                logData.description += ` - Status: ${finalStatus}`;
+                paymentResult.message = bookingSystemResult.message || `Venue booking request submitted. Status: ${finalStatus}.`;
+
+                // Update or Create Transaction Log
+                if (paymentTransactionId) {
+                     await updateDoc(doc(db, 'transactions', paymentTransactionId), { status: finalStatus, description: logData.description, ticketId: logData.ticketId });
+                } else {
+                    const bookingLog = await addTransaction({ ...logData, amount: 0, status: finalStatus, date: serverTimestamp()}); // Log non-payment booking
+                    paymentTransactionId = bookingLog.id;
+                }
+            } else {
+                finalStatus = 'Failed';
+                logData.status = 'Failed';
+                logData.description += ` - Booking Failed: ${bookingSystemResult.message}`;
+                if (paymentTransactionId) { // If fee was paid, mark as failed & refund
+                    await updateDoc(doc(db, 'transactions', paymentTransactionId), { status: 'Failed', description: logData.description });
+                    // TODO: Initiate refund for booking fee
+                    console.error(`[Booking Ctrl] CRITICAL: Booking fee paid but venue confirmation failed for ${venueId}. Refunding ${bookingFee}.`);
+                }
+                throw new Error(bookingSystemResult.message || "Failed to confirm booking with venue.");
+            }
+        }
+
+        // --- Step 3: Blockchain Logging & WebSocket Update ---
+        if (paymentTransactionId) {
+             logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() })
+                .catch(err => console.error("[Booking Ctrl] Blockchain log for marriage booking failed:", err));
+            const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
+            if (finalTxDoc.exists()) sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(finalTxDoc) });
+        }
+        sendToUser(userId, { type: 'booking_update', payload: { id: bookingSystemResult.bookingId, status: finalStatus, type: 'marriage', details: bookingSystemResult } });
+
+        res.status(finalStatus === 'Completed' || finalStatus === 'Pending' ? 201 : 400).json({
+            status: finalStatus,
+            message: paymentResult.message,
+            transactionId: paymentTransactionId,
+            bookingId: bookingSystemResult.bookingId,
+            bookingDetails: bookingSystemResult,
+        });
+
+    } catch (error) {
+        console.error(`[Booking Ctrl] Marriage Venue booking failed for ${userId}, Venue ${venueId}:`, error.message);
+        logData.status = 'Failed';
+        logData.description = `Booking Failed - ${error.message}`;
+        let failedTxId = paymentTransactionId;
+        if (!failedTxId && bookingFee > 0) { // Only log if fee payment was attempted but failed before tx log
+            try {
+                const failedFeeTx = await addTransaction(logData);
+                failedTxId = failedFeeTx.id;
+                sendToUser(userId, { type: 'transaction_update', payload: convertFirestoreDocToTransaction(await getDoc(doc(db, 'transactions', failedFeeTx.id))) });
+            } catch (logError) { console.error("Failed to log failed marriage booking fee tx:", logError); }
+        }
+        res.status(400).json({ status: 'Failed', message: error.message, transactionId: failedTxId });
+    }
+};
+
 
 // Cancel a booking (if provider supports it)
 exports.cancelBooking = async (req, res, next) => {
     const userId = req.user.uid;
-    const { type, bookingId } = req.params; // e.g., type='bus', bookingId='XYZ123'
+    const { type, bookingId } = req.params;
 
-    console.log(`Attempting to cancel booking type: ${type}, ID: ${bookingId}, User: ${userId}`);
+    console.log(`[Booking Ctrl] Attempting to cancel ${type} booking ID: ${bookingId}, User: ${userId}`);
     try {
-        // TODO: Fetch original booking from user's bookings subcollection to check ownership and status
-        // const bookingDocRef = doc(db, 'users', userId, 'bookings', bookingId); // Example path, adjust based on actual booking ID storage
-        // const bookingSnap = await getDoc(bookingDocRef);
-        // if (!bookingSnap.exists() || bookingSnap.data().status === 'Cancelled') {
-        //      throw new Error("Invalid or already cancelled booking.");
-        // }
-        // const bookingData = bookingSnap.data(); // Get data for cancellation request if needed
-
-        const cancellationResult = await bookingProviderService.cancelBooking(type, bookingId, userId); // Pass necessary info
+        const cancellationResult = await bookingProviderService.cancelBooking(type, bookingId, userId);
 
         if (cancellationResult.success) {
-             // TODO: Update booking status in user's bookings subcollection to 'Cancelled'
-             // await updateDoc(bookingDocRef, { status: 'Cancelled', cancellationDetails: cancellationResult });
-
-             // Log cancellation transaction (might have refund amount)
-              await addTransaction({
+             await addTransaction({
                   userId,
-                  type: 'Refund', // Or 'Cancelled Booking'
-                  name: `Cancelled ${capitalize(type)} Booking`,
-                  description: `Booking ID: ${bookingId}. Refund: ₹${cancellationResult.refundAmount || 0}`,
+                  type: `Cancelled ${capitalize(type)} Booking`,
+                  name: `Cancellation: ${bookingId}`,
+                  description: `Refund: ₹${cancellationResult.refundAmount || 0}. ${cancellationResult.message || ''}`,
                   amount: cancellationResult.refundAmount || 0, // Positive for refund
-                  status: 'Completed', // Assuming cancellation itself is complete
-                  originalTransactionId: cancellationResult.originalPaymentTxId || undefined, // Link to original payment if possible
+                  status: 'Completed',
+                  originalTransactionId: cancellationResult.originalPaymentTxId || bookingId,
              });
-             // TODO: Trigger actual refund to original payment source (wallet, UPI, card)
-             sendToUser(userId, { type: 'booking_update', payload: { id: bookingId, status: 'Cancelled' } });
+             // TODO: Trigger actual refund to original payment source
+             sendToUser(userId, { type: 'booking_update', payload: { id: bookingId, status: 'Cancelled', type } });
              res.status(200).json({ success: true, message: cancellationResult.message || "Booking cancelled successfully. Refund will be processed as per policy." });
         } else {
              throw new Error(cancellationResult.message || "Cancellation failed by provider.");
         }
-    } catch (error: any) {
-        console.error(`Cancellation failed for booking ${bookingId}:`, error.message);
-        next(error); // Pass to error handler
+    } catch (error) {
+        console.error(`[Booking Ctrl] Cancellation failed for ${type} booking ${bookingId}:`, error.message);
+        next(error);
     }
 };
 
-function capitalize(s: string): string {
+function capitalize(s) {
   return typeof s === 'string' && s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 }
 
-// Import Transaction type definition
-import type { Transaction } from '../services/types';
-const { collection, addDoc, serverTimestamp } = require('firebase/firestore'); // Ensure these are imported
-
+// Helper to convert Firestore doc to Transaction type (if not already available)
+function convertFirestoreDocToTransaction(docSnap) {
+    if (!docSnap.exists()) return null;
+    const data = docSnap.data();
+    return {
+        id: docSnap.id,
+        ...data,
+        date: (data.date instanceof admin.firestore.Timestamp) ? data.date.toDate() : new Date(),
+        createdAt: data.createdAt instanceof admin.firestore.Timestamp ? data.createdAt.toDate() : undefined,
+        updatedAt: data.updatedAt instanceof admin.firestore.Timestamp ? data.updatedAt.toDate() : undefined,
+    };
+}

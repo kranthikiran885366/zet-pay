@@ -12,8 +12,8 @@ export interface UserProfile {
     avatarUrl?: string;
     kycStatus?: 'Verified' | 'Not Verified' | 'Pending';
     // Use simple types for client-side, backend will handle Timestamps
-    createdAt?: Date | string; // Allow string for initial fetch, convert to Date later
-    updatedAt?: Date | string;
+    createdAt?: Date | string | Timestamp; // Allow Timestamp for backend
+    updatedAt?: Date | string | Timestamp;
     notificationsEnabled?: boolean;
     biometricEnabled?: boolean;
     appLockEnabled?: boolean;
@@ -31,7 +31,7 @@ export interface Transaction {
   name: string; // Payee name, Biller name, Service name, Fund name etc.
   description: string; // Transaction note, plan details, purpose
   amount: number; // Negative for debits, positive for credits/refunds
-  date: Date | string; // Allow string initially
+  date: Date | string | Timestamp; // Allow string initially from client, Timestamp in backend
   status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled' | 'Refunded'; // Added Refunded
   avatarSeed?: string; // Seed for generating avatar placeholder
   upiId?: string; // Relevant UPI ID (payee or self)
@@ -42,6 +42,14 @@ export interface Transaction {
   blockchainHash?: string; // Hash if logged on blockchain
   paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking'; // Optional: How was it paid?
   originalTransactionId?: string; // For refunds/chargebacks
+  // Fields from backend Transaction type
+  operatorReferenceId?: string;
+  billerReferenceId?: string;
+  planId?: string;
+  identifier?: string;
+  withdrawalRequestId?: string;
+  createdAt?: Date | string | Timestamp;
+  updatedAt?: Date | string | Timestamp;
 }
 
 export interface BankAccount {
@@ -52,7 +60,7 @@ export interface BankAccount {
   userId: string; // Link to the user
   isDefault?: boolean;
   pinLength?: 4 | 6;
-  // Add balance if backend provides it securely
+  createdAt?: Timestamp | Date | string; // Allow Timestamp for backend
 }
 
 export interface UpiTransactionResult {
@@ -65,6 +73,8 @@ export interface UpiTransactionResult {
   walletTransactionId?: string; // Transaction ID if paid via wallet fallback
   ticketId?: string; // For failed transactions needing support
   refundEta?: string; // ETA for refund on failure
+  errorCode?: string; // For UPI payment failures
+  mightBeDebited?: boolean; // For UPI payment failures
 }
 
 export interface Payee {
@@ -78,14 +88,8 @@ export interface Payee {
   accountNumber?: string; // Store account number if type is bank
   ifsc?: string; // Store IFSC if type is bank
   isFavorite?: boolean;
-  createdAt?: Timestamp | Date | string; // Allow multiple types for flexibility
+  createdAt?: Timestamp | Date | string; // Allow multiple types
   updatedAt?: Timestamp | Date | string;
-}
-
-// Client-side interface for Payee with Date objects
-export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
-    createdAt?: Date;
-    updatedAt?: Date;
 }
 
 // --- Offer Types ---
@@ -96,10 +100,10 @@ export interface Offer {
   imageUrl: string;
   offerType: 'Cashback' | 'Coupon' | 'Discount' | 'Partner';
   terms?: string;
-  validUntil?: Date | string; // Allow string from API
+  validUntil?: Date | string | Timestamp;
   category?: string; // e.g., "Recharge", "Shopping", "Travel"
   isActive: boolean;
-  createdAt?: Date | string;
+  createdAt?: Date | string | Timestamp;
 }
 
 // --- Loyalty Types ---
@@ -108,7 +112,7 @@ export interface LoyaltyStatus {
     points: number;
     tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
     benefits: string[];
-    lastUpdated: Date | string; // Allow string from API
+    lastUpdated: Date | string | Timestamp;
 }
 
 // --- Referral Types ---
@@ -126,19 +130,19 @@ export interface ScratchCardData {
     userId: string;
     isScratched: boolean;
     rewardAmount?: number;
-    expiryDate: Date | string; // Allow string from API
+    expiryDate: Date | string | Timestamp;
     message: string; // "You won X" or "Better luck next time"
     sourceOfferId?: string; // Link to original offer if applicable
-    createdAt: Date | string;
-    scratchedAt?: Date | string;
+    createdAt: Date | string | Timestamp;
+    scratchedAt?: Date | string | Timestamp;
 }
 
 // --- Card Types ---
-// Interface for card metadata stored/returned by backend API
 export interface CardDetails {
     id: string; // Backend database ID / Gateway token ID
     userId: string;
-    cardIssuer?: string; // e.g., "Visa", "Mastercard", "Rupay"
+    gatewayToken?: string; // Added from card service
+    cardIssuer?: string;
     bankName?: string;
     last4: string;
     expiryMonth: string; // MM
@@ -146,10 +150,9 @@ export interface CardDetails {
     cardHolderName?: string;
     cardType: 'Credit' | 'Debit';
     isPrimary?: boolean;
-    // No sensitive info like full number or CVV is exposed by the API here
+    createdAt?: Timestamp | Date | string; // Added from card service
 }
 
-// Interface for the result of a card payment attempt from the backend
 export interface CardPaymentResult {
     success: boolean;
     transactionId?: string; // Backend-generated transaction ID (Firestore ID)
@@ -157,8 +160,8 @@ export interface CardPaymentResult {
     message: string;
     usedWalletFallback?: boolean;
     walletTransactionId?: string;
-    retryWithDifferentMethod?: boolean; // Suggest retry if card failed but others might work
-    errorCode?: string; // Optional error code from gateway/bank
+    retryWithDifferentMethod?: boolean;
+    errorCode?: string;
 }
 
 // --- Autopay Mandate Types ---
@@ -169,12 +172,13 @@ export interface Mandate {
     upiId: string; // User's UPI ID used for the mandate
     maxAmount: number;
     frequency: 'Monthly' | 'Quarterly' | 'Half Yearly' | 'Yearly' | 'As Presented';
-    startDate: Date | string;
-    validUntil: Date | string;
+    startDate: Date | string | Timestamp;
+    validUntil: Date | string | Timestamp;
     status: 'Active' | 'Paused' | 'Cancelled' | 'Failed' | 'Pending Approval';
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
+    createdAt?: Date | string | Timestamp;
+    updatedAt?: Date | string | Timestamp;
     mandateUrn?: string; // Unique reference number from NPCI/PSP
+    pspReferenceId?: string; // PSP's internal reference
 }
 
 // --- Loan Types ---
@@ -182,7 +186,7 @@ export interface MicroLoanStatus {
     hasActiveLoan: boolean;
     loanId?: string; // Firestore document ID of the active loan
     amountDue?: number;
-    dueDate?: Date;
+    dueDate?: Date | string | Timestamp; // Allow Timestamp for backend
     purpose?: 'General' | 'Education';
 }
 
@@ -206,13 +210,13 @@ export interface UpiLiteDetails {
 
 // --- Pocket Money ---
 export interface ChildAccountConfig {
-    id: string; // Unique ID for the child
+    id: string;
     name: string;
     avatarSeed: string;
     balance: number;
     allowanceAmount?: number;
     allowanceFrequency?: 'Daily' | 'Weekly' | 'Monthly' | 'None';
-    lastAllowanceDate?: Date | string; // Allow string from backend
+    lastAllowanceDate?: Date | string | Timestamp;
     spendingLimitPerTxn?: number;
     linkedSchoolBillerId?: string;
 }
@@ -226,7 +230,7 @@ export interface PocketMoneyTransaction {
     childId: string;
     description: string;
     amount: number;
-    date: Date | string; // Allow string from backend
+    date: Date | string | Timestamp;
 }
 
 // --- Cash Withdrawal ---
@@ -234,30 +238,88 @@ export interface ZetAgent {
     id: string;
     name: string;
     address: string;
-    distanceKm: number; // Calculated distance
+    distanceKm: number;
     operatingHours: string;
 }
 export interface WithdrawalDetails {
-    id?: string; // Firestore document ID for the withdrawal request
+    id?: string;
     userId: string;
     agentId: string;
-    agentName?: string; // Optional denormalized agent name
+    agentName?: string;
     amount: number;
     otp: string;
     qrData: string;
     status: 'Pending Confirmation' | 'Completed' | 'Expired' | 'Cancelled' | 'Failed';
-    createdAt: Timestamp | Date | string; // Allow multiple types
+    createdAt: Timestamp | Date | string;
     expiresAt: Timestamp | Date | string;
     completedAt?: Timestamp | Date | string;
     failureReason?: string;
-    // Added from backend
-    transactionId?: string; // ID of the final transaction log entry
-    updatedAt?: Timestamp | Date | string; // Allow multiple types
-    expiresInSeconds?: number; // Calculated on client potentially
+    transactionId?: string;
+    updatedAt?: Timestamp | Date | string;
+    expiresInSeconds?: number;
+    holdTransactionId?: string; // Added for linking
+}
+
+// --- Booking Types ---
+export interface BookingSearchResult {
+    id: string;
+    name: string;
+    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage';
+    imageUrl?: string;
+    priceRange?: string;
+    rating?: number;
+    location?: string;
+    capacity?: number;
+}
+
+export interface FlightListing extends BookingSearchResult {
+    airline: string;
+    flightNumber: string;
+    departureAirport: string;
+    arrivalAirport: string;
+    departureTime: string;
+    arrivalTime: string;
+    duration: string;
+    stops: number;
+    price: number;
+    refundable?: boolean;
+    baggage: { cabin: string; checkin: string };
+}
+
+// For Marriage Venue Bookings (Backend uses this for Firestore)
+export interface MarriageVenue {
+    id: string; // Corresponds to Firestore document ID
+    name: string;
+    location: string;
+    city: string;
+    capacity: number;
+    price: number; // Base or starting price
+    priceRange?: string;
+    rating?: number;
+    imageUrl?: string;
+    description?: string;
+    amenities?: string[];
+    contact?: string;
+    requiresApproval?: boolean; // Added from mock data
+    bookingFee?: number; // Added from mock data
+}
+
+export interface MarriageBookingDetails { // For making a booking request
+    venueId: string;
+    venueName: string;
+    city: string;
+    date: string; // YYYY-MM-DD
+    guestCount?: string;
+    userName: string;
+    userContact: string;
+    totalAmount?: number; // Booking fee
+    userId?: string; // Added for backend storage
+    paymentTransactionId?: string; // Added for backend
+    status?: 'Pending Approval' | 'Confirmed' | 'Cancelled' | 'Completed'; // Added status
+    createdAt?: Timestamp; // Added for backend
 }
 
 
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
-
-    
+// Backend types might use Timestamp directly.
