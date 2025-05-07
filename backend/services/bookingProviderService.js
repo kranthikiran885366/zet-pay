@@ -23,11 +23,14 @@ const mockEvents = [
     { id: 'ev1', name: 'Standup Comedy Night', category: 'Comedy', date: '2024-08-20', city: 'Bangalore', venue: 'Comedy Club', price: 499, imageUrl: '/mock/comedy_event.jpg' },
 ];
 
+// Enhanced Mock Marriage Venues with more details
 const mockMarriageVenues = [
-    { id: 'v1', name: 'Grand Celebration Hall', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg', description: 'Spacious hall with modern amenities.', amenities: ['AC Hall', 'Catering Available', 'Parking', 'Valet Service'] },
-    { id: 'v2', name: 'Star Convention Center', location: 'Hitech City, Hyderabad', city: 'Hyderabad', capacity: 1000, price: 250000, priceRange: '₹2 Lakh+', rating: 4.5, imageUrl: '/images/venues/venue2.jpg', description: 'Large convention center suitable for grand weddings.', amenities: ['Multiple Halls', 'Large Parking', 'In-house Decor'] },
-    { id: 'v3', name: 'Palace Grounds Banquet', location: 'Palace Grounds, Bangalore', city: 'Bangalore', capacity: 800, price: 150000, priceRange: '₹1.5 Lakh+', rating: 4.6, imageUrl: '/images/venues/venue3.jpg', description: 'Elegant banquet hall with outdoor space.', amenities: ['Lawn Area', 'Bridal Suites', 'Sound System'] },
+    { id: 'v1', name: 'Grand Celebration Hall', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg', description: 'Spacious hall with modern amenities, perfect for mid-sized weddings and receptions. Offers customizable decor packages.', amenities: ['AC Hall', 'Catering Available', 'Parking (100 cars)', 'Valet Service', 'Bridal Suite', 'Sound System'], contact: '9876500001', requiresApproval: true, bookingFee: 25000 },
+    { id: 'v2', name: 'Star Convention Center', location: 'Hitech City, Hyderabad', city: 'Hyderabad', capacity: 1000, price: 250000, priceRange: '₹2 Lakh - ₹5 Lakh', rating: 4.5, imageUrl: '/images/venues/venue2.jpg', description: 'Large convention center suitable for grand weddings. Multiple halls available for different functions. State-of-the-art lighting.', amenities: ['Multiple Halls', 'Large Parking (300 cars)', 'In-house Decor', 'Wheelchair Accessible', 'Generator Backup'], contact: '9876500002', requiresApproval: true, bookingFee: 50000 },
+    { id: 'v3', name: 'Palace Grounds Banquet', location: 'Palace Grounds, Bangalore', city: 'Bangalore', capacity: 800, price: 150000, priceRange: '₹1.5 Lakh - ₹3 Lakh', rating: 4.6, imageUrl: '/images/venues/venue3.jpg', description: 'Elegant banquet hall with a sprawling outdoor lawn area. Ideal for both indoor and outdoor ceremonies.', amenities: ['Lawn Area', 'Bridal Suites', 'Sound System', 'Projector', 'In-house Catering Optional'], contact: '9876500003', requiresApproval: false, bookingFee: 0 },
+    { id: 'v4', name: 'The Royal Gardens', location: 'ECR, Chennai', city: 'Chennai', capacity: 300, price: 80000, priceRange: '₹80k - ₹1.5 Lakh', rating: 4.3, imageUrl: '/images/venues/venue4.jpg', description: 'Beautiful garden venue perfect for intimate weddings and pre-wedding functions. Beach access available.', amenities: ['Outdoor Garden', 'Beach Access', 'Small Banquet Hall', 'Parking (50 cars)'], contact: '9876500004', requiresApproval: false, bookingFee: 10000 },
 ];
+
 
 // --- Search ---
 async function search(type, queryParams) {
@@ -74,7 +77,11 @@ async function confirmBooking(type, bookingData) {
     console.log(`[Booking Provider Sim] Confirming ${type} booking:`, bookingData);
     await new Promise(resolve => setTimeout(resolve, 1800));
 
+    // Simulate success/failure based on type or bookingData
     const random = Math.random();
+    if (type === 'flight' && random < 0.15) { // Higher failure chance for flights in sim
+        return { status: 'Failed', message: `Flight booking failed. Seats might be unavailable or payment declined by airline.`, providerCode: 'AIRLINE_BOOKING_FAILED' };
+    }
     if (random < 0.08) {
         return { status: 'Failed', message: `Booking failed. Seats might be unavailable or payment declined by provider.`, providerCode: 'PROVIDER_BOOKING_FAILED' };
     }
@@ -84,10 +91,13 @@ async function confirmBooking(type, bookingData) {
 
     const bookingId = `${type.toUpperCase()}_${Date.now()}`;
     return {
-        status: 'Confirmed',
+        status: 'Confirmed', // Should be 'Completed' as per Transaction status for successful paid bookings
         message: `${capitalize(type)} booking confirmed successfully.`,
         bookingId: bookingId,
         providerMessage: 'Success',
+        // Include PNR or specific details if available for this type
+        pnr: type === 'train' || type === 'flight' ? `PNR${Date.now()}` : undefined,
+        seatNumbers: bookingData.seats?.join(', ') || undefined,
     };
 }
 
@@ -100,16 +110,14 @@ async function searchMarriageVenues(queryParams) {
         results = results.filter(v => v.city.toLowerCase() === queryParams.city.toLowerCase());
     }
     if (queryParams.guests) {
-        const [min, max] = queryParams.guests.split('-').map(Number);
-        if (max === undefined && min) { // Single number like "1000+"
-            results = results.filter(v => v.capacity >= min);
-        } else if (min && max) {
-            results = results.filter(v => v.capacity >= min && v.capacity <= max);
-        } else if (min) { // Only min specified
-             results = results.filter(v => v.capacity >= min);
-        }
+        const guestRange = queryParams.guests.split('-');
+        const minGuests = parseInt(guestRange[0].replace('+', ''), 10);
+        const maxGuests = guestRange[1] ? parseInt(guestRange[1], 10) : (guestRange[0].includes('+') ? Infinity : minGuests);
+
+        results = results.filter(v => v.capacity >= minGuests && v.capacity <= maxGuests);
     }
-    // TODO: Add date availability check (complex, requires calendar logic or DB query)
+    // TODO: Add date availability check (complex, requires calendar logic or DB query with venue schedules)
+    console.log(`[Booking Provider Sim] Found ${results.length} marriage venues.`);
     return results;
 }
 
@@ -117,41 +125,57 @@ async function getMarriageVenueDetails(venueId) {
     console.log(`[Booking Provider Sim] Getting Marriage Venue Details for ID: ${venueId}`);
     await new Promise(resolve => setTimeout(resolve, 400));
     const venue = mockMarriageVenues.find(v => v.id === venueId);
-    return venue ? { venueDetails: venue } : null; // Wrap in venueDetails for consistency if getBookingDetails expects it
+    // Return the venue object directly if found, or null
+    return venue || null;
 }
 
 async function confirmMarriageVenueBooking(bookingDetails) {
-    const { venueId, userId, date, guestCount, userName, paymentTransactionId } = bookingDetails;
-    console.log(`[Booking Provider Sim] Confirming Marriage Venue Booking: Venue ${venueId}, User ${userId}`);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const { venueId, userId, date, guestCount, userName, userContact, userEmail, specialRequests, paymentTransactionId } = bookingDetails;
+    console.log(`[Booking Provider Sim] Storing Marriage Venue Booking: Venue ${venueId}, User ${userId}`);
 
-    // Simulate availability check & confirmation
     const venue = mockMarriageVenues.find(v => v.id === venueId);
     if (!venue) {
-        return { status: 'Failed', message: 'Venue not found.' };
+        return { status: 'Failed', message: 'Selected venue not found.' };
     }
-    // Simple random success/failure
-    const random = Math.random();
-    if (random < 0.1) {
-        return { status: 'Failed', message: 'Selected date/slot is no longer available for this venue.' };
+     // Simulate availability check & confirmation (can be more complex)
+    const isAvailable = Math.random() > 0.1; // 90% chance available
+
+    if (!isAvailable) {
+         return { status: 'Failed', message: 'Sorry, the selected date/slot is no longer available for this venue.' };
     }
 
-    // Save booking to Firestore (conceptual)
+
+    // Save booking to Firestore 'marriageBookings' collection
     const marriageBookingsRef = collection(db, 'marriageBookings');
-    const bookingDocRef = await addDoc(marriageBookingsRef, {
-        ...bookingDetails,
-        status: venue.requiresApproval ? 'Pending Approval' : 'Confirmed', // Use requiresApproval from mock
-        bookingFeePaid: !!paymentTransactionId, // True if booking fee transaction ID exists
-        createdAt: serverTimestamp(),
-    });
-
-    console.log(`[Booking Provider Sim] Marriage venue booking record ${bookingDocRef.id} created. Status: ${venue.requiresApproval ? 'Pending Approval' : 'Confirmed'}.`);
-    return {
-        status: venue.requiresApproval ? 'Pending Approval' : 'Confirmed',
-        bookingId: bookingDocRef.id,
-        message: `Booking request for ${venue.name} submitted. ${venue.requiresApproval ? 'Awaiting venue approval.' : 'Confirmed.'}`,
-        providerMessage: 'Success',
-    };
+    const bookingStatus = venue.requiresApproval ? 'Pending Approval' : 'Confirmed';
+    try {
+        const newBookingDocRef = await addDoc(marriageBookingsRef, {
+            userId,
+            venueId,
+            venueName: venue.name,
+            eventDate: date, // Store as string YYYY-MM-DD
+            guestCount: guestCount || 'Not Specified',
+            groupLeaderName: userName, // Using userName as leader
+            groupLeaderMobile: userContact,
+            groupLeaderEmail: userEmail,
+            specialRequests: specialRequests || '',
+            status: bookingStatus,
+            bookingFeePaid: !!paymentTransactionId,
+            paymentTransactionId: paymentTransactionId || null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        console.log(`[Booking Provider Sim] Marriage venue booking record ${newBookingDocRef.id} created in Firestore. Status: ${bookingStatus}.`);
+        return {
+            status: bookingStatus,
+            bookingId: newBookingDocRef.id, // Return Firestore document ID as bookingId
+            message: `Booking request for ${venue.name} submitted. ${bookingStatus === 'Pending Approval' ? 'Awaiting venue approval.' : 'Your booking is confirmed!'}`,
+            providerMessage: 'Success', // Generic success from provider
+        };
+    } catch (error) {
+        console.error("[Booking Provider Sim] Error saving marriage booking to Firestore:", error);
+        return { status: 'Failed', message: 'Failed to save booking. Please try again.' };
+    }
 }
 
 
@@ -159,13 +183,36 @@ async function confirmMarriageVenueBooking(bookingDetails) {
 async function cancelBooking(type, bookingId, userId) {
      console.log(`[Booking Provider Sim] Cancelling ${type} booking ID: ${bookingId} for user ${userId}`);
      await new Promise(resolve => setTimeout(resolve, 1000));
+
+     // In a real scenario, check if bookingId exists in Firestore and belongs to userId
+     // For marriage bookings, update status to 'Cancelled'
+     if (type === 'marriage') {
+         try {
+             const bookingDocRef = doc(db, 'marriageBookings', bookingId);
+             const bookingSnap = await getDoc(bookingDocRef);
+             if (bookingSnap.exists() && bookingSnap.data().userId === userId) {
+                 await bookingDocRef.update({ status: 'Cancelled', updatedAt: serverTimestamp() });
+                 // TODO: Handle refund if applicable based on original payment and cancellation policy
+                  const originalBookingData = bookingSnap.data();
+                  const refundAmount = originalBookingData.bookingFeePaid ? (originalBookingData.totalAmount * 0.8) : 0; // Example 80% refund
+                 return { success: true, message: `Marriage venue booking ${bookingId} cancelled. Refund of ₹${refundAmount.toFixed(2)} initiated if applicable.`, refundAmount: refundAmount, originalPaymentTxId: originalBookingData.paymentTransactionId };
+             } else {
+                return { success: false, message: 'Booking not found or permission denied for cancellation.' };
+             }
+         } catch (error) {
+             console.error(`[Booking Provider Sim] Error cancelling marriage booking ${bookingId} in Firestore:`, error);
+             return { success: false, message: 'Failed to cancel marriage booking due to system error.' };
+         }
+     }
+
+     // Generic cancellation simulation for other types
      const isCancellable = Math.random() > 0.15;
      const refundPercentage = isCancellable ? (Math.random() * 0.5 + 0.5) : 0;
-     const originalAmount = 1000;
-     const refundAmount = Math.floor(originalAmount * refundPercentage);
+     const originalAmount = 1000; // Mock original amount for generic
+     const genericRefundAmount = Math.floor(originalAmount * refundPercentage);
 
      if (isCancellable) {
-         return { success: true, message: `Cancellation successful. Refund of ₹${refundAmount} processed.`, refundAmount };
+         return { success: true, message: `Cancellation successful. Refund of ₹${genericRefundAmount} processed.`, refundAmount: genericRefundAmount };
      } else {
          return { success: false, message: 'Cancellation failed (e.g., non-refundable or too close to event).' };
      }
@@ -188,3 +235,4 @@ function capitalize(s) {
 
 // Mock seat generation (simplified, reuse from movie controller logic if possible)
 const generateMockSeats = (busType, basePrice) => { /* ... (same as before) ... */ };
+

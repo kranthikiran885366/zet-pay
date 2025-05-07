@@ -274,6 +274,9 @@ export interface BookingSearchResult {
     rating?: number;
     location?: string;
     capacity?: number;
+    description?: string;
+    amenities?: string[];
+    price?: number;
 }
 // For specific entity details
 export interface FlightListing {
@@ -292,10 +295,27 @@ export interface FlightListing {
     imageUrl?: string;
 }
 // Add other specific listing types like BusListing, TrainListing if needed
+export interface CarListing extends BookingSearchResult {
+    transmission: string;
+    fuelType: string;
+    seats: number;
+    pricePerDay: number;
+    kmsLimit?: string;
+    isAvailable: boolean;
+}
+
+export interface BikeListing extends BookingSearchResult {
+    pricePerHour: number;
+    pricePerDay: number;
+    availability: 'Available' | 'In Use' | 'Low Battery';
+    batteryPercent?: number;
+    requiresHelmet?: boolean;
+}
+
 
 // For general booking confirmation (align with backend)
 export interface BookingConfirmation {
-    status: Transaction['status'];
+    status: Transaction['status'] | 'Pending Approval' | 'Confirmed'; // Added 'Pending Approval' & 'Confirmed'
     message?: string;
     transactionId?: string; // For payment transaction
     bookingId?: string; // Specific booking ID from provider or system
@@ -306,14 +326,14 @@ export interface BookingConfirmation {
     } | null;
 }
 
-// For Marriage Venue Bookings
+// For Marriage Venue Bookings (Client-side: Form Data / Search Result)
 export interface MarriageVenue extends BookingSearchResult {
-    city: string;
-    description?: string;
-    amenities?: string[];
-    price: number; // Base or starting price
+    city: string; // Ensure city is part of the base for search results
+    // All other fields are optional if already covered by BookingSearchResult
+    // price: number; // Base or starting price is already in BookingSearchResult
 }
 
+// For Marriage Venue Booking Request Payload (Client to Backend)
 export interface MarriageBookingDetails {
     venueId: string;
     venueName: string;
@@ -322,10 +342,14 @@ export interface MarriageBookingDetails {
     guestCount?: string;
     userName: string;
     userContact: string;
-    totalAmount?: number; // Actual booking fee paid
+    userEmail: string; // Added email
+    specialRequests?: string; // Added special requests
+    totalAmount?: number; // Booking fee or estimated cost
+    // userId and paymentTransactionId are handled by backend
 }
 
 
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
 // Backend types might use Timestamp directly.
+

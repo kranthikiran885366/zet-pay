@@ -22,10 +22,8 @@ const handleValidationErrors = (req, res, next) => {
 // GET /api/bookings/:type/search - Search for bookings (bus, flight, train, movie, event, marriage)
 router.get('/:type/search',
     param('type').isIn(['bus', 'flight', 'train', 'movie', 'event', 'marriage']).withMessage('Invalid booking type.'),
-    // City is common for many searches
     query('city').optional().isString().trim(),
     query('date').optional().isISO8601().toDate().withMessage('Invalid date format.'),
-    // Add specific query param validations based on type if needed
     query('guests').if(param('type').equals('marriage')).optional().isString(),
     handleValidationErrors,
     asyncHandler(bookingController.searchBookings)
@@ -41,13 +39,17 @@ router.get('/:type/:id/details',
 
 // --- Generic Booking Confirmation & Cancellation ---
 // POST /api/bookings/:type - Confirm a booking (generic for some types like movie, bus)
-// For marriage, use POST /api/bookings/marriage/:venueId/book
 router.post('/:type',
     param('type').isIn(['bus', 'flight', 'train', 'movie', 'event']).withMessage('Invalid booking type for this endpoint. Use specific endpoint for marriage.'),
-    body('totalAmount').isNumeric().toFloat().isFloat({ min: 0 }).withMessage('Valid total amount required.'),
+    body('totalAmount').isNumeric().toFloat().isFloat({ min: 0 }).withMessage('Valid total amount required.'), // Allow 0 for free bookings
     body('providerId').optional().isString().trim(),
     body('selection').isObject().withMessage('Booking selection details required.'),
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']),
+    // Added passengerDetails for generic booking
+    body('passengerDetails').optional().isObject(),
+    body('passengerDetails.name').optional().isString().trim(),
+    body('passengerDetails.email').optional().isEmail().normalizeEmail(),
+    body('passengerDetails.phone').optional().isMobilePhone('any'),
     handleValidationErrors,
     asyncHandler(bookingController.confirmBooking)
 );
@@ -63,19 +65,22 @@ router.post('/:type/:bookingId/cancel',
 
 // --- Marriage Hall Specific Booking Confirmation ---
 // POST /api/bookings/marriage/:venueId/book - Confirm a marriage venue booking
-router.post('/marriage/:venueId/book', // More specific route for marriage venue booking
+router.post('/marriage/:venueId/book',
     param('venueId').isString().trim().notEmpty().withMessage('Venue ID is required.'),
     body('venueName').isString().trim().notEmpty().withMessage('Venue name required.'),
     body('city').isString().trim().notEmpty().withMessage('City required.'),
     body('date').isISO8601().toDate().withMessage('Valid event date required.'),
     body('guestCount').optional().isString(),
     body('userName').isString().trim().notEmpty().withMessage('User name required.'),
-    body('userContact').isString().trim().notEmpty().withMessage('User contact required.'),
+    body('userContact').isMobilePhone('any').withMessage('Valid user contact required.'), // Validating mobile number
+    body('userEmail').isEmail().normalizeEmail().withMessage('Valid user email required.'),
+    body('specialRequests').optional().isString().trim().isLength({ max: 500 }),
     body('totalAmount').optional().isNumeric().toFloat().isFloat({ min: 0 }).withMessage('Valid total amount or booking fee required.'),
-    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'), // Payment for booking fee
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
     handleValidationErrors,
-    asyncHandler(bookingController.confirmMarriageVenueBooking) // Specific controller
+    asyncHandler(bookingController.confirmMarriageVenueBooking)
 );
 
 
 module.exports = router;
+
