@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Use alias
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
   Plane,
   ShoppingBag,
-  Gift as GiftIcon, //Alias Gift to avoid conflict
-  Home, // Added Temple icon (using Home as placeholder)
+  Gift as GiftIcon,
+  Home,
   Car,
-  Bike as Motorbike, // Use alias
+  Bike as Motorbike,
   CalendarCheck,
   Video,
   Sparkles,
@@ -58,57 +58,55 @@ import {
   Users,
   QrCode,
   Clock,
-  Briefcase, // For Mutual Funds
-  Database, // For Deposits
-  Gauge, // For Credit Score
-  Coins, // For Gold
-  Building2, // For Zet Bank
-  Zap, // For EV Charging, Game Zones
-  Siren, // For Emergency Assistance
-  Store, // For Rest Stop (placeholder)
-  HeartPulse, // For Healthcare
-  Wrench, // Electrician/Plumber
-  SprayCan, // Home Cleaning/Pest Control
-  WashingMachine, // Laundry
-  Scissors, // Tailoring
-  // CarWash, // Use Car icon instead
-  Package, // Courier
-  BriefcaseBusiness, // Coworking
-  Dog, // Pet Grooming/Vet
-  ScissorsLineDashed, // Barber/Salon
-  MoreHorizontal, // Added MoreHorizontal back
-  FolderLock, // Secure Vault
-  GraduationCap, // Education Fees
-  PiggyBank, // Pocket Money
-  IndianRupee, // Cash Withdrawal / General Currency
-  TrendingUp, // Stocks
-  BookUser, // Mobile Postpaid / User related bills
-  Receipt, // Challan / Receipts
-  WandSparkles, // AI Assistant
-  Heart, // General Donations (use HeartHandshake instead?)
-  Flame, // LPG
-  Building, // Housing Society
-  LucideIcon, // Generic placeholder if needed
-  Tv2, // Added Tv2 icon
-  Stethoscope, // Doctor Appointments
-  BedDouble, // Hospital Beds
-  FlaskConical, // Lab Tests
-  Dumbbell, // Fitness Trainer
-  Pill, // Pharmacy
-  Ambulance, // Emergency Ambulance
-  Repeat, // Medicine Subscription, Autopay
-  BadgePercent, // Health Offers, General Offers
-  BedSingle, // Added BedSingle icon
-  Play, // Added Play icon
-  BellRing, // Added BellRing icon
-  Target, // Added Target icon
-  Wallet, // Added Wallet icon
-  Drama, // Import Drama icon
-  ThermometerSnowflake, // Import AC Repair icon
-  ListChecks, // Added ListChecks for Subscription Manager
-} from "lucide-react"; // Added specific icons
+  Briefcase,
+  Database,
+  Gauge,
+  Coins,
+  Building2,
+  Zap,
+  Siren,
+  Store,
+  HeartPulse,
+  Wrench,
+  SprayCan,
+  WashingMachine,
+  Scissors,
+  Package,
+  BriefcaseBusiness,
+  Dog,
+  ScissorsLineDashed,
+  LucideIcon,
+  FolderLock,
+  GraduationCap,
+  PiggyBank,
+  IndianRupee,
+  TrendingUp,
+  BookUser,
+  Receipt,
+  WandSparkles,
+  Flame,
+  Building,
+  Tv2,
+  Stethoscope,
+  BedDouble,
+  FlaskConical,
+  Dumbbell,
+  Pill,
+  Ambulance,
+  Repeat,
+  BadgePercent,
+  BedSingle,
+  Play,
+  BellRing,
+  Target,
+  Wallet,
+  Drama,
+  ThermometerSnowflake,
+  ListChecks,
+  MoreHorizontal,
+} from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react'; // Import useState
+import { useState, useEffect } from 'react';
 
 // --- Define Service Data (Organized by Planned Categories) ---
 
@@ -124,7 +122,7 @@ const rechargeBillPayServices = [
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills" },
    { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills" },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills" },
-   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills" }, // Maybe link to electricity?
+   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills" },
 ];
 
 const loanRepaymentServices = [
@@ -133,58 +131,59 @@ const loanRepaymentServices = [
 ];
 
 const financialServices = [
-    { name: "Insurance Premium", icon: ShieldCheck, href: "/insurance/life", category: "Financial Services"}, // Link to generic or specific type
+    { name: "Insurance Premium", icon: ShieldCheck, href: "/insurance/life", category: "Financial Services"},
     { name: "Mutual Funds", icon: Briefcase, href: "/mutual-funds", category: "Financial Services" },
-    { name: "Stock Market", icon: TrendingUp, href: "/stocks", category: "Financial Services"}, // Link to stocks page
+    { name: "Stock Market", icon: TrendingUp, href: "/stocks", category: "Financial Services"},
     { name: "Digital Gold", icon: Coins, href: "/gold", category: "Financial Services" },
     { name: "Deposits (FD/RD)", icon: Database, href: "/deposits", category: "Financial Services" },
     { name: "Check Credit Score", icon: Gauge, href: "/credit-score", category: "Financial Services" },
     { name: "Personal Loans", icon: Banknote, href: "/loans", category: "Financial Services" },
-    { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" }, // Link to Zet Bank page
-    { name: "Pay Later", icon: Wallet, href: "/bnpl", category: "Financial Services" }, // Added Pay Later link
+    { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services" },
+    { name: "Pay Later", icon: Wallet, href: "/bnpl", category: "Financial Services" },
 ];
 
 const travelServices = [
-    { name: "AI Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel & Transit" }, // Link to Travel Assistant
+    { name: "AI Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel & Transit" },
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel & Transit"},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel & Transit"},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel & Transit"},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel & Transit"}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel & Transit"},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel & Transit"},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel & Transit"},
-    { name: "Car Rentals", icon: Car, href: "/rent-vehicle?type=car", category: "Travel & Transit" }, // Link to rent-vehicle page with type
-    { name: "Bike Rentals", icon: Motorbike, href: "/rent-vehicle?type=bike", category: "Travel & Transit" }, // Link to rent-vehicle page with type
-    { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel & Transit" }, // Link to EV Charging page
-    { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel & Transit" }, // Link to Rest Stop page
-    { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel & Transit" }, // Added Live Bus Tracking link
-    { name: "Live Train Status", icon: MapPin, href: "/live/train", category: "Travel & Transit" }, // Added Live Train Tracking link
-    { name: "Emergency Assist", icon: Siren, href: "/travels/assistance", category: "Travel & Transit"}, // Added Emergency Assist
+    { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel & Transit" },
+    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel & Transit" },
+    { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel & Transit" },
+    { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel & Transit" },
+    { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel & Transit" },
+    { name: "Live Train Status", icon: MapPin, href: "/live/train", category: "Travel & Transit" },
+    { name: "Emergency Assist", icon: Siren, href: "/travels/assistance", category: "Travel & Transit"},
 ];
 
 const transitTollServices = [
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Travel & Transit" },
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Travel & Transit" },
     { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Travel & Transit"},
-    { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Travel & Transit" }, // Smart Parking
-    { name: "Bus Pass Apply", icon: Ticket, href: "/passes/bus", category: "Travel & Transit" }, // Added Bus Pass Application
-    { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Travel & Transit" }, // Added My Passes
+    { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Travel & Transit" },
+    { name: "Bus Pass Apply", icon: Ticket, href: "/passes/bus", category: "Travel & Transit" },
+    { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Travel & Transit" },
 ];
 
 const foodAndShoppingServices = [
     { name: "Order Food", icon: UtensilsCrossed, href: "/food", category: "Food & Shopping"},
-    { name: "Shop Groceries", icon: ShoppingBasket, href: "/shopping/grocery", category: "Food & Shopping"}, // Link to grocery page
-    { name: "Shopping Offers", icon: ShoppingBag, href: "/offers?category=shopping", category: "Food & Shopping"}, // Example link
+    { name: "Shop Groceries", icon: ShoppingBasket, href: "/shopping/grocery", category: "Food & Shopping"},
+    { name: "Shop Online", icon: ShoppingBag, href: "/shopping/online", category: "Food & Shopping" },
+    { name: "Shopping Offers", icon: BadgePercent, href: "/offers?category=shopping", category: "Food & Shopping"},
 ];
 
 const entertainmentGamingServices = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming" },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming" },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming" },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming" }, // Using Drama icon
+     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming" },
      { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming" },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming" },
-     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital?brand=google-play", category: "Entertainment & Gaming" }, // Using Play Store
-     { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming" }, // Link to Game Zone page
+     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital?brand=google-play", category: "Entertainment & Gaming" },
+     { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming" },
      { name: "AR/VR Events", icon: Sparkles, href: "/entertainment/arvr", category: "Entertainment & Gaming" },
      { name: "Group Booking", icon: Users, href: "/entertainment/group", category: "Entertainment & Gaming" },
      { name: "Watch Party", icon: Users, href: "/entertainment/watchparty", category: "Entertainment & Gaming" },
@@ -196,7 +195,9 @@ const templeServices = [
   { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services" },
   { name: "Order Prasadam", icon: ShoppingBasket, href: "/temple/prasadam", category: "Temple Services" },
   { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services" },
-  { name: "Temple Timings & Info", icon: Clock, href: "/temple/info", category: "Temple Services" }, // Combined Info & Audio
+  { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services" },
+  { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services" },
+  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services" },
   { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Temple Services" },
   { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Temple Services" },
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services" },
@@ -208,7 +209,7 @@ const hyperlocalServices = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services" },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services" },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services" },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" }, // Using Car icon
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services" },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services" },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services" },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services" },
@@ -218,32 +219,32 @@ const hyperlocalServices = [
 const municipalServices = [
     { name: "Property Tax", icon: Home, href: "/property-tax", category: "Municipal Services" },
     { name: "Housing Society", icon: Building, href: "/housing-society", category: "Municipal Services" },
-    { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services"}, // Generic placeholder if needed
+    { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services"},
 ];
 
 const utilityToolsServices = [
    { name: "Education Fees", icon: GraduationCap, href: "/bills/education", category: "Utilities & Tools" },
-   { name: "Club Fees", icon: HeartHandshake, href: "/club-fees", category: "Utilities & Tools" }, // Used HeartHandshake as substitute
+   { name: "Club Fees", icon: HeartHandshake, href: "/club-fees", category: "Utilities & Tools" },
    { name: "General Donations", icon: HeartHandshake, href: "/donations/general", category: "Utilities & Tools" },
    { name: "Secure Vault", icon: FolderLock, href: "/vault", category: "Utilities & Tools" },
    { name: "Pocket Money", icon: PiggyBank, href: "/pocket-money", category: "Utilities & Tools" },
-   { name: "Bill Reminders", icon: BellRing, href: "/reminders", category: "Utilities & Tools" }, // Add Bill Reminders
-   { name: "Subscription Mgr", icon: ListChecks, href: "/subscription-manager", category: "Utilities & Tools"}, // Added Subscription Manager
-   { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Utilities & Tools" }, // Added SIP Reminders
+   { name: "Bill Reminders", icon: BellRing, href: "/reminders", category: "Utilities & Tools" },
+   { name: "Subscription Mgr", icon: ListChecks, href: "/subscription-manager", category: "Utilities & Tools"},
+   { name: "SIP Reminders", icon: Clock, href: "/sip-reminders", category: "Utilities & Tools" },
 ];
 
 const vouchersMoreServices = [
     { name: "Gift Cards", icon: GiftIcon, href: "/vouchers/giftcards", category: "Vouchers & More" },
     { name: "Intl Calling Cards", icon: PhoneCall, href: "/recharge/isd", category: "Vouchers & More" },
-    { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" }, // Generic placeholder if needed
-    { name: "AI Gifting Assistant", icon: GiftIcon, href: "/ai-gifting", category: "Vouchers & More"}, // Added AI Gifting
+    { name: "Digital Vouchers", icon: Mailbox, href: "/vouchers/digital", category: "Vouchers & More" },
+    { name: "AI Gifting Assistant", icon: GiftIcon, href: "/ai-gifting", category: "Vouchers & More"},
 ];
 
 const paymentsServices = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments" },
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments" },
-    { name: "Cab/Taxi Bill Payment", icon: TaxiIcon, href: "/cab", category: "Payments" }, // Cab/Taxi payment integration
-    { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments" }, // Added Autopay
+    { name: "Cab/Taxi Bill Payment", icon: TaxiIcon, href: "/cab", category: "Payments" },
+    { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments" },
 ];
 
 const healthcareServices = [
@@ -260,14 +261,13 @@ const healthcareServices = [
 ];
 
 const aiAndToolsServices = [
-     { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools"}, // Conversational AI
-     { name: "Spending Analysis", icon: TrendingUp, href: "/analysis", category: "AI & Tools"}, // Spending Analysis
-     { name: "Savings Goals", icon: Target, href: "/goals", category: "AI & Tools"}, // Goal-based planning
+     { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools"},
+     { name: "Spending Analysis", icon: TrendingUp, href: "/analysis", category: "AI & Tools"},
+     { name: "Savings Goals", icon: Target, href: "/goals", category: "AI & Tools"},
 ];
 
 const eventsCelebrationsServices = [
-    { name: "Marriage Booking", icon: HeartHandshake, href: "/marriage-booking", category: "Events & Celebrations" }, // Added Marriage Booking
-    // Existing event services can also go here if preferred over Entertainment
+    { name: "Marriage Booking", icon: HeartHandshake, href: "/marriage-booking", category: "Events & Celebrations" },
 ];
 
 // --- Combine All Services ---
@@ -275,7 +275,7 @@ const allServices = [
     ...rechargeBillPayServices,
     ...paymentsServices,
     ...travelServices,
-    ...transitTollServices, // Grouped transit/toll together
+    ...transitTollServices,
     ...foodAndShoppingServices,
     ...entertainmentGamingServices,
     ...eventsCelebrationsServices,
@@ -285,7 +285,7 @@ const allServices = [
     ...financialServices,
     ...loanRepaymentServices,
     ...municipalServices,
-    ...utilityToolsServices, // Combined utils/tools
+    ...utilityToolsServices,
     ...vouchersMoreServices,
     ...aiAndToolsServices,
 ];
@@ -293,61 +293,48 @@ const allServices = [
 
 const groupServicesByCategory = (services: any[]) => {
     const grouped: { [key: string]: any[] } = {};
-    // Define NEW category order reflecting broader scope and logical grouping
     const categoryOrder = [
         "Recharge & Bills",
         "Payments",
-        "Travel & Transit", // Combined travel, transit, toll
+        "Travel & Transit",
         "Food & Shopping",
         "Entertainment & Gaming",
         "Events & Celebrations",
         "Healthcare & Wellness",
         "Hyperlocal Services",
         "Temple Services",
-        "Financial Services", // Includes investments, loans, BNPL
+        "Financial Services",
         "Loan Repayment",
         "Municipal Services",
-        "Utilities & Tools", // Combines utils and tools
+        "Utilities & Tools",
         "Vouchers & More",
         "AI & Tools",
     ];
 
-    // Initialize categories from the defined order
     categoryOrder.forEach(cat => { grouped[cat] = []; });
 
     services.forEach((service) => {
         let category = service.category;
-         // Consolidate similar categories
-        if (category === 'Travel' || category === 'Transit & Toll') {
-            category = 'Travel & Transit';
-        }
-        if (category === 'Utilities' || category === 'Tools') {
-             category = 'Utilities & Tools';
-        }
-         if (!grouped[category]) {
+        if (!grouped[category]) {
              console.warn(`Service category "${category}" not found in defined order. Adding it dynamically.`);
-             grouped[category] = []; // Create if missing
+             grouped[category] = [];
          }
-         // Check for duplicates before pushing (optional but good practice)
          if (!grouped[category].some(s => s.name === service.name)) {
              grouped[category].push(service);
          }
     });
 
-     // Filter out empty categories that were initialized but had no services assigned
      const finalGrouped: { [key: string]: any[] } = {};
      for (const cat of categoryOrder) {
          if (grouped[cat] && grouped[cat].length > 0) {
              finalGrouped[cat] = grouped[cat];
          }
       }
-      // Add any dynamically created categories (those not in categoryOrder) at the end
       for (const cat in grouped) {
          if (!finalGrouped[cat] && grouped[cat].length > 0) {
               finalGrouped[cat] = grouped[cat];
          }
       }
-
     return finalGrouped;
 }
 
@@ -355,12 +342,11 @@ export default function AllServicesPage() {
     const [groupedServices, setGroupedServices] = useState<{ [key: string]: any[] }>({});
     const [categories, setCategories] = useState<string[]>([]);
 
-     // Group services on component mount
-     useState(() => {
+     useEffect(() => {
         const groups = groupServicesByCategory(allServices);
         setGroupedServices(groups);
         setCategories(Object.keys(groups));
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []);
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
@@ -378,7 +364,7 @@ export default function AllServicesPage() {
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                  {categories.map((category) => {
-                     if (groupedServices[category].length === 0) return null; // Skip rendering empty categories
+                     if (groupedServices[category].length === 0) return null;
                     return (
                          <Card key={category} className="shadow-md">
                             <CardHeader>
@@ -403,4 +389,3 @@ export default function AllServicesPage() {
         </div>
     );
 }
-

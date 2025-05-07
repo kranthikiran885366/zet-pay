@@ -49,7 +49,8 @@ const bnplRoutes = require('./routes/bnplRoutes');
 const bankStatusRoutes = require('./routes/bankStatusRoutes');
 const serviceRoutes = require('./routes/serviceRoutes'); // Generic service routes if any
 const supportRoutes = require('./routes/supportRoutes'); // Add support routes if created
-const entertainmentRoutes = require('./routes/entertainmentRoutes'); // Import entertainment routes
+const entertainmentRoutes = require('./routes/entertainmentRoutes');
+const shoppingRoutes = require('./routes/shoppingRoutes'); // Added shopping routes
 
 const app = express();
 const server = http.createServer(app);
@@ -276,6 +277,7 @@ app.get('/api/health', asyncHandler(async (req, res) => { // Wrap simple routes 
 // Public or non-user specific routes (apply asyncHandler implicitly via route files if used there)
 app.use('/api/live', liveTrackingRoutes);
 app.use('/api/banks', bankStatusRoutes);
+app.use('/api/shopping', shoppingRoutes); // Add public shopping routes (categories, products)
 
 // Auth routes (typically public, authentication happens within controllers)
 app.use('/api/auth', authRoutes);
@@ -304,7 +306,8 @@ app.use('/api/cash-withdrawal', authMiddleware, cashWithdrawalRoutes);
 app.use('/api/bnpl', authMiddleware, bnplRoutes);
 app.use('/api/services', authMiddleware, serviceRoutes); // Generic services
 app.use('/api/support', authMiddleware, supportRoutes); // Support endpoint
-app.use('/api/entertainment', authMiddleware, entertainmentRoutes); // Add entertainment routes
+app.use('/api/entertainment', authMiddleware, entertainmentRoutes);
+app.use('/api/shopping/orders', authMiddleware, shoppingRoutes); // Protected shopping order routes
 
 // --- Error Handling ---
 // 404 Handler (after all other routes)
