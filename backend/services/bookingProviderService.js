@@ -23,6 +23,16 @@ const mockEvents = [
     { id: 'ev1', name: 'Standup Comedy Night', category: 'Comedy', date: '2024-08-20', city: 'Bangalore', venue: 'Comedy Club', price: 499, imageUrl: '/mock/comedy_event.jpg' },
 ];
 
+const mockFlightsData = [
+    { id: 'f1', airline: 'IndiGo', flightNumber: '6E 202', departureAirport: 'BLR', arrivalAirport: 'DEL', departureTime: '06:00', arrivalTime: '08:45', duration: '2h 45m', stops: 0, price: 4500, refundable: true, baggage: { cabin: '7kg', checkin: '15kg' }, imageUrl: '/logos/indigo.png' },
+    { id: 'f2', airline: 'Vistara', flightNumber: 'UK 810', departureAirport: 'BLR', arrivalAirport: 'DEL', departureTime: '07:30', arrivalTime: '10:10', duration: '2h 40m', stops: 0, price: 5200, refundable: true, baggage: { cabin: '7kg', checkin: '20kg' }, imageUrl: '/logos/vistara.png' },
+    { id: 'f3', airline: 'Air India', flightNumber: 'AI 505', departureAirport: 'BLR', arrivalAirport: 'DEL', departureTime: '09:00', arrivalTime: '11:50', duration: '2h 50m', stops: 0, price: 4800, refundable: false, baggage: { cabin: '8kg', checkin: '20kg' }, imageUrl: '/logos/airindia.png' },
+    { id: 'f4', airline: 'SpiceJet', flightNumber: 'SG 804', departureAirport: 'BLR', arrivalAirport: 'DEL', departureTime: '11:15', arrivalTime: '14:00', duration: '2h 45m', stops: 0, price: 4350, refundable: false, baggage: { cabin: '7kg', checkin: '15kg' }, imageUrl: '/logos/spicejet.png' },
+    { id: 'f5', airline: 'IndiGo', flightNumber: '6E 5301', departureAirport: 'BLR', arrivalAirport: 'BOM', departureTime: '14:00', arrivalTime: '15:45', duration: '1h 45m', stops: 0, price: 3200, refundable: true, baggage: { cabin: '7kg', checkin: '15kg' }, imageUrl: '/logos/indigo.png' },
+    { id: 'f6', airline: 'Akasa Air', flightNumber: 'QP 1102', departureAirport: 'DEL', arrivalAirport: 'BLR', departureTime: '17:00', arrivalTime: '19:45', duration: '2h 45m', stops: 0, price: 4700, refundable: true, baggage: { cabin: '7kg', checkin: '15kg' }, imageUrl: '/logos/akasa.png' },
+];
+
+
 // Enhanced Mock Marriage Venues with more details
 const mockMarriageVenues = [
     { id: 'v1', name: 'Grand Celebration Hall', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg', description: 'Spacious hall with modern amenities, perfect for mid-sized weddings and receptions. Offers customizable decor packages.', amenities: ['AC Hall', 'Catering Available', 'Parking (100 cars)', 'Valet Service', 'Bridal Suite', 'Sound System'], contact: '9876500001', requiresApproval: true, bookingFee: 25000 },
@@ -40,7 +50,14 @@ async function search(type, queryParams) {
     switch (type) {
         case 'movie':
              return mockMovies.filter(movie => mockShowtimesData[movie.id]);
-        // Add other cases for bus, train, flight, event
+        case 'flight':
+            // Simulate filtering flights based on from, to, and date
+            const { from, to, departureDate } = queryParams;
+            // In a real scenario, date matching would be more complex (checking if flights operate on that day)
+            return mockFlightsData.filter(flight =>
+                flight.departureAirport === from && flight.arrivalAirport === to
+            ).map(f => ({ ...f, type: 'flight' })); // Ensure 'type' field is present
+        // Add other cases for bus, train, event
         default:
             console.warn(`[Booking Provider Sim] Unsupported search type: ${type}`);
             return [];
@@ -64,7 +81,10 @@ async function getDetails(type, id, queryParams) {
                 ...cinema,
                 showtimes: mockShowtimesData[movieId]?.[cinema.id] || [],
              }));
-             return { movieDetails, cinemas: cinemaShowtimes };
+             return { movieDetails, cinemas: cinemaShowtimes, type: 'movie' };
+        case 'flight':
+            const flight = mockFlightsData.find(f => f.id === id);
+            return flight ? { ...flight, type: 'flight' } : null; // Ensure 'type' field
         // Add other cases
         default:
             console.warn(`[Booking Provider Sim] Unsupported details type: ${type}`);
@@ -79,25 +99,45 @@ async function confirmBooking(type, bookingData) {
 
     // Simulate success/failure based on type or bookingData
     const random = Math.random();
-    if (type === 'flight' && random < 0.15) { // Higher failure chance for flights in sim
+    if (type === 'flight' && random < 0.10) { // Reduced failure chance for flights
         return { status: 'Failed', message: `Flight booking failed. Seats might be unavailable or payment declined by airline.`, providerCode: 'AIRLINE_BOOKING_FAILED' };
     }
-    if (random < 0.08) {
+    if (random < 0.05) { // Reduced generic failure
         return { status: 'Failed', message: `Booking failed. Seats might be unavailable or payment declined by provider.`, providerCode: 'PROVIDER_BOOKING_FAILED' };
     }
-    if (random < 0.20) {
+    if (random < 0.15) { // Reduced pending chance
         return { status: 'Pending Confirmation', message: 'Booking submitted, awaiting confirmation from provider.' };
     }
 
     const bookingId = `${type.toUpperCase()}_${Date.now()}`;
+    let providerConfirmationDetails = {};
+
+    if (type === 'flight' && bookingData.selection) {
+        const selectedFlight = mockFlightsData.find(f => f.id === bookingData.selection.flightId);
+        providerConfirmationDetails = {
+            pnr: `FLPNR${Date.now().toString().slice(-6)}`,
+            flightDetails: selectedFlight ? {
+                airline: selectedFlight.airline,
+                flightNumber: selectedFlight.flightNumber,
+                departureTime: selectedFlight.departureTime,
+                arrivalTime: selectedFlight.arrivalTime,
+                departureAirport: selectedFlight.departureAirport,
+                arrivalAirport: selectedFlight.arrivalAirport,
+            } : undefined,
+        };
+    } else if (type === 'movie' && bookingData.seats) {
+        providerConfirmationDetails = { seatNumbers: bookingData.seats.join(', ') };
+    } else if (type === 'bus' && bookingData.selection?.seats) {
+        providerConfirmationDetails = { seatNumbers: bookingData.selection.seats.join(', ') };
+    }
+    // Add for train
+
     return {
-        status: 'Confirmed', // Should be 'Completed' as per Transaction status for successful paid bookings
+        status: 'Completed', // Use 'Completed' for transaction log consistency
         message: `${capitalize(type)} booking confirmed successfully.`,
         bookingId: bookingId,
         providerMessage: 'Success',
-        // Include PNR or specific details if available for this type
-        pnr: type === 'train' || type === 'flight' ? `PNR${Date.now()}` : undefined,
-        seatNumbers: bookingData.seats?.join(', ') || undefined,
+        ...providerConfirmationDetails,
     };
 }
 
@@ -118,15 +158,14 @@ async function searchMarriageVenues(queryParams) {
     }
     // TODO: Add date availability check (complex, requires calendar logic or DB query with venue schedules)
     console.log(`[Booking Provider Sim] Found ${results.length} marriage venues.`);
-    return results;
+    return results.map(v => ({...v, type: 'marriage'})); // Ensure type is present
 }
 
 async function getMarriageVenueDetails(venueId) {
     console.log(`[Booking Provider Sim] Getting Marriage Venue Details for ID: ${venueId}`);
     await new Promise(resolve => setTimeout(resolve, 400));
     const venue = mockMarriageVenues.find(v => v.id === venueId);
-    // Return the venue object directly if found, or null
-    return venue || null;
+    return venue ? { ...venue, type: 'marriage' } : null; // Ensure type is present
 }
 
 async function confirmMarriageVenueBooking(bookingDetails) {
@@ -235,4 +274,3 @@ function capitalize(s) {
 
 // Mock seat generation (simplified, reuse from movie controller logic if possible)
 const generateMockSeats = (busType, basePrice) => { /* ... (same as before) ... */ };
-

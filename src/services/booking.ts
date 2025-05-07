@@ -5,7 +5,7 @@
 import { apiClient } from '@/lib/apiClient';
 import type { Transaction } from './types'; // Import common Transaction type
 // Import specific interfaces if defined in types.ts or define inline
-// import type { BusRoute, TrainAvailability, Movie, CinemaShowtime, EventDetails } from './types';
+import type { FlightListing, BookingConfirmation, MarriageVenue, MarriageBookingDetails } from './types';
 
 // --- Interfaces (Define or import from ./types) ---
 
@@ -43,60 +43,20 @@ export interface BookingDetails {
     trainDetails?: any; // Replace 'any' with specific TrainAvailability interface
     // Marriage Venue:
     venueDetails?: MarriageVenue; // Use the specific MarriageVenue interface
-    // ... add details for flight, event
+    // Flight:
+    flightDetails?: FlightListing; // Add flight details
+    // ... add details for event
 }
 
-export interface BookingConfirmation {
-    status: Transaction['status'] | 'Pending Approval' | 'Confirmed'; // Use status from Transaction type, add 'Pending Approval'
-    message?: string;
-    transactionId?: string; // For payment transaction
-    bookingId?: string; // Specific booking ID from provider or system
-    bookingDetails?: { // Details returned by the provider/backend on success
-        pnr?: string;
-        seatNumbers?: string;
-        providerMessage?: string;
-        // ... other confirmation details
-    } | null;
-}
+// Re-export for convenience
+export type { BookingConfirmation, FlightListing, MarriageVenue, MarriageBookingDetails };
+
 
 export interface CancellationResult {
     success: boolean;
     message?: string;
     refundAmount?: number;
     originalPaymentTxId?: string; // Added for refunds
-}
-
-// --- Marriage Venue Specific Interfaces ---
-export interface MarriageVenue { // Aligned with backend mock data
-    id: string;
-    name: string;
-    location: string;
-    city: string;
-    capacity: number;
-    price: number; // Base or starting price
-    priceRange?: string;
-    rating?: number;
-    imageUrl?: string;
-    description?: string;
-    amenities?: string[];
-    contact?: string;
-    requiresApproval?: boolean;
-    bookingFee?: number;
-}
-
-export interface MarriageBookingDetails { // From frontend form
-    venueId: string;
-    venueName: string;
-    city: string;
-    date: string; // YYYY-MM-DD
-    guestCount?: string;
-    userName: string;
-    userContact: string;
-    userEmail: string; // Added email
-    specialRequests?: string; // Added special requests
-    totalAmount?: number; // Booking fee or estimated cost (from venue.price or venue.bookingFee)
-    // userId will be inferred by backend from auth token
-    // paymentTransactionId will be handled by backend
 }
 
 
@@ -162,10 +122,17 @@ export async function confirmBooking(type: string, bookingData: any): Promise<Bo
     console.log(`[Client Service] Confirming ${type} booking via API:`, bookingData);
     // The venueId or item ID might be part of bookingData or path.
     // Backend route needs to handle this consistently. Generic :type route is for some, specific for others like marriage.
-    const idForPath = bookingData.venueId || bookingData.providerId || bookingData.selection?.movieId || bookingData.selection?.busId || bookingData.selection?.vehicleId || bookingData.selection?.eventId;
-    const endpoint = type === 'marriage' && idForPath
-        ? `/bookings/marriage/${idForPath}/book`
-        : `/bookings/${type}`; // Generic endpoint for other types
+    const idForPath = bookingData.venueId || bookingData.providerId || bookingData.selection?.movieId || bookingData.selection?.busId || bookingData.selection?.flightId || bookingData.selection?.vehicleId || bookingData.selection?.eventId;
+    let endpoint = `/bookings/${type}`; // Default generic endpoint
+
+    if (type === 'marriage' && idForPath) {
+        endpoint = `/bookings/marriage/${idForPath}/book`;
+    }
+    // Add specific endpoint logic for other types if needed, e.g., flights might have a different structure
+    // else if (type === 'flight' && idForPath) {
+    //    endpoint = `/bookings/flight/${idForPath}/confirm`; // Example if different
+    // }
+
 
     try {
         const result = await apiClient<BookingConfirmation>(endpoint, {
@@ -175,9 +142,11 @@ export async function confirmBooking(type: string, bookingData: any): Promise<Bo
         return result;
     } catch (error: any) {
         console.error(`Error confirming ${type} booking via API:`, error);
+        // Ensure a BookingConfirmation compatible error structure is returned
         return {
-            status: 'Failed', // Use Transaction status
+            status: 'Failed',
             message: error.message || `Failed to confirm ${type} booking.`,
+            bookingDetails: null
         };
     }
 }
@@ -243,4 +212,3 @@ export async function confirmMarriageVenueBooking(venueIdFromPath: string, booki
     const payloadToSend = { ...bookingData, venueId: venueIdFromPath }; // Ensure venueId is in payload for consistency if needed by generic backend
     return confirmBooking('marriage', payloadToSend);
 }
-

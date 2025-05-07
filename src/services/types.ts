@@ -270,17 +270,16 @@ export interface BookingSearchResult {
     name: string;
     type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage';
     imageUrl?: string;
-    priceRange?: string;
+    priceRange?: string; // e.g., "₹500 - ₹1200"
     rating?: number;
-    location?: string;
-    capacity?: number;
-    description?: string;
-    amenities?: string[];
-    price?: number;
+    location?: string; // For venues
+    capacity?: number; // For venues
+    description?: string; // Added for venues
+    amenities?: string[]; // Added for venues
+    price?: number; // Added for venues base price
 }
 // For specific entity details
-export interface FlightListing {
-    id: string;
+export interface FlightListing extends BookingSearchResult { // Use BookingSearchResult as base
     airline: string;
     flightNumber: string;
     departureAirport: string;
@@ -289,11 +288,12 @@ export interface FlightListing {
     arrivalTime: string; // HH:mm
     duration: string; // e.g., "2h 30m"
     stops: number;
-    price: number;
+    price: number; // Overrides price from BookingSearchResult if needed (price per adult)
     refundable?: boolean;
     baggage: { cabin: string; checkin: string };
-    imageUrl?: string;
+    // imageUrl is already in BookingSearchResult
 }
+
 // Add other specific listing types like BusListing, TrainListing if needed
 export interface CarListing extends BookingSearchResult {
     transmission: string;
@@ -315,22 +315,22 @@ export interface BikeListing extends BookingSearchResult {
 
 // For general booking confirmation (align with backend)
 export interface BookingConfirmation {
-    status: Transaction['status'] | 'Pending Approval' | 'Confirmed'; // Added 'Pending Approval' & 'Confirmed'
+    status: Transaction['status'] | 'Pending Approval' | 'Confirmed';
     message?: string;
-    transactionId?: string; // For payment transaction
-    bookingId?: string; // Specific booking ID from provider or system
+    transactionId?: string;
+    bookingId?: string;
     bookingDetails?: {
         pnr?: string;
         seatNumbers?: string;
         providerMessage?: string;
+        flightDetails?: Pick<FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime'>; // Added flight specific details
+        // Add other type-specific confirmation details
     } | null;
 }
 
 // For Marriage Venue Bookings (Client-side: Form Data / Search Result)
 export interface MarriageVenue extends BookingSearchResult {
-    city: string; // Ensure city is part of the base for search results
-    // All other fields are optional if already covered by BookingSearchResult
-    // price: number; // Base or starting price is already in BookingSearchResult
+    city: string;
 }
 
 // For Marriage Venue Booking Request Payload (Client to Backend)
@@ -342,14 +342,12 @@ export interface MarriageBookingDetails {
     guestCount?: string;
     userName: string;
     userContact: string;
-    userEmail: string; // Added email
-    specialRequests?: string; // Added special requests
-    totalAmount?: number; // Booking fee or estimated cost
-    // userId and paymentTransactionId are handled by backend
+    userEmail: string;
+    specialRequests?: string;
+    totalAmount?: number;
 }
 
 
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
 // Backend types might use Timestamp directly.
-

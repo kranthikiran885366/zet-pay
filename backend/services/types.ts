@@ -47,7 +47,7 @@ export interface Transaction {
   billerReferenceId?: string;
   planId?: string;
   identifier?: string;
-  withdrawalRequestId?: string;
+  withdrawalRequestId?: string; // For cash withdrawal links
   createdAt?: Date | string | Timestamp;
   updatedAt?: Date | string | Timestamp;
 }
@@ -60,7 +60,7 @@ export interface BankAccount {
   userId: string; // Link to the user
   isDefault?: boolean;
   pinLength?: 4 | 6;
-  createdAt?: Timestamp | Date | string; // Allow Timestamp for backend
+  createdAt?: Timestamp | Date | string; // Allow multiple types
 }
 
 export interface UpiTransactionResult {
@@ -90,6 +90,12 @@ export interface Payee {
   isFavorite?: boolean;
   createdAt?: Timestamp | Date | string; // Allow multiple types
   updatedAt?: Timestamp | Date | string;
+}
+
+// Client-side interface for Payee with Date objects
+export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 // --- Offer Types ---
@@ -272,22 +278,60 @@ export interface BookingSearchResult {
     capacity?: number;
 }
 
+// For specific entity details
 export interface FlightListing extends BookingSearchResult {
     airline: string;
     flightNumber: string;
     departureAirport: string;
     arrivalAirport: string;
-    departureTime: string;
-    arrivalTime: string;
-    duration: string;
+    departureTime: string; // HH:mm
+    arrivalTime: string; // HH:mm
+    duration: string; // e.g., "2h 30m"
     stops: number;
-    price: number;
+    price: number; // Price per adult for this specific flight listing
     refundable?: boolean;
     baggage: { cabin: string; checkin: string };
+    // imageUrl is already in BookingSearchResult
+}
+
+// Add other specific listing types like BusListing, TrainListing if needed
+export interface CarListing extends BookingSearchResult {
+    transmission: string;
+    fuelType: string;
+    seats: number;
+    pricePerDay: number;
+    kmsLimit?: string;
+    isAvailable: boolean;
+}
+
+export interface BikeListing extends BookingSearchResult {
+    pricePerHour: number;
+    pricePerDay: number;
+    availability: 'Available' | 'In Use' | 'Low Battery';
+    batteryPercent?: number;
+    requiresHelmet?: boolean;
+}
+
+
+// For general booking confirmation (align with backend)
+export interface BookingConfirmation {
+    status: Transaction['status'] | 'Pending Approval' | 'Confirmed';
+    message?: string;
+    transactionId?: string; // For payment transaction
+    bookingId?: string; // Specific booking ID from provider or system
+    bookingDetails?: { // Details returned by the provider/backend on success
+        pnr?: string;
+        seatNumbers?: string;
+        providerMessage?: string;
+        // Add type-specific details
+        flightDetails?: Pick<FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime' | 'departureAirport' | 'arrivalAirport'>;
+        // busDetails?: ...
+        // trainDetails?: ...
+    } | null;
 }
 
 // For Marriage Venue Bookings (Backend uses this for Firestore)
-export interface MarriageVenue {
+export interface MarriageVenue { // Aligned with backend mock data
     id: string; // Corresponds to Firestore document ID
     name: string;
     location: string;
@@ -300,8 +344,8 @@ export interface MarriageVenue {
     description?: string;
     amenities?: string[];
     contact?: string;
-    requiresApproval?: boolean; // Added from mock data
-    bookingFee?: number; // Added from mock data
+    requiresApproval?: boolean;
+    bookingFee?: number;
 }
 
 export interface MarriageBookingDetails { // For making a booking request
@@ -312,6 +356,8 @@ export interface MarriageBookingDetails { // For making a booking request
     guestCount?: string;
     userName: string;
     userContact: string;
+    userEmail: string;
+    specialRequests?: string;
     totalAmount?: number; // Booking fee
     userId?: string; // Added for backend storage
     paymentTransactionId?: string; // Added for backend
