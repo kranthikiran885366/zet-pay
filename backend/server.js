@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -51,6 +52,7 @@ const serviceRoutes = require('./routes/serviceRoutes'); // Generic service rout
 const supportRoutes = require('./routes/supportRoutes'); // Add support routes if created
 const entertainmentRoutes = require('./routes/entertainmentRoutes');
 const shoppingRoutes = require('./routes/shoppingRoutes'); // Added shopping routes
+const scanRoutes = require('./routes/scanRoutes'); // Added scan routes
 
 const app = express();
 const server = http.createServer(app);
@@ -308,6 +310,7 @@ app.use('/api/services', authMiddleware, serviceRoutes); // Generic services
 app.use('/api/support', authMiddleware, supportRoutes); // Support endpoint
 app.use('/api/entertainment', authMiddleware, entertainmentRoutes);
 app.use('/api/shopping/orders', authMiddleware, shoppingRoutes); // Protected shopping order routes
+app.use('/api/scan', authMiddleware, scanRoutes); // Add Scan & Pay routes
 
 // --- Error Handling ---
 // 404 Handler (after all other routes)
@@ -355,3 +358,4 @@ const shutdown = (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
