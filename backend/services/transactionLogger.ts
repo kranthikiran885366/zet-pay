@@ -1,11 +1,11 @@
-
 /**
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
 import { admin, db } from '../config/firebaseAdmin'; // Use configured admin instance - Correct path for backend
 import blockchainLogger from './blockchainLogger'; // Correct relative path for backend service
-import { sendToUser } from '../server'; // Correct path to import WebSocket sender from backend server.js
+// import { sendToUser } from '../server'; // Assuming server exports sendToUser correctly
+import { sendToUser } from '@/lib/websocket'; // Correct path to import WebSocket sender from frontend lib
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
 
@@ -38,8 +38,8 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             billerId: rest.billerId ?? null,
             upiId: rest.upiId ?? null,
             loanId: rest.loanId ?? null,
-            ticketId: rest.ticketId ?? null,
-            refundEta: rest.refundEta ?? null,
+            ticketId: rest.ticketId ?? null, // Added ticketId
+            refundEta: rest.refundEta ?? null, // Added refundEta
             blockchainHash: rest.blockchainHash ?? null, // Will be updated after logging if successful
             paymentMethodUsed: rest.paymentMethodUsed ?? null,
             originalTransactionId: rest.originalTransactionId ?? null,
@@ -116,6 +116,7 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             description: finalTransaction.description,
             status: finalTransaction.status,
             originalId: finalTransaction.id, // Pass Firestore ID to blockchain log
+            ticketId: finalTransaction.ticketId // Include ticket ID if available
         };
 
         blockchainLogger.logTransaction(finalTransaction.id, blockchainPayload)
@@ -146,10 +147,10 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
  */
 export async function logTransactionToBlockchain(transactionId: string, data: Transaction): Promise<string | null> {
     // Exclude sensitive or unnecessary data before sending to blockchain logger if needed
-    const { userId, amount, type, date, name, description, status, id } = data; // Select relevant fields
+    const { userId, amount, type, date, name, description, status, id, ticketId } = data; // Select relevant fields, added ticketId
     // Ensure date is ISO string for consistent logging format
     const isoDate = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? date : new Date().toISOString());
-    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id };
+    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id, ticketId }; // Include ticketId
 
     // Call the actual blockchain logging service function
     // Assuming blockchainLogger has a logTransaction method
@@ -160,10 +161,3 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
         return null;
     }
 }
-
-// Remove module.exports if using ES Modules consistently
-// module.exports = {
-//     addTransaction,
-//     logTransactionToBlockchain,
-// };
-

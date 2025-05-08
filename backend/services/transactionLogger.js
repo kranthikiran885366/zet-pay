@@ -32,7 +32,7 @@ async function addTransaction(transactionData) {
             upiId: rest.upiId ?? null,
             loanId: rest.loanId ?? null,
             ticketId: rest.ticketId ?? null,
-            refundEta: rest.refundEta ?? null,
+            refundEta: rest.refundEta ?? null, // Added refundEta
             blockchainHash: rest.blockchainHash ?? null, // Will be updated after logging
             paymentMethodUsed: rest.paymentMethodUsed ?? null,
             originalTransactionId: rest.originalTransactionId ?? null,
@@ -122,10 +122,10 @@ async function addTransaction(transactionData) {
  */
 async function logTransactionToBlockchain(transactionId, data) {
     // Exclude sensitive or unnecessary data before sending to blockchain logger if needed
-    const { userId, amount, type, date, name, description, status, id } = data; // Select relevant fields
+    const { userId, amount, type, date, name, description, status, id, ticketId } = data; // Select relevant fields, added ticketId
     // Ensure date is ISO string for consistent logging format
     const isoDate = date instanceof Date ? date.toISOString() : new Date().toISOString();
-    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id };
+    const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id, ticketId }; // Added ticketId
 
     // Call the actual blockchain logging service function
     return blockchainLogger.logTransaction(transactionId, blockchainPayload);
@@ -136,4 +136,3 @@ module.exports = {
     addTransaction,
     logTransactionToBlockchain,
 };
-

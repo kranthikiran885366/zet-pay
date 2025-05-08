@@ -151,16 +151,15 @@ exports.setDefaultAccount = async (req, res, next) => {
         }
         const newDefaultDocRef = newDefaultSnap.docs[0].ref;
 
-        const currentDefaultQuery = query(accountsColRef, where('isDefault', '==', true), limit(1));
+        const currentDefaultQuery = query(accountsColRef, where('isDefault', '==', true));
         const currentDefaultSnap = await getDocs(currentDefaultQuery);
 
         // Unset current default if it exists and is different from the new one
-        if (!currentDefaultSnap.empty) {
-            const currentDefaultDocRef = currentDefaultSnap.docs[0].ref;
-            if (currentDefaultDocRef.id !== newDefaultDocRef.id) {
-                batch.update(currentDefaultDocRef, { isDefault: false });
-            }
-        }
+        currentDefaultSnap.forEach(docSnap => {
+             if (docSnap.id !== newDefaultDocRef.id) {
+                 batch.update(docSnap.ref, { isDefault: false });
+             }
+        });
 
         // Set the new default
         batch.update(newDefaultDocRef, { isDefault: true });
@@ -329,16 +328,17 @@ exports.processUpiPayment = async (req, res, next) => {
 
                 // Add ticket info if debit might have occurred
                 if (upiResult.mightBeDebited) {
-                    paymentResult.ticketId = `ZET_TKT_${Date.now()}`;
-                    paymentResult.refundEta = format(addBusinessDays(new Date(), 3), 'PPP'); // Example ETA
+                    paymentResult.ticketId = `ZET_TKT_${Date.now()}`; // Generate ticket ID
+                    paymentResult.refundEta = format(addBusinessDays(new Date(), 3), 'PPP'); // Calculate ETA
                     logData.ticketId = paymentResult.ticketId;
                     logData.refundEta = paymentResult.refundEta;
                     logData.description += ` (Ticket: ${paymentResult.ticketId})`;
+                    console.log(`[UPI Ctrl] Debit might have occurred for failed Tx. Ticket: ${paymentResult.ticketId}, Refund ETA: ${paymentResult.refundEta}`);
                 }
                 // Throw error to trigger fallback logic
                 const error = new Error(paymentResult.message);
                 error.code = upiResult.code; // Attach code to error object
-                error.mightBeDebited = upiResult.mightBeDebited;
+                error.mightBeDebited = upiResult.mightBeDebited; // Attach mightBeDebited flag
                 throw error;
             }
          }
@@ -388,6 +388,9 @@ exports.processUpiPayment = async (req, res, next) => {
                      // Log the *original* UPI failure attempt separately if desired, or update its description
                       logData.status = 'Failed'; // Log original UPI attempt as failed
                       logData.description += ' (Wallet Fallback Used)';
+                      // Assign ticket/ETA info ONLY if original UPI failure might cause debit
+                      logData.ticketId = upiError.mightBeDebited ? `ZET_TKT_${Date.now()}` : undefined;
+                      logData.refundEta = logData.ticketId ? format(addBusinessDays(new Date(), 3), 'PPP') : undefined;
                      await addTransaction(logData); // Log the failed UPI attempt
 
                      // Wallet payment service already logged the successful fallback transaction.
@@ -420,8 +423,9 @@ exports.processUpiPayment = async (req, res, next) => {
 
         // --- Step 6: Final Failure Logging and Response (if fallback didn't succeed) ---
         logData.status = 'Failed'; // Ensure status is Failed
-        logData.ticketId = upiError.mightBeDebited ? `ZET_TKT_${Date.now()}` : undefined; // Assign ticket ID ONLY if debit might have happened
-        logData.refundEta = logData.ticketId ? format(addBusinessDays(new Date(), 3), 'PPP') : undefined; // Assign ETA only if ticket ID assigned
+        // Assign ticket ID and ETA only if the original UPI error indicated potential debit
+        logData.ticketId = upiError.mightBeDebited ? `ZET_TKT_${Date.now()}` : undefined;
+        logData.refundEta = logData.ticketId ? format(addBusinessDays(new Date(), 3), 'PPP') : undefined;
         paymentResult.ticketId = logData.ticketId; // Update result object
         paymentResult.refundEta = logData.refundEta;
 
