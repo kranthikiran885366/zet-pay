@@ -1,3 +1,4 @@
+
 // backend/controllers/contactsController.js
 const contactService = require('../services/contacts'); // Assuming service is in ../services/contacts
 
@@ -67,3 +68,5 @@ exports.deleteContact = async (req, res, next) => {
     await contactService.deleteContact(userId, id); // Service handles checks
     res.status(200).json({ success: true, message: 'Contact deleted successfully.' });
 };
+
+    

@@ -1,6 +1,7 @@
+
 // backend/routes/contactsRoutes.js
 const express = require('express');
-const { body, validationResult, param } = require('express-validator'); // Added param for ID validation
+const { body, query, validationResult, param } = require('express-validator'); // Added param for ID validation
 const contactsController = require('../controllers/contactsController');
 const asyncHandler = require('../middleware/asyncHandler'); // Import asyncHandler
 const router = express.Router();
@@ -65,3 +66,4 @@ router.delete('/:id',
 );
 
 module.exports = router;
+    
