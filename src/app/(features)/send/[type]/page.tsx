@@ -10,13 +10,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, User, Landmark, Loader2, Send, X, UserPlus, ShieldCheck, ShieldAlert, ShieldQuestion, Search } from 'lucide-react'; // Added verification icons, Search
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { suggestFrequentContacts, SmartPayeeSuggestionInput } from '@/ai/flows/smart-payee-suggestion';
+// Removed unused import: import { suggestFrequentContacts, SmartPayeeSuggestionInput } from '@/ai/flows/smart-payee-suggestion';
 import { getContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface, use getContacts
 import { processUpiPayment, verifyUpiId } from '@/services/upi'; // Import processUpiPayment
 import { auth } from '@/lib/firebase'; // Import Firebase auth instance
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger
-// import { AlertDialogTrigger } from "@radix-ui/react-alert-dialog"; // Import trigger separately if needed - removed as not needed
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger
+// import { AlertDialogTrigger from "@radix-ui/react-alert-dialog"; // Import trigger separately if needed - removed as not needed
 import { Badge } from '@/components/ui/badge'; // Import Badge
+import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Import transaction history service
 
 // Debounce function
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -35,6 +36,7 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 // Interface for payee with verification status
 interface DisplayPayee extends Payee {
     verificationStatus?: 'verified' | 'blacklisted' | 'unverified' | 'pending';
+    verificationReason?: string; // Reason if blacklisted
 }
 
 
@@ -49,12 +51,12 @@ export default function SendMoneyPage() {
   const [manualIdentifier, setManualIdentifier] = useState('');
   const [manualPayeeName, setManualPayeeName] = useState(''); // For saving new payee
   const [allUserContacts, setAllUserContacts] = useState<DisplayPayee[]>([]); // Use DisplayPayee
+  const [recentPayees, setRecentPayees] = useState<DisplayPayee[]>([]); // Store recently paid contacts
   const [displayList, setDisplayList] = useState<DisplayPayee[]>([]); // List shown to user (suggestions or search results)
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(true); // Manage contact loading state
   const [isVerifyingManual, setIsVerifyingManual] = useState(false);
-  const [verifiedManualName, setVerifiedManualName] = useState<string | null>(null);
-  const [manualVerificationError, setManualVerificationError] = useState<string | null>(null);
+  const [manualPayee, setManualPayee] = useState<DisplayPayee | null>(null); // Store manual entry details + verification
   const [isSending, setIsSending] = useState(false);
   const [showSavePayeeDialog, setShowSavePayeeDialog] = useState(false);
   const { toast } = useToast();
@@ -77,94 +79,95 @@ export default function SendMoneyPage() {
                 setIsLoadingContacts(false);
                 setAllUserContacts([]);
                 setDisplayList([]);
+                setRecentPayees([]);
             } else {
-                fetchContacts(); // Fetch contacts on login
+                fetchContactsAndRecents(); // Fetch contacts and recent payments on login
             }
         });
         return () => unsubscribeAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run only on mount
 
-  // Fetch initial contacts and suggestions
-  const fetchContacts = useCallback(async () => {
+  // Fetch initial contacts and recent payments
+  const fetchContactsAndRecents = useCallback(async () => {
     if (!userId) return;
     setIsLoadingContacts(true);
     try {
-      const contacts = await getContacts(); // Fetch all saved contacts initially
-      // Simulate fetching verification status (replace with backend logic)
-      const contactsWithStatus: DisplayPayee[] = contacts.map(c => ({
-        ...c,
-        verificationStatus: getMockVerificationStatus(c.identifier || c.upiId)
-      }));
-      setAllUserContacts(contactsWithStatus);
-      // Fetch suggestions only if no search term and no payee selected
-      if (!searchTerm && !selectedPayee) {
-         fetchSuggestions(contactsWithStatus); // Pass contacts with status
-      }
+        // Fetch saved contacts
+        const contacts = await getContacts();
+        const contactsWithStatus: DisplayPayee[] = contacts.map(c => ({
+            ...c,
+            verificationStatus: 'pending' // Default to pending until verified on payment/manual check
+        }));
+        setAllUserContacts(contactsWithStatus);
+
+        // Fetch recent transactions to get recent payees
+        const filters: TransactionFilters = { type: 'Sent', limit: 15 }; // Fetch recent 'Sent' transactions
+        const history = await getTransactionHistory(filters);
+        const recent: DisplayPayee[] = [];
+        const seenIdentifiers = new Set<string>();
+
+        for (const tx of history) {
+            const identifier = tx.upiId || tx.identifier;
+            if (identifier && !seenIdentifiers.has(identifier)) {
+                // Avoid adding duplicates from recent history
+                seenIdentifiers.add(identifier);
+                 // Check if this recent payee is already in saved contacts
+                const existingContact = contactsWithStatus.find(c => (c.identifier === identifier || c.upiId === identifier));
+                 if (!existingContact) {
+                    recent.push({
+                        id: `recent-${identifier}`, // Create a temporary ID
+                        name: tx.name || identifier,
+                        identifier: identifier,
+                        upiId: tx.upiId,
+                        type: identifier.includes('@') ? 'bank' : 'mobile', // Basic type inference
+                         verificationStatus: 'pending', // Default to pending
+                    });
+                 } else {
+                    // Add saved contact to recent list if not already present for ordering
+                     if (!recent.some(r => r.id === existingContact.id)) {
+                         recent.push(existingContact);
+                     }
+                 }
+            }
+            if (recent.length >= 5) break; // Limit to 5 recent payees
+        }
+        setRecentPayees(recent);
+
+        // Display recent payees initially if no search term
+        if (!searchTerm && !selectedPayee) {
+            setDisplayList(recent);
+        }
     } catch (error) {
-      console.error("Error fetching contacts:", error);
-      toast({ variant: "destructive", title: "Error Loading Contacts" });
-      setAllUserContacts([]);
+        console.error("Error fetching contacts/recents:", error);
+        toast({ variant: "destructive", title: "Error Loading Data" });
+        setAllUserContacts([]);
+        setRecentPayees([]);
     } finally {
-      setIsLoadingContacts(false);
+        setIsLoadingContacts(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, toast, searchTerm, selectedPayee]); // Dependencies for fetchContacts
+  }, [userId, toast, searchTerm, selectedPayee]); // Dependencies
 
-   // Fetch AI suggestions based on fetched contacts
-   const fetchSuggestions = useCallback(async (currentContacts: DisplayPayee[]) => {
-        if (!userId || currentContacts.length === 0) {
-            setDisplayList([]); // Show empty if no contacts or user
-            return;
-        }
-        setIsLoadingSuggestions(true);
-        try {
-             // Simulate AI suggestion - use first 5 contacts as mock suggestions
-             await new Promise(res => setTimeout(res, 500)); // Simulate delay
-             const suggestions = currentContacts.slice(0, 5);
-             setDisplayList(suggestions);
-            // TODO: Integrate actual AI flow if needed
-            // const recentContactsData: SmartPayeeSuggestionInput = { userId, recentContacts: currentContacts.slice(0, 10).map(c => c.id) };
-            // const result = await suggestFrequentContacts(recentContactsData);
-            // const suggestions = result.suggestedContacts
-            //     .map(id => currentContacts.find(p => p.id === id))
-            //     .filter((p): p is DisplayPayee => !!p);
-            // setDisplayList(suggestions);
-        } catch (error) {
-             console.error("Failed to fetch suggestions:", error);
-             setDisplayList(currentContacts.slice(0,5)); // Fallback to recent contacts
-        } finally {
-             setIsLoadingSuggestions(false);
-        }
-    }, [userId]);
+   // Function to get mock verification status - REMOVED - Verification happens live
 
-   // Function to get mock verification status
-   const getMockVerificationStatus = (identifier?: string): DisplayPayee['verificationStatus'] => {
-        if (!identifier) return 'unverified';
-        if (identifier.toLowerCase().includes('verified')) return 'verified';
-        if (identifier.toLowerCase().includes('scammer') || identifier.toLowerCase().includes('blacklisted')) return 'blacklisted';
-        // Simulate random verification for others
-        const rand = Math.random();
-        if (rand < 0.6) return 'verified';
-        if (rand < 0.9) return 'unverified';
-        return 'pending'; // Less likely state
-   };
 
    // Filter contacts based on search term
    const filterContacts = useCallback((term: string) => {
         if (!term.trim()) {
-            fetchSuggestions(allUserContacts); // Show suggestions if search is cleared
+            setDisplayList(recentPayees); // Show recents if search is cleared
             return;
         }
         const lowerSearch = term.toLowerCase();
-        const filtered = allUserContacts.filter(payee =>
+        // Search within both saved contacts and recent payees (if different)
+        const combinedList = [...allUserContacts, ...recentPayees.filter(rp => !allUserContacts.some(ac => ac.id === rp.id))];
+        const filtered = combinedList.filter(payee =>
             (payee.name.toLowerCase().includes(lowerSearch) ||
              (payee.identifier && payee.identifier.toLowerCase().includes(lowerSearch)) ||
              (payee.upiId && payee.upiId.toLowerCase().includes(lowerSearch))
-            ) && (type === 'mobile' ? payee.type === 'mobile' : true) // Filter by type if 'mobile'
-        );
+            ) && (type === 'mobile' ? (payee.type === 'mobile' || !payee.type) : (payee.type === 'bank' || !payee.type)) // Adjust type filter
+        ).slice(0, 10); // Limit search results display
         setDisplayList(filtered);
-   }, [allUserContacts, type, fetchSuggestions]);
+   }, [allUserContacts, type, recentPayees]);
 
    const debouncedFilterContacts = useCallback(debounce(filterContacts, 300), [filterContacts]);
 
@@ -180,138 +183,123 @@ export default function SendMoneyPage() {
   const handleSelectPayee = (payee: DisplayPayee) => {
     setSelectedPayee(payee);
     setSearchTerm(payee.name); // Show name in search bar
-    setManualIdentifier('');
-    setVerifiedManualName(null);
-    setManualVerificationError(null);
+    setManualIdentifier(''); // Clear manual input
+    setManualPayee(null); // Clear manual details
     setDisplayList([]); // Hide dropdown
+    searchInputRef.current?.blur(); // Hide keyboard
   };
 
   const handleClearSelection = () => {
     setSelectedPayee(null);
     setSearchTerm('');
     setManualIdentifier('');
-    setVerifiedManualName(null);
-    setManualVerificationError(null);
-    setManualPayeeName('');
+    setManualPayee(null);
     setDisplayList([]); // Hide dropdown
-    fetchSuggestions(allUserContacts); // Show suggestions again
+    setDisplayList(recentPayees); // Show recents again
     searchInputRef.current?.focus(); // Focus search input
    }
 
    // Debounced UPI ID / Account Verification
     const verifyManualIdentifier = useCallback(async (identifier: string) => {
-        if (!identifier || type !== 'bank' || identifier.length < 3) { // Basic length check for bank/upi
-            setVerifiedManualName(null);
-            setManualVerificationError(null);
+        const trimmedIdentifier = identifier.trim();
+        if (!trimmedIdentifier || type !== 'bank' || trimmedIdentifier.length < 3) { // Basic length check for bank/upi
+            setManualPayee(null); // Clear manual payee details
             setIsVerifyingManual(false);
             return;
         }
         setIsVerifyingManual(true);
-        setVerifiedManualName(null);
-        setManualVerificationError(null);
+        setManualPayee(null); // Reset before verifying
+
         try {
-            // Simulate verification based on input
-            await new Promise(res => setTimeout(res, 800));
-            let nameResult = null;
-            let errorResult = null;
-             let verificationStatus: DisplayPayee['verificationStatus'] = 'unverified';
+            // Call backend API to verify
+            const result = await apiClient<{ verifiedName: string | null; isBlacklisted?: boolean; reason?: string }>(`/upi/verify?upiId=${encodeURIComponent(trimmedIdentifier)}`);
 
-            if (identifier.includes('@') && identifier.length > 5) { // Basic UPI check
-                 if (identifier.toLowerCase().includes('fail')) {
-                     errorResult = "Invalid or non-existent ID.";
-                     verificationStatus = 'unverified';
-                 } else if (identifier.toLowerCase().includes('blacklisted')) {
-                     errorResult = "This UPI ID is blacklisted.";
-                     verificationStatus = 'blacklisted';
-                 } else {
-                     nameResult = identifier.split('@')[0].replace('.', ' ').split(' ').map(capitalize).join(' ') || "Verified Name";
-                     verificationStatus = 'verified';
-                 }
-            } else if (!identifier.includes('@') && identifier.match(/^[0-9]{9,18}$/)) { // Basic Account # check
-                nameResult = "Account Holder Name"; // Cannot verify account name usually
-                verificationStatus = 'verified'; // Assume account number exists if format matches
-            } else {
-                errorResult = "Invalid UPI ID or Account Number format.";
-                verificationStatus = 'unverified';
+            let verificationStatus: DisplayPayee['verificationStatus'] = 'unverified';
+            let verificationReason: string | undefined = undefined;
+
+            if (result.isBlacklisted) {
+                 verificationStatus = 'blacklisted';
+                 verificationReason = result.reason || 'Flagged as suspicious';
+            } else if (result.verifiedName) {
+                verificationStatus = 'verified';
             }
 
-            if (nameResult) {
-                setVerifiedManualName(nameResult);
-                setManualPayeeName(nameResult);
-                // Use a temporary object for setting status if payee not selected
-                // This state is only for display while typing manually
-            } else {
-                setManualVerificationError(errorResult);
-                setManualPayeeName('');
-            }
-             // Set display status for manual input (this state doesn't affect the actual payee object until saved)
-            if (!selectedPayee) {
-                setSelectedPayee({ identifier: identifier, verificationStatus } as any); // Temporary object for display
-            }
-
+            setManualPayee({
+                id: `manual-${trimmedIdentifier}`, // Temporary ID
+                name: result.verifiedName || trimmedIdentifier, // Use verified name or identifier itself
+                identifier: trimmedIdentifier,
+                type: 'bank', // Assume bank/UPI for manual verification
+                verificationStatus: verificationStatus,
+                verificationReason: verificationReason,
+            });
 
         } catch (error: any) {
-            setManualVerificationError("Verification failed. Please try again.");
-            setManualPayeeName('');
-             if (!selectedPayee) {
-                 setSelectedPayee({ identifier: identifier, verificationStatus: 'unverified' } as any);
+            console.error("Manual Verification failed:", error);
+             let reason = "Verification failed. Please check the ID or try again.";
+             if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
+                 reason = "UPI ID/Account not found.";
              }
+             setManualPayee({
+                id: `manual-${trimmedIdentifier}`,
+                name: "Verification Failed",
+                identifier: trimmedIdentifier,
+                type: 'bank',
+                verificationStatus: 'unverified',
+                verificationReason: reason,
+            });
         } finally {
             setIsVerifyingManual(false);
         }
-    }, [type, selectedPayee]);
+    }, [type]);
 
      const debouncedVerifyManualIdentifier = useCallback(debounce(verifyManualIdentifier, 800), [verifyManualIdentifier]);
 
    useEffect(() => {
         if (type === 'bank' && !selectedPayee) {
-            debouncedVerifyManualIdentifier(manualIdentifier.trim());
+            debouncedVerifyManualIdentifier(manualIdentifier);
         } else {
-            setVerifiedManualName(null);
-            setManualVerificationError(null);
+            setManualPayee(null);
             setIsVerifyingManual(false);
-            setManualPayeeName('');
-            // Clear the temporary payee display if switching away from manual
-             if (selectedPayee && selectedPayee.id === undefined) { // Check if it's the temporary object
-                 setSelectedPayee(null);
-             }
         }
    }, [manualIdentifier, type, selectedPayee, debouncedVerifyManualIdentifier]);
 
 
   const handleInitiateSavePayee = () => {
-      if (!selectedPayee && manualIdentifier && verifiedManualName) { // Only allow saving verified manual input
-           setManualPayeeName(verifiedManualName || ''); // Pre-fill verified name
+      if (manualPayee && manualPayee.verificationStatus === 'verified') {
+           setManualPayeeName(manualPayee.name || ''); // Pre-fill verified name
            setShowSavePayeeDialog(true);
-      } else if (selectedPayee && selectedPayee.id !== undefined) { // Already selected a saved contact
+      } else if (selectedPayee && selectedPayee.id && !selectedPayee.id.startsWith('manual-') && !selectedPayee.id.startsWith('recent-')) { // Already selected a *saved* contact
           toast({description: "Contact already saved."})
       } else if (!manualIdentifier) {
           toast({description: "Enter identifier first."})
-      } else if (!verifiedManualName) {
-           toast({description: "Identifier not verified yet."})
+      } else if (!manualPayee || manualPayee.verificationStatus !== 'verified') {
+           toast({description: "Identifier not verified or invalid."})
       }
   };
 
   const handleConfirmSavePayee = async () => {
-     if (!manualIdentifier || !manualPayeeName) {
+     const identifierToSave = manualPayee?.identifier;
+     if (!identifierToSave || !manualPayeeName) {
          toast({ variant: "destructive", title: "Missing Details", description: "Please enter identifier and name to save." });
          return;
      }
      try {
          const newPayeeData: Omit<Payee, 'id' | 'userId' | 'avatarSeed' | 'createdAt' | 'updatedAt'> = {
              name: manualPayeeName,
-             identifier: manualIdentifier,
+             identifier: identifierToSave,
              type: type === 'mobile' ? 'mobile' : 'bank', // Simplified type mapping
-             upiId: type === 'bank' && manualIdentifier.includes('@') ? manualIdentifier : undefined,
-             accountNumber: type === 'bank' && !manualIdentifier.includes('@') ? manualIdentifier : undefined,
+             upiId: type === 'bank' && identifierToSave.includes('@') ? identifierToSave : undefined,
+             accountNumber: type === 'bank' && !identifierToSave.includes('@') ? identifierToSave : undefined,
              isFavorite: false,
          };
          const saved = await savePayee(newPayeeData);
          toast({ title: "Payee Saved", description: `${saved.name} added to your contacts.` });
-         const savedWithStatus: DisplayPayee = {...saved, verificationStatus: getMockVerificationStatus(saved.identifier)}; // Add status
+         const savedWithStatus: DisplayPayee = {...saved, verificationStatus: 'verified' }; // Assume saved is verified now
          setAllUserContacts(prev => [...prev, savedWithStatus]);
          setShowSavePayeeDialog(false);
-         handleSelectPayee(savedWithStatus);
+         handleSelectPayee(savedWithStatus); // Automatically select the newly saved payee
+         setManualIdentifier(''); // Clear manual fields
+         setManualPayee(null);
      } catch (error: any) {
          console.error("Failed to save payee:", error);
          toast({ variant: "destructive", title: "Save Failed", description: error.message });
@@ -326,14 +314,10 @@ export default function SendMoneyPage() {
     let targetPayeeName = '';
     let verificationStatus: DisplayPayee['verificationStatus'] = 'unverified';
 
-    if (selectedPayee && selectedPayee.id !== undefined) { // Use selected saved payee
+    if (selectedPayee) { // Use selected payee (saved, recent, or manual)
         targetIdentifier = selectedPayee.identifier || selectedPayee.upiId;
         targetPayeeName = selectedPayee.name;
         verificationStatus = selectedPayee.verificationStatus || 'unverified';
-    } else if (!selectedPayee && manualIdentifier.trim()) { // Use manually entered details
-        targetIdentifier = manualIdentifier.trim();
-        targetPayeeName = verifiedManualName || targetIdentifier; // Use verified name or fallback
-        verificationStatus = verifiedManualName ? 'verified' : (manualVerificationError?.includes('blacklisted') ? 'blacklisted' : 'unverified');
     } else {
         toast({ variant: "destructive", title: "Recipient Missing", description: "Please select or enter a recipient." });
         return;
@@ -343,12 +327,21 @@ export default function SendMoneyPage() {
       toast({ variant: "destructive", title: "Invalid Input", description: "Please select/verify recipient and enter a valid amount." });
       return;
     }
+
+    // Check blacklist status before proceeding
     if (verificationStatus === 'blacklisted') {
-        toast({ variant: "destructive", title: "Payment Blocked", description: "Cannot send payment to a blacklisted recipient." });
+         toast({
+             variant: "destructive",
+             title: "Payment Blocked",
+             description: `Cannot send payment: ${manualPayee?.verificationReason || 'Recipient is blacklisted.'}`,
+             duration: 7000
+         });
         return;
     }
+
+    // Optional: Confirm before paying unverified ID
     if (verificationStatus === 'unverified' && type === 'bank') {
-        if (!confirm("The recipient UPI/Account is not verified. Proceed with caution?")) {
+        if (!confirm(`The recipient (${targetIdentifier}) is not verified. Proceed with caution?`)) {
             return;
         }
     }
@@ -358,10 +351,8 @@ export default function SendMoneyPage() {
     console.log("Sending money via API:", { recipientIdentifier: targetIdentifier, amount, type });
 
     try {
-        const enteredPin = await new Promise<string | null>((resolve) => {
-            const pin = prompt(`DEMO ONLY: Enter UPI PIN to send ₹${amount} to ${targetPayeeName}`);
-            resolve(pin);
-        });
+         // In a real app, integrate a secure PIN pad component here
+         const enteredPin = prompt(`DEMO ONLY: Enter UPI PIN to send ₹${amount} to ${targetPayeeName}`);
 
         if (!enteredPin) {
             toast({ title: "Payment Cancelled" });
@@ -369,22 +360,24 @@ export default function SendMoneyPage() {
             return;
         }
 
+        // Call the UPI service function which interacts with the backend
         const paymentResult = await processUpiPayment(
             targetIdentifier,
             Number(amount),
-            enteredPin,
-            `Payment to ${targetPayeeName}`,
-            userId || undefined
+            enteredPin, // Send PIN to backend for processing
+            `Payment to ${targetPayeeName}`, // Optional note
+             userId || undefined // Pass user ID if needed, though backend gets it from token
         );
 
         if (paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess') {
-             toast({ title: "Payment Successful", description: paymentResult.message });
-             setTimeout(() => router.push('/'), 500);
+             toast({ title: "Payment Successful", description: paymentResult.message, duration: 5000 });
+             setTimeout(() => router.push('/'), 1000); // Redirect home after delay
          } else {
              let errorDescription = paymentResult.message || 'Unknown error';
              if (paymentResult.ticketId) {
                   errorDescription += `. ${paymentResult.refundEta ? `Refund ETA: ${paymentResult.refundEta}` : ''}`;
              }
+              // Show specific error from backend result
              toast({
                  variant: "destructive",
                  title: `Payment Failed ${paymentResult.ticketId ? `(Ticket: ${paymentResult.ticketId})` : ''}`,
@@ -401,10 +394,11 @@ export default function SendMoneyPage() {
     }
   };
 
-  const showContactList = !selectedPayee && displayList.length > 0;
+  const showContactList = !selectedPayee && displayList.length > 0 && !manualIdentifier; // Show only if not manually typing
   const showManualInputField = !selectedPayee;
   const showNoResultsFound = !selectedPayee && searchTerm.trim().length > 0 && !isLoadingContacts && displayList.length === 0;
-  const showNoSuggestionsOrContacts = !selectedPayee && searchTerm.trim().length === 0 && !isLoadingContacts && !isLoadingSuggestions && allUserContacts.length === 0;
+  const showNoSuggestionsOrContacts = !selectedPayee && searchTerm.trim().length === 0 && !isLoadingContacts && !isLoadingSuggestions && allUserContacts.length === 0 && recentPayees.length === 0;
+  const currentPayeeForDisplay = selectedPayee || manualPayee; // Use selected payee or manually verified details for display
 
   const getVerificationIcon = (status?: DisplayPayee['verificationStatus']) => {
       switch(status) {
@@ -447,19 +441,19 @@ export default function SendMoneyPage() {
                         id="payee-input"
                         ref={searchInputRef}
                         placeholder={pageDetails.placeholder}
-                        value={selectedPayee?.id !== undefined ? selectedPayee.name : searchTerm} // Show name if selected, otherwise search term
+                        value={selectedPayee?.id ? selectedPayee.name : searchTerm} // Show name if selected, else search term
                         onChange={(e) => {
-                            if (selectedPayee) handleClearSelection();
+                            if (selectedPayee) handleClearSelection(); // Clear selection if user starts typing again
                             setSearchTerm(e.target.value);
-                            setManualIdentifier('');
+                            setManualIdentifier(''); // Clear manual if searching
                         }}
-                        disabled={!!selectedPayee && selectedPayee.id !== undefined} // Disable if a *saved* payee is selected
+                        disabled={!!selectedPayee && selectedPayee.id && !selectedPayee.id.startsWith('manual-')} // Disable only if a *saved* payee is selected
                         className="pr-10"
                     />
-                     {(isLoadingContacts || isLoadingSuggestions || (isVerifyingManual && !selectedPayee)) && (
+                     {(isLoadingContacts || isLoadingSuggestions || isVerifyingManual) && (
                          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
                      )}
-                      {(searchTerm || manualIdentifier) && !selectedPayee && !(isLoadingContacts || isLoadingSuggestions || isVerifyingManual) && (
+                      {(selectedPayee || searchTerm) && !(isLoadingContacts || isLoadingSuggestions || isVerifyingManual) && (
                          <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7" onClick={handleClearSelection} type="button">
                             <X className="h-4 w-4 text-muted-foreground"/>
                         </Button>
@@ -470,7 +464,7 @@ export default function SendMoneyPage() {
                    {showContactList && (
                       <div className="mt-1 border border-border rounded-md shadow-sm max-h-60 overflow-y-auto bg-background z-10 absolute w-[calc(100%-2rem)]">
                           <p className="text-xs font-semibold p-2 text-muted-foreground">
-                              {searchTerm.trim() === '' ? 'Suggestions' : 'Search Results'}
+                              {searchTerm.trim() === '' ? 'Recents & Suggestions' : 'Search Results'}
                           </p>
                           {displayList.map((payee) => (
                               <div
@@ -486,6 +480,7 @@ export default function SendMoneyPage() {
                                       <p className="text-sm font-medium truncate">{payee.name}</p>
                                       <p className="text-xs text-muted-foreground truncate">{payee.identifier || payee.upiId}</p>
                                   </div>
+                                  {/* Display verification status fetched with contacts/recents */}
                                   <div className="ml-2 shrink-0">{getVerificationIcon(payee.verificationStatus)}</div>
                               </div>
                           ))}
@@ -504,27 +499,24 @@ export default function SendMoneyPage() {
                                 placeholder={`Manually enter ${pageDetails.identifierLabel}`}
                                 value={manualIdentifier}
                                 onChange={(e) => setManualIdentifier(e.target.value)}
-                                // Required only if no contact is selected and search term is empty? Adjust logic as needed.
                                 required={!selectedPayee && !searchTerm}
-                                className={manualVerificationError ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                className={(manualPayee?.verificationStatus === 'blacklisted' || manualPayee?.verificationReason?.includes('not found')) ? 'border-destructive focus-visible:ring-destructive' : ''}
                             />
                             {isVerifyingManual && (
                                 <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
                             )}
                         </div>
                         {/* Verification Status for Manual Input */}
-                        {type === 'bank' && !selectedPayee && manualIdentifier && (
+                         {manualPayee && (
                              <div className="flex justify-between items-center pt-1">
-                                <p className={`text-xs flex items-center gap-1 ${verifiedManualName ? 'text-green-600' : (manualVerificationError ? 'text-destructive' : 'text-muted-foreground')}`}>
-                                    {getVerificationIcon(selectedPayee?.verificationStatus)}
-                                    {verifiedManualName ? `Verified: ${verifiedManualName}` : manualVerificationError || 'Enter ID to verify'}
+                                <p className={`text-xs flex items-center gap-1 ${manualPayee.verificationStatus === 'verified' ? 'text-green-600' : (manualPayee.verificationStatus === 'blacklisted' || manualPayee.verificationReason?.includes('not found')) ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                     {getVerificationIcon(manualPayee.verificationStatus)}
+                                     {manualPayee.verificationStatus === 'verified' ? `Verified: ${manualPayee.name}` : manualPayee.verificationReason || 'Verification Pending/Failed'}
                                 </p>
-                                 {verifiedManualName && !manualVerificationError && (
-                                      <AlertDialogTrigger asChild>
-                                        <Button type="button" variant="link" size="sm" className="text-xs h-auto p-0" onClick={handleInitiateSavePayee}>
-                                          <UserPlus className="h-3 w-3 mr-1"/> Save Payee
-                                        </Button>
-                                      </AlertDialogTrigger>
+                                 {manualPayee.verificationStatus === 'verified' && (
+                                    <Button type="button" variant="link" size="sm" className="text-xs h-auto p-0" onClick={handleInitiateSavePayee}>
+                                        <UserPlus className="h-3 w-3 mr-1"/> Save Payee
+                                    </Button>
                                  )}
                             </div>
                          )}
@@ -532,26 +524,29 @@ export default function SendMoneyPage() {
                   )}
               </div>
 
-              {/* Selected Payee Display (for saved contacts) */}
-              {selectedPayee && selectedPayee.id !== undefined && (
-                <div className="flex items-center p-3 border border-primary rounded-md bg-primary/5 mt-4">
+              {/* Selected Payee Display (Covers saved, recent, and manually verified) */}
+              {currentPayeeForDisplay && (
+                <div className={`flex items-center p-3 border rounded-md mt-4 ${
+                     currentPayeeForDisplay.verificationStatus === 'verified' ? 'border-green-500 bg-green-50' :
+                     currentPayeeForDisplay.verificationStatus === 'blacklisted' ? 'border-destructive bg-destructive/10' :
+                     'border-border bg-muted/50'
+                 }`}>
                   <Avatar className="h-9 w-9 mr-3">
-                     <AvatarImage src={`https://picsum.photos/seed/${selectedPayee.avatarSeed || selectedPayee.id}/40/40`} alt={selectedPayee.name} data-ai-hint="person avatar"/>
-                    <AvatarFallback>{selectedPayee.name.charAt(0)}</AvatarFallback>
+                     <AvatarImage src={`https://picsum.photos/seed/${currentPayeeForDisplay.avatarSeed || currentPayeeForDisplay.id}/40/40`} alt={currentPayeeForDisplay.name} data-ai-hint="person avatar"/>
+                    <AvatarFallback>{currentPayeeForDisplay.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-grow overflow-hidden">
-                    <p className="text-sm font-medium truncate">{selectedPayee.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{selectedPayee.identifier || selectedPayee.upiId}</p>
-                     {selectedPayee.verificationStatus && (
-                        <Badge variant={
-                            selectedPayee.verificationStatus === 'verified' ? 'default' :
-                            selectedPayee.verificationStatus === 'blacklisted' ? 'destructive' :
-                            'secondary'
-                         } className={`mt-1 text-xs ${selectedPayee.verificationStatus === 'verified' ? 'bg-green-100 text-green-700' : selectedPayee.verificationStatus === 'blacklisted' ? '' : 'bg-yellow-100 text-yellow-700'}`}>
-                         {getVerificationIcon(selectedPayee.verificationStatus)}
-                         <span className='ml-1'>{capitalize(selectedPayee.verificationStatus)}</span>
-                        </Badge>
-                     )}
+                    <p className="text-sm font-medium truncate">{currentPayeeForDisplay.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{currentPayeeForDisplay.identifier || currentPayeeForDisplay.upiId}</p>
+                     <Badge variant={
+                         currentPayeeForDisplay.verificationStatus === 'verified' ? 'default' :
+                         currentPayeeForDisplay.verificationStatus === 'blacklisted' ? 'destructive' :
+                         'secondary'
+                      } className={`mt-1 text-xs ${currentPayeeForDisplay.verificationStatus === 'verified' ? 'bg-green-100 text-green-700' : currentPayeeForDisplay.verificationStatus === 'blacklisted' ? '' : 'bg-yellow-100 text-yellow-700'}`}>
+                      {getVerificationIcon(currentPayeeForDisplay.verificationStatus)}
+                      <span className='ml-1'>{capitalize(currentPayeeForDisplay.verificationStatus || 'unverified')}</span>
+                     </Badge>
+                      {currentPayeeForDisplay.verificationStatus === 'blacklisted' && <p className='text-xs text-destructive mt-1'>{currentPayeeForDisplay.verificationReason}</p>}
                   </div>
                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleClearSelection} type="button">
                         <X className="h-4 w-4"/>
@@ -574,10 +569,7 @@ export default function SendMoneyPage() {
                     min="1"
                     step="0.01"
                     className="pl-7 text-lg font-semibold"
-                    disabled={
-                        (!selectedPayee && !manualIdentifier.trim()) || // No recipient
-                        (type === 'bank' && !selectedPayee && !verifiedManualName) // Bank type not verified manually
-                    }
+                    disabled={!currentPayeeForDisplay || isSending || isVerifyingManual}
                   />
                 </div>
               </div>
@@ -587,12 +579,11 @@ export default function SendMoneyPage() {
                  type="submit"
                  className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
                  disabled={
-                    (!selectedPayee && !manualIdentifier.trim()) ||
-                    !amount || Number(amount) <= 0 ||
-                    (type === 'bank' && !selectedPayee && !verifiedManualName) ||
-                    isSending ||
-                    isVerifyingManual ||
-                    selectedPayee?.verificationStatus === 'blacklisted' // Disable if selected payee is blacklisted
+                    !currentPayeeForDisplay || // No recipient selected or manually entered
+                    !amount || Number(amount) <= 0 || // Invalid amount
+                    currentPayeeForDisplay?.verificationStatus === 'blacklisted' || // Recipient blacklisted
+                    isSending || // Already processing
+                    isVerifyingManual // Currently verifying manual input
                  }
               >
                 {isSending ? (
@@ -621,7 +612,7 @@ export default function SendMoneyPage() {
                   <div className="py-4 space-y-3">
                      <div className="space-y-1">
                          <Label htmlFor="save-identifier">Identifier ({pageDetails.identifierLabel})</Label>
-                         <Input id="save-identifier" value={manualIdentifier} disabled />
+                         <Input id="save-identifier" value={manualPayee?.identifier || ''} disabled />
                      </div>
                       <div className="space-y-1">
                          <Label htmlFor="save-name">Payee Name</Label>
@@ -635,7 +626,7 @@ export default function SendMoneyPage() {
                      </div>
                  </div>
                  <AlertDialogFooter>
-                     <AlertDialogCancel onClick={() => setManualPayeeName(verifiedManualName || '')}>Cancel</AlertDialogCancel> {/* Reset name on cancel */}
+                     <AlertDialogCancel onClick={() => setManualPayeeName(manualPayee?.name || '')}>Cancel</AlertDialogCancel> {/* Reset name on cancel */}
                      <AlertDialogAction onClick={handleConfirmSavePayee} disabled={!manualPayeeName}>Save Payee</AlertDialogAction>
                  </AlertDialogFooter>
              </AlertDialogContent>
@@ -646,4 +637,4 @@ export default function SendMoneyPage() {
   );
 }
 
-const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const capitalize = (s?: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';

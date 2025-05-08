@@ -3,7 +3,7 @@ const db = admin.firestore();
 const { getWalletBalance } = require('../services/wallet'); // Use service for wallet balance
 const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger'); // Use centralized logger
 const { scheduleRecovery } = require('../services/recoveryService'); // Import recovery scheduling
-const { checkKYCAndBridgeStatus } = require('../services/userService'); // Import user checks
+const { checkKYCAndBridgeStatus } = require('../services/user'); // Import user checks
 const upiProviderService = require('../services/upiProviderService');
 const { getBankStatus } = require('../services/bankStatusService');
 const upiLiteService = require('../services/upiLite'); // Import UPI Lite service
@@ -14,7 +14,7 @@ const { payViaWalletInternal } = require('../services/wallet'); // Use internal 
 
 // Import shared Transaction type definition (adjust path as needed)
 // Assuming types.ts exists in services directory
-// const { Transaction, UpiTransactionResult } = require('../services/types'); // Use require if needed or define inline for JS
+// const { Transaction, UpiTransactionResult, BankAccount } = require('../services/types'); // Use require if needed or define inline for JS
 
 // Define types inline if not using TS require
 /**
@@ -181,8 +181,17 @@ exports.verifyUpiId = async (req, res, next) => {
         return next(new Error("Valid UPI ID query parameter is required."));
     }
     try {
+        // Check blacklist first
+        const blacklistRefByUpi = doc(firestoreDb, 'blacklisted_qrs', upiId); // Using upiId as doc id
+        const blacklistSnapByUpi = await getDoc(blacklistRefByUpi);
+        if (blacklistSnapByUpi.exists()) {
+            // Return a specific response indicating blacklisted status
+             res.status(403).json({ verifiedName: null, isBlacklisted: true, reason: blacklistSnapByUpi.data()?.reason || 'Flagged as suspicious' });
+             return;
+        }
+        // Proceed with PSP verification if not blacklisted
         const verifiedName = await upiProviderService.verifyRecipient(upiId); // Call PSP service
-        res.status(200).json({ verifiedName });
+        res.status(200).json({ verifiedName, isBlacklisted: false });
     } catch (error) {
          // Handle specific verification errors if PSP provides codes
          if (error.message?.includes("not found") || error.message?.includes("Invalid")) {
@@ -207,9 +216,10 @@ exports.processUpiPayment = async (req, res, next) => {
 
     /** @type {UpiTransactionResult} */
     let paymentResult = { // Initialize result object
-        amount, recipientUpiId, status: 'Failed', message: 'Payment processing failed.', usedWalletFallback: false
+        amount, recipientUpiId, status: 'Failed', message: 'Payment processing failed initially.', usedWalletFallback: false
     };
     let recipientName = 'Recipient'; // Default name
+    let verificationStatus = 'unverified'; // Default verification status
     /** @type {Partial<Transaction>} */
     let logData = { // Prepare base log data
         type: 'Failed', name: recipientName, description: '', amount: -amount, status: 'Failed', userId, upiId: recipientUpiId, paymentMethodUsed: 'UPI'
@@ -217,21 +227,35 @@ exports.processUpiPayment = async (req, res, next) => {
     let finalTransactionId = null; // Will hold the Firestore transaction ID
 
     try {
-        // --- Step 1: Verify Recipient (Optional but Recommended) ---
+         // --- Step 0: Check Recipient Blacklist/Verification ---
+        const blacklistRef = doc(firestoreDb, 'blacklisted_qrs', recipientUpiId);
+        const blacklistSnap = await getDoc(blacklistRef);
+        if (blacklistSnap.exists()) {
+            verificationStatus = 'blacklisted';
+            paymentResult.message = "Payment blocked: Recipient UPI ID is blacklisted.";
+            paymentResult.status = 'Failed';
+            logData.status = 'Failed';
+            logData.description = `Payment to ${recipientUpiId} blocked (Blacklisted)`;
+            logData.type = 'Failed';
+            throw new Error(paymentResult.message); // Go directly to failure handling
+        }
+
+        // --- Step 1: Verify Recipient Name (Optional but Recommended) ---
         try {
              recipientName = await upiProviderService.verifyRecipient(recipientUpiId);
              logData.name = recipientName;
              logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''}`;
+             // Check if verified against internal list (Optional)
+             const verifiedRef = doc(firestoreDb, 'verified_merchants', recipientUpiId);
+             const verifiedSnap = await getDoc(verifiedRef);
+             verificationStatus = verifiedSnap.exists() ? 'verified' : 'unverified';
+             logData.description += verificationStatus === 'unverified' ? ' (Unverified Payee)' : ' (Verified Payee)';
         } catch (verifyError) {
              console.warn(`Recipient verification failed for ${recipientUpiId}: ${verifyError.message} - Proceeding anyway...`);
-             // Decide if you want to proceed or fail here
-             // For this example, we proceed but use the UPI ID as the name
              recipientName = recipientUpiId;
              logData.name = recipientName;
-             logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''}`;
-             // Or uncomment to fail:
-             // res.status(400);
-             // throw new Error(`Recipient verification failed: ${verifyError.message}`);
+             logData.description = `UPI Payment to ${recipientName}${note ? ` - ${note}` : ''} (Verification Failed)`;
+             verificationStatus = 'unverified';
         }
 
         // --- Step 2: Check Bank Server Status for Source Account ---
@@ -343,49 +367,44 @@ exports.processUpiPayment = async (req, res, next) => {
             if (shouldAttemptFallback) {
                 fallbackAttempted = true;
                 console.log("[UPI Ctrl] Attempting Wallet Fallback for UPI failure...");
-                const walletBalance = await getWalletBalance({ uid: userId }); // Pass user object or just ID
+                // Use internal wallet function directly
+                const walletPaymentResult = await payViaWalletInternal(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`, 'Sent'); // Use internal helper
 
-                if (walletBalance >= amount) {
-                    const walletPaymentResult = await payViaWalletInternal(userId, recipientUpiId, amount, `Wallet Fallback: ${note || ''}`); // Using internal helper
+                if (walletPaymentResult.success && walletPaymentResult.transactionId) {
+                     fallbackSuccess = true;
+                     fallbackTxId = walletPaymentResult.transactionId;
+                     paymentResult.message = `Paid via Wallet (UPI Failed: ${upiError.message}). Recovery scheduled.`;
+                     paymentResult.status = 'Completed'; // Final status is Completed (via fallback)
+                     paymentResult.usedWalletFallback = true;
+                     paymentResult.transactionId = fallbackTxId; // Use wallet transaction ID as the primary ID
+                     paymentResult.walletTransactionId = fallbackTxId; // Store specifically as well
+                     paymentResult.ticketId = undefined; // Clear UPI failure ticket info
+                     paymentResult.refundEta = undefined;
 
-                    if (walletPaymentResult.success && walletPaymentResult.transactionId) {
-                         fallbackSuccess = true;
-                         fallbackTxId = walletPaymentResult.transactionId;
-                         paymentResult.message = `Paid via Wallet (UPI Failed: ${upiError.message}). Recovery scheduled.`;
-                         paymentResult.status = 'Completed'; // Final status is Completed (via fallback)
-                         paymentResult.usedWalletFallback = true;
-                         paymentResult.transactionId = fallbackTxId; // Use wallet transaction ID as the primary ID
-                         paymentResult.walletTransactionId = fallbackTxId; // Store specifically as well
-                         paymentResult.ticketId = undefined; // Clear UPI failure ticket info
-                         paymentResult.refundEta = undefined;
+                     // Schedule recovery
+                     await scheduleRecovery(userId, amount, recipientUpiId, sourceAccountUpiId);
+                     recoveryScheduled = true;
 
-                         // Schedule recovery
-                         await scheduleRecovery(userId, amount, recipientUpiId, sourceAccountUpiId);
-                         recoveryScheduled = true;
+                     // Log the *original* UPI failure attempt separately if desired, or update its description
+                      logData.status = 'Failed'; // Log original UPI attempt as failed
+                      logData.description += ' (Wallet Fallback Used)';
+                     await addTransaction(logData); // Log the failed UPI attempt
 
-                         // Log the *original* UPI failure attempt separately if desired, or update its description
-                          logData.status = 'Failed'; // Log original UPI attempt as failed
-                          logData.description += ' (Wallet Fallback Used)';
-                         await addTransaction(logData); // Log the failed UPI attempt
+                     // Wallet payment service already logged the successful fallback transaction.
+                     // Send WebSocket update for the successful fallback transaction
+                     const finalTxDoc = await getDoc(doc(firestoreDb, 'transactions', fallbackTxId));
+                     if (finalTxDoc.exists()) {
+                          const finalTxData = convertFirestoreDocToTransaction(finalTxDoc);
+                          sendToUser(userId, { type: 'transaction_update', payload: finalTxData });
+                     }
 
-                         // Wallet payment service already logged the successful fallback transaction.
-                         // Send WebSocket update for the successful fallback transaction
-                         const finalTxDoc = await getDoc(doc(firestoreDb, 'transactions', fallbackTxId));
-                         if (finalTxDoc.exists()) {
-                              const finalTxData = convertFirestoreDocToTransaction(finalTxDoc);
-                              sendToUser(userId, { type: 'transaction_update', payload: finalTxData });
-                         }
-
-                         // Return 200 OK with fallback success details
-                         return res.status(200).json(paymentResult);
-                    } else {
-                         paymentResult.message = `UPI failed (${upiError.message}). Wallet fallback also failed: ${walletPaymentResult.message}.`;
-                         logData.description += ` - Wallet Fallback Failed: ${walletPaymentResult.message}`;
-                    }
+                     // Return 200 OK with fallback success details
+                     return res.status(200).json(paymentResult);
                 } else {
-                    paymentResult.message = `UPI failed (${upiError.message}). Insufficient wallet balance (₹${walletBalance.toFixed(2)}) for fallback.`;
-                    logData.description += ' - Insufficient Wallet Balance for Fallback.';
+                     paymentResult.message = `UPI failed (${upiError.message}). Wallet fallback also failed: ${walletPaymentResult.message}.`;
+                     logData.description += ` - Wallet Fallback Failed: ${walletPaymentResult.message}`;
                 }
+
             } else {
                  console.log(`[UPI Ctrl] Fallback not attempted. CanUseBridge: ${canUseBridge}, Amount ${amount} <= Limit ${fallbackLimit}: ${amount <= fallbackLimit}, ErrorCode Check: ${fallbackErrorCodes.includes(upiError.code)}`);
             }
@@ -417,7 +436,9 @@ exports.processUpiPayment = async (req, res, next) => {
         }
         // Return appropriate error status (e.g., 400 Bad Request, 503 Service Unavailable for bank down)
         let statusCode = 400; // Default bad request
-        if (upiError.code === 'BANK_NETWORK_ERROR' || paymentResult.message.includes('server is down')) {
+        if (upiError.message === "Payment blocked: Recipient UPI ID is blacklisted.") {
+            statusCode = 403; // Forbidden
+        } else if (upiError.code === 'BANK_NETWORK_ERROR' || paymentResult.message.includes('server is down')) {
              statusCode = 503; // Service Unavailable
         } else if (upiError.code === 'UPI_INCORRECT_PIN') {
              statusCode = 401; // Unauthorized (wrong PIN)
