@@ -11,7 +11,7 @@ import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Mes
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { getContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface, use getContacts
-import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi'; // Import processUpiPayment, verifyUpiId, BankAccount, getBankStatus
+import { processUpiPayment, verifyUpiId as verifyUpiIdService, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi'; // Import processUpiPayment, verifyUpiIdService, BankAccount, getBankStatus
 import type { Transaction } from '@/services/types'; // Import Transaction
 import { payViaWallet, getWalletBalance } from '@/services/wallet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge'; // Import Badge
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { apiClient } from '@/lib/apiClient'; // Import apiClient for direct calls
 
 // Interface extending PayeeClient with additional properties for UI
 interface DisplayPayee extends Payee {
@@ -29,6 +30,9 @@ interface DisplayPayee extends Payee {
     verificationReason?: string; // Reason if blacklisted
     verifiedName?: string; // Name returned by verification API
 }
+
+type PaymentSource = 'upi' | 'wallet';
+
 
 // Debounce function
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -61,7 +65,7 @@ export default function SendMoneyPage() {
   const [isVerifyingUpi, setIsVerifyingUpi] = useState(false); // Track UPI verification loading
   const [hasError, setHasError] = useState(false);
   const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(showConfirmation);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedAccountUpiId, setSelectedAccountUpiId] = useState('');
   const [paymentResult, setPaymentResult] = useState<UpiTransactionResult | null>(null);
@@ -116,7 +120,12 @@ export default function SendMoneyPage() {
         for (const acc of accountsToFetch) {
             const bankIdentifier = acc.upiId.split('@')[1];
             if (bankIdentifier) {
-                statuses[acc.upiId] = await getBankStatus(bankIdentifier);
+                 try {
+                    statuses[acc.upiId] = await getBankStatus(bankIdentifier);
+                 } catch (statusError) {
+                      console.warn(`Failed to get status for ${acc.upiId}:`, statusError);
+                      statuses[acc.upiId] = 'Active'; // Default to Active on error
+                 }
             }
         }
         setBankStatuses(statuses);
@@ -140,21 +149,35 @@ export default function SendMoneyPage() {
 
   // Verify UPI ID when a contact is selected or typed
    const verifyAndSelectPayee = useCallback(async (payee: Payee | { upiId: string, name: string, identifier: string, type: 'bank' | 'mobile' }) => {
-        const upiToVerify = payee.upiId || (payee.type === 'bank' || payee.type === 'mobile' ? payee.identifier : null); // Get UPI ID to verify
+        const upiToVerify = payee.upiId || (payee.type === 'bank' ? payee.identifier : null); // Get UPI ID to verify
 
         if (!upiToVerify || !upiToVerify.includes('@')) {
-            // If it's just a mobile number without UPI, select it directly (no verification needed here)
+            // If it's just a mobile number without UPI, select it directly
             if (payee.type === 'mobile' && !upiToVerify) {
-                 setSelectedPayee({ ...payee, verificationStatus: 'unverified' }); // Mark mobile-only as unverified
+                 setSelectedPayee({ ...payee, verificationStatus: 'unverified', verificationReason: 'Mobile Number Only' });
                  setSearchTerm(payee.name);
+                 setIsVerifyingUpi(false);
+                 setError(null);
                  return;
             }
-            toast({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter or select a valid UPI ID." });
-            return;
+            // If type is bank but identifier isn't a UPI ID
+            if (payee.type === 'bank' && !upiToVerify) {
+                setSelectedPayee({...payee, verificationStatus: 'unverified', verificationReason: 'Bank Account Only'});
+                setSearchTerm(payee.name);
+                setIsVerifyingUpi(false);
+                setError(null);
+                return;
+            }
+            // If it doesn't look like a UPI ID at all
+             toast({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter or select a valid UPI ID (@ included)." });
+             setSelectedPayee({...payee, verificationStatus: 'unverified', verificationReason: 'Invalid Format'});
+             setSearchTerm(payee.name); // Still set the name in search
+             setIsVerifyingUpi(false);
+             return;
         }
 
-        setSelectedPayee({ ...payee, verificationStatus: 'pending' }); // Set immediately with pending status
-        setSearchTerm(payee.name);
+        setSelectedPayee({ ...payee, upiId: upiToVerify, verificationStatus: 'pending' }); // Ensure UPI ID is set, mark pending
+        setSearchTerm(payee.name); // Update search bar
         setIsVerifyingUpi(true);
         setError(null); // Clear previous errors
 
@@ -163,36 +186,49 @@ export default function SendMoneyPage() {
              const validationResult = await apiClient<{
                 verifiedName: string | null,
                 isBlacklisted?: boolean,
-                isVerifiedMerchant?: boolean,
+                isVerifiedMerchant?: boolean, // Backend might provide this too
                 reason?: string
             }>(`/upi/verify?upiId=${encodeURIComponent(upiToVerify)}`);
 
 
             setSelectedPayee(prev => {
-                if (prev?.id === payee.id || prev?.identifier === payee.identifier) { // Ensure update applies to the right payee
+                // Ensure we are updating the correct payee state in case of rapid selections
+                if (prev?.upiId === upiToVerify || prev?.identifier === payee.identifier) {
                     let status: DisplayPayee['verificationStatus'] = 'unverified';
                     if (validationResult.isBlacklisted) status = 'blacklisted';
-                    else if (validationResult.isVerifiedMerchant) status = 'verified';
-                    else if (validationResult.verifiedName) status = 'verified'; // Treat verified name as verified user
+                     // Consider verified if name matches OR if backend flags as verified merchant
+                    else if ((validationResult.verifiedName && validationResult.verifiedName === prev.name) || validationResult.isVerifiedMerchant) status = 'verified';
+                    else if (validationResult.verifiedName) status = 'verified'; // Still treat as verified if name mismatch, but show verified name
 
                     return {
-                        ...payee,
+                        ...prev, // Keep original payee data
+                        upiId: upiToVerify, // Ensure UPI ID is updated if verified from identifier
                         verificationStatus: status,
-                        verifiedName: validationResult.verifiedName || undefined,
-                        verificationReason: validationResult.reason
+                        verifiedName: validationResult.verifiedName || undefined, // Store the verified name
+                        verificationReason: validationResult.reason || (status === 'unverified' ? 'Name mismatch or not found' : undefined)
                     };
                 }
                 return prev;
             });
+
+            if (validationResult.isBlacklisted) {
+                setError(`Payment Blocked: ${validationResult.reason || 'Recipient is flagged as suspicious.'}`);
+            } else if (validationResult.verifiedName && validationResult.verifiedName !== payee.name) {
+                 toast({ title: "Name Verification", description: `Registered name: ${validationResult.verifiedName}` });
+            }
+
         } catch (error: any) {
             console.error(`UPI verification failed for ${upiToVerify}:`, error);
             setSelectedPayee(prev => {
-                 if (prev?.id === payee.id || prev?.identifier === payee.identifier) {
-                    return { ...payee, verificationStatus: 'unverified', verificationReason: 'Verification failed' };
+                 if (prev?.upiId === upiToVerify || prev?.identifier === payee.identifier) {
+                    return { ...prev, upiId: upiToVerify, verificationStatus: 'unverified', verificationReason: 'Verification failed' };
                  }
                  return prev;
             });
-            toast({ variant: "destructive", title: "Verification Failed", description: `Could not verify ${upiToVerify}. Please check the ID.` });
+            // Avoid showing toast for 404 error if it just means unverified
+            if (!error.message?.includes('404')) {
+                 toast({ variant: "destructive", title: "Verification Failed", description: `Could not verify ${upiToVerify}. Please check the ID.` });
+            }
         } finally {
             setIsVerifyingUpi(false);
         }
@@ -202,10 +238,12 @@ export default function SendMoneyPage() {
   const handleClearSelection = () => {
     setSelectedPayee(null);
     setSearchTerm('');
+    setError(null); // Clear errors
     setFilteredContacts(allContacts); // Reset list
   };
 
   const handleSelectContact = (contact: DisplayPayee) => {
+     // Pass the full contact object including potentially missing upiId initially
     verifyAndSelectPayee(contact);
   };
 
@@ -262,7 +300,6 @@ export default function SendMoneyPage() {
             return;
         }
 
-
         setShowConfirmation(true);
         setIsProcessing(true);
         setPaymentResult(null);
@@ -296,12 +333,12 @@ export default function SendMoneyPage() {
             // Process result
             setPaymentResult(result as UpiTransactionResult); // Store result for confirmation screen
             if (result.success || result.status === 'Completed' || result.status === 'FallbackSuccess') {
-                toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${payeeToPay.name}.`, duration: 5000 });
+                toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${payeeToPay.verifiedName || payeeToPay.name}.`, duration: 5000 });
                  // Optionally reset form fields after success
-                setSelectedPayee(null);
-                setSearchTerm('');
-                setAmount('');
-                setNote('');
+                // setSelectedPayee(null);
+                // setSearchTerm('');
+                // setAmount('');
+                // setNote('');
                  // Refresh balance if wallet was used or fallback occurred
                  if (selectedPaymentSource === 'wallet' || (result as UpiTransactionResult).usedWalletFallback) {
                     getWalletBalance().then(setWalletBalance);
@@ -320,28 +357,46 @@ export default function SendMoneyPage() {
                 status: 'Failed',
                 message: err.message || "Payment processing failed."
              });
-             toast({ variant: "destructive", title: "Payment Failed", description: err.message });
+             // Toast moved inside handleMakePayment's final block
+             // toast({ variant: "destructive", title: "Payment Failed", description: err.message });
         } finally {
              setIsProcessing(false);
-             // Keep confirmation screen open until closed by user or navigation
+              // Show toast only if it's not a PIN cancellation error
+              if (error && error !== "PIN entry cancelled.") {
+                 toast({ variant: "destructive", title: "Payment Failed", description: error });
+              } else if (paymentResult && !(paymentResult.success || paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess')) {
+                 toast({ variant: "destructive", title: `Payment ${paymentResult.status || 'Failed'}`, description: paymentResult.message || "An error occurred." });
+              }
         }
     };
 
-   const getVerificationIcon = (status: DisplayPayee['verificationStatus']) => {
-     switch (status) {
-        case 'verified': return <BadgeCheck className="h-4 w-4 text-green-600" title="Verified"/>;
-        case 'blacklisted': return <ShieldAlert className="h-4 w-4 text-destructive" title="Suspicious Account"/>;
-        case 'unverified': return <ShieldQuestion className="h-4 w-4 text-yellow-600" title="Unverified"/>;
-        case 'pending': return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" title="Verifying..."/>;
-        default: return null;
-     }
-   };
+    const getVerificationIcon = (status: DisplayPayee['verificationStatus']) => {
+        switch (status) {
+            case 'verified': return <BadgeCheck className="h-4 w-4 text-green-600" title="Verified"/>;
+            case 'blacklisted': return <ShieldAlert className="h-4 w-4 text-destructive" title="Suspicious Account"/>;
+            case 'unverified': return <ShieldQuestion className="h-4 w-4 text-yellow-600" title="Unverified"/>;
+            case 'pending': return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" title="Verifying..."/>;
+            default: return <ShieldQuestion className="h-4 w-4 text-gray-400" title="Status Unknown"/>; // Default case
+        }
+    };
 
    const handleAddNewContact = () => {
       // TODO: Navigate to a dedicated "Add Contact" page or show a modal form
       alert("Add New Contact / Payee flow not implemented yet.");
       // Example navigation: router.push('/contacts/add');
    }
+
+   // Handle direct UPI ID input (if not found in search)
+   const handlePayToUpiId = () => {
+        if (searchTerm.includes('@') && !filteredContacts.some(c => c.upiId === searchTerm || c.identifier === searchTerm)) {
+             verifyAndSelectPayee({ name: searchTerm.split('@')[0], upiId: searchTerm, identifier: searchTerm, type: 'bank' });
+        } else if (searchTerm.match(/^[6-9]\d{9}$/) && !filteredContacts.some(c => c.identifier === searchTerm)) {
+             verifyAndSelectPayee({ name: searchTerm, identifier: searchTerm, type: 'mobile' }); // Treat as mobile contact initially
+        } else {
+            toast({ variant: "destructive", title: "Invalid Input", description: "Enter a valid UPI ID or mobile number to pay." });
+        }
+   }
+
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -357,7 +412,7 @@ export default function SendMoneyPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4 space-y-4">
+      <main className="flex-grow p-4 space-y-4 pb-20"> {/* Added pb-20 */}
 
         {/* Confirmation Screen */}
         {showConfirmation ? (
@@ -381,9 +436,9 @@ export default function SendMoneyPage() {
                             Payment {paymentResult.status === 'FallbackSuccess' ? 'Successful' : paymentResult.status}
                         </CardTitle>
                         <CardDescription>
-                            {paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess' ? `Successfully sent ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.name || paymentResult.recipientUpiId}.` :
-                             paymentResult.status === 'Pending' ? `Payment of ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.name || paymentResult.recipientUpiId} is pending.` :
-                             `Failed to send ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.name || paymentResult.recipientUpiId}.`}
+                            {paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess' ? `Successfully sent ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.verifiedName || selectedPayee?.name || paymentResult.recipientUpiId}.` :
+                             paymentResult.status === 'Pending' ? `Payment of ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.verifiedName || selectedPayee?.name || paymentResult.recipientUpiId} is pending.` :
+                             `Failed to send ₹${Math.abs(Number(amount)).toFixed(2)} to ${selectedPayee?.verifiedName || selectedPayee?.name || paymentResult.recipientUpiId}.`}
                         </CardDescription>
                         {paymentResult.message && <p className="text-sm mt-1">{paymentResult.message}</p>}
                          {paymentResult.status === 'FallbackSuccess' && <p className="text-sm mt-1 font-medium text-blue-600 flex items-center justify-center gap-1"><Wallet className="h-4 w-4"/> Paid via Wallet (Recovery Scheduled)</p>}
@@ -391,7 +446,7 @@ export default function SendMoneyPage() {
                     <CardContent className="text-center space-y-3">
                          <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
                             <p><strong>Amount:</strong> ₹{Math.abs(Number(amount)).toFixed(2)}</p>
-                            <p><strong>To:</strong> {selectedPayee?.name || paymentResult.recipientUpiId} ({paymentResult.recipientUpiId})</p>
+                            <p><strong>To:</strong> {selectedPayee?.verifiedName || selectedPayee?.name || paymentResult.recipientUpiId} ({paymentResult.recipientUpiId})</p>
                             <p><strong>Date:</strong> {format(new Date(), 'PPp')}</p> {/* Use current time */}
                              {paymentResult.transactionId && <p><strong>Transaction ID:</strong> {paymentResult.transactionId}</p>}
                              {paymentResult.ticketId && <p className="font-medium text-orange-600"><strong>Ticket ID:</strong> {paymentResult.ticketId}</p>}
@@ -399,9 +454,14 @@ export default function SendMoneyPage() {
                          </div>
                          <Button className="w-full" onClick={() => router.push('/')}>Done</Button>
                          <Button variant="link" onClick={() => router.push('/history')}>View History</Button>
-                          {(paymentResult.status === 'Failed' && paymentResult.ticketId) && (
-                             <Button variant="link" className="w-full flex items-center gap-1 text-destructive"><HelpCircle className="h-4 w-4"/> Get Help</Button>
-                         )}
+                          {paymentResult.status === 'Failed' && ( // Show Try Again only for failed states
+                             <Button variant="outline" className="w-full" onClick={() => { setShowConfirmation(false); setPaymentResult(null); setError(null); }}>Try Again</Button>
+                          )}
+                           {(paymentResult.status === 'Failed' && paymentResult.ticketId) && ( // Show help only if ticket exists
+                                <Link href={`/support?ticketId=${paymentResult.ticketId}`} passHref>
+                                    <Button variant="link" className="w-full flex items-center gap-1 text-destructive"><HelpCircle className="h-4 w-4"/> Get Help</Button>
+                                </Link>
+                            )}
                     </CardContent>
                  </Card>
              ) : (
@@ -427,33 +487,34 @@ export default function SendMoneyPage() {
                         {/* Contact Search/Input */}
                         <div className="space-y-2">
                             <Label htmlFor="payeeInput">{type === 'bank' ? 'Enter UPI ID or Search Bank Contact' : 'Search Mobile Contact'}</Label>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 relative">
+                                <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/>
                                 <Input
                                     id="payeeInput"
                                     type={type === 'mobile' ? 'search' : 'text'}
                                     placeholder={type === 'bank' ? 'name@upi or Name' : 'Enter name or mobile number'}
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="flex-grow"
+                                    className="pl-8 flex-grow" // Add padding for icon
                                     disabled={!!selectedPayee} // Disable input when payee is selected
                                 />
                                 {selectedPayee && (
-                                    <Button variant="ghost" size="icon" onClick={handleClearSelection} title="Clear Selection">
+                                    <Button variant="ghost" size="icon" onClick={handleClearSelection} title="Clear Selection" className="h-auto px-2">
                                         <XCircle className="h-5 w-5 text-muted-foreground" />
                                     </Button>
                                 )}
                             </div>
                         </div>
 
-                        {/* Contact/UPI ID List */}
+                         {/* Contact/UPI ID List */}
                          {isLoadingContacts ? (
                              <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-primary"/></div>
-                         ) : searchTerm && !selectedPayee ? (
+                         ) : !selectedPayee && searchTerm ? (
                              <ScrollArea className="max-h-40 border rounded-md">
                                  <div className="p-2 space-y-1">
-                                    {filteredContacts.length === 0 && <p className="text-xs text-muted-foreground p-2 text-center">No matching contacts found.</p>}
+                                    {filteredContacts.length === 0 && !(searchTerm.includes('@') || searchTerm.match(/^[6-9]\d{9}$/)) && <p className="text-xs text-muted-foreground p-2 text-center">No matching contacts found.</p>}
                                      {filteredContacts.map((contact) => (
-                                        <Button key={contact.id || contact.identifier} variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={() => verifyAndSelectPayee(contact)}>
+                                        <Button key={contact.id || contact.identifier} variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={() => handleSelectContact(contact)}>
                                             <Avatar className="h-7 w-7 mr-2">
                                                 <AvatarImage src={`https://picsum.photos/seed/${contact.avatarSeed}/30/30`} alt={contact.name} data-ai-hint="person avatar"/>
                                                 <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
@@ -464,15 +525,24 @@ export default function SendMoneyPage() {
                                             </div>
                                         </Button>
                                      ))}
-                                     {/* Option to add/pay entered UPI ID if not in contacts */}
-                                     {type === 'bank' && searchTerm.includes('@') && !filteredContacts.some(c => c.upiId === searchTerm || c.identifier === searchTerm) && (
-                                         <Button variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={() => verifyAndSelectPayee({ name: searchTerm.split('@')[0], upiId: searchTerm, identifier: searchTerm, type: 'bank'})}>
+                                     {/* Option to add/pay entered UPI ID or Mobile if not in contacts */}
+                                     {filteredContacts.length === 0 && (searchTerm.includes('@') || searchTerm.match(/^[6-9]\d{9}$/)) && (
+                                         <Button variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={handlePayToUpiId}>
                                              <UserPlus className="h-4 w-4 mr-2" /> Pay to <span className="font-medium ml-1">{searchTerm}</span>
                                          </Button>
                                      )}
+                                     {filteredContacts.length === 0 && !searchTerm.includes('@') && !searchTerm.match(/^[6-9]\d{9}$/) && (
+                                        <Button variant="link" size="sm" onClick={handleAddNewContact} className="w-full justify-center text-xs h-auto py-1">
+                                            <UserPlus className="h-3 w-3 mr-1"/> Add New Contact
+                                        </Button>
+                                     )}
                                  </div>
                             </ScrollArea>
+                         ) : !selectedPayee && !searchTerm ? (
+                            // Show recent/frequent contacts or empty state if no search and no selection
+                             <p className="text-xs text-muted-foreground text-center py-2">Search or select a contact to begin.</p>
                          ) : null}
+
 
                         {/* Selected Payee Display */}
                         {selectedPayee && (
@@ -494,7 +564,8 @@ export default function SendMoneyPage() {
                                       </div>
                                  </div>
                                   {selectedPayee.verificationStatus === 'blacklisted' && <p className="text-xs text-destructive mt-1">{selectedPayee.verificationReason || 'Suspicious Activity Detected.'}</p>}
-                                  {selectedPayee.verificationStatus === 'unverified' && selectedPayee.upiId && <p className="text-xs text-yellow-600 mt-1">UPI ID not verified. Proceed with caution.</p>}
+                                   {selectedPayee.verificationStatus === 'unverified' && selectedPayee.upiId && <p className="text-xs text-yellow-600 mt-1">{selectedPayee.verificationReason || 'UPI ID not verified. Proceed with caution.'}</p>}
+                                   {selectedPayee.verificationStatus === 'unverified' && !selectedPayee.upiId && selectedPayee.type === 'mobile' && <p className="text-xs text-yellow-600 mt-1">Mobile number only, no UPI ID found for verification.</p>}
                             </Card>
                         )}
 
@@ -513,7 +584,7 @@ export default function SendMoneyPage() {
                                     min="1"
                                     step="0.01"
                                     className="pl-7 text-xl font-semibold h-12"
-                                    disabled={!selectedPayee || isProcessing}
+                                    disabled={!selectedPayee || isProcessing || isVerifyingUpi}
                                 />
                             </div>
                         </div>
@@ -527,7 +598,7 @@ export default function SendMoneyPage() {
                                 placeholder="Add a message"
                                 value={note}
                                 onChange={(e) => setNote(e.target.value)}
-                                disabled={!selectedPayee || isProcessing}
+                                disabled={!selectedPayee || isProcessing || isVerifyingUpi}
                                 maxLength={50}
                             />
                         </div>
@@ -591,7 +662,7 @@ export default function SendMoneyPage() {
                             type="button"
                             onClick={handleMakePayment}
                             className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
-                            disabled={!selectedPayee || !amount || Number(amount) <= 0 || isProcessing || selectedPayee.verificationStatus === 'blacklisted' || (selectedPaymentSource === 'upi' && !selectedAccountUpiId)}
+                            disabled={!selectedPayee || !amount || Number(amount) <= 0 || isProcessing || isVerifyingUpi || selectedPayee.verificationStatus === 'blacklisted' || (selectedPaymentSource === 'upi' && (!selectedAccountUpiId || bankStatuses[selectedAccountUpiId] === 'Down')) || (selectedPaymentSource === 'wallet' && walletBalance < Number(amount))}
                           >
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                             {isProcessing ? 'Processing...' : 'Pay Now'}
@@ -607,7 +678,7 @@ export default function SendMoneyPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
                      <AlertDialogDescription>
-                         Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹{Number(amount).toFixed(2)} to {selectedPayee?.name}.
+                         Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹{Number(amount).toFixed(2)} to {selectedPayee?.verifiedName || selectedPayee?.name}.
                      </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4">
@@ -654,3 +725,4 @@ export default function SendMoneyPage() {
         default: return null;
     }
  };
+

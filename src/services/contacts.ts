@@ -107,17 +107,24 @@ export async function savePayee(payeeData: Omit<Payee, 'id' | 'userId' | 'avatar
  *
  * @param payeeId The ID of the payee to update.
  * @param updateData The partial data to update.
- * @returns A promise that resolves when the update is complete.
+ * @returns A promise that resolves to the updated PayeeClient object returned by the backend.
  */
-export async function updatePayee(payeeId: string, updateData: Partial<Omit<Payee, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-    console.log(`[Client Service] Updating payee ${payeeId} via API`);
+export async function updatePayee(payeeId: string, updateData: Partial<Omit<Payee, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<PayeeClient> {
+    console.log(`[Client Service] Updating payee ${payeeId} via API:`, updateData);
     const endpoint = `/contacts/${payeeId}`; // Assuming endpoint structure
     try {
-        await apiClient<void>(endpoint, {
+        const updatedPayee = await apiClient<PayeeClient>(endpoint, {
             method: 'PUT', // Or PATCH depending on backend implementation
             body: JSON.stringify(updateData),
         });
         console.log("Payee updated successfully via API.");
+        // Convert dates if needed
+         return {
+             ...updatedPayee,
+             createdAt: updatedPayee.createdAt ? new Date(updatedPayee.createdAt) : undefined,
+             updatedAt: updatedPayee.updatedAt ? new Date(updatedPayee.updatedAt) : undefined,
+             avatarSeed: updatedPayee.avatarSeed || updatedPayee.name?.toLowerCase().replace(/\s+/g, '') || updatedPayee.id,
+         };
     } catch (error) {
         console.error("Error updating payee via API:", error);
         throw error; // Re-throw
@@ -151,3 +158,4 @@ export async function deletePayee(payeeId: string): Promise<void> {
 // export interface PayeeClient extends Omit<Payee, ...> { ... }
 // export type { Payee as PayeeFirestore } // Alias if needed
 import type { Timestamp } from 'firebase/firestore'; // Keep if type definition uses it
+

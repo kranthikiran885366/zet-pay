@@ -12,7 +12,7 @@ export type { BankAccount, UpiTransactionResult };
 /**
  * Asynchronously links a bank account for UPI transactions via the backend API.
  *
- * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId).
+ * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId, pinLength).
  * @returns A promise that resolves to the newly linked BankAccount object returned by the backend.
  * @throws Error if the user is not logged in or linking fails.
  */
@@ -24,12 +24,17 @@ export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'use
             body: JSON.stringify(bankDetails),
         });
         console.log("Bank account linked successfully via API:", linkedAccount);
+        // Convert createdAt string if needed
+        if (linkedAccount.createdAt && typeof linkedAccount.createdAt === 'string') {
+            linkedAccount.createdAt = new Date(linkedAccount.createdAt);
+        }
         return linkedAccount;
     } catch (error) {
         console.error("Error linking bank account via API:", error);
         throw error; // Re-throw error caught by apiClient
     }
 }
+
 
 /**
  * Asynchronously retrieves linked bank accounts for the current user from the backend API.
@@ -40,7 +45,11 @@ export async function getLinkedAccounts(): Promise<BankAccount[]> {
     try {
         const accounts = await apiClient<BankAccount[]>('/upi/accounts');
         console.log(`Fetched ${accounts.length} linked accounts via API.`);
-        return accounts;
+         // Convert createdAt string if needed
+         return accounts.map(acc => ({
+            ...acc,
+            createdAt: acc.createdAt && typeof acc.createdAt === 'string' ? new Date(acc.createdAt) : acc.createdAt
+        }));
     } catch (error) {
         console.error("Error fetching linked accounts via API:", error);
         return []; // Return empty array on error
@@ -113,21 +122,39 @@ export async function checkBalance(upiId: string, pin: string): Promise<number> 
 
 /**
  * Asynchronously verifies a UPI ID using the backend API.
+ * Backend now returns more details.
  * @param upiId The UPI ID to verify.
- * @returns A promise that resolves to the registered name of the UPI ID holder.
- * @throws Error if verification fails or UPI ID is invalid.
+ * @returns A promise that resolves to an object with verification status and details.
+ * @throws Error if the API call itself fails.
  */
-export async function verifyUpiId(upiId: string): Promise<string> {
+export async function verifyUpiId(upiId: string): Promise<{
+    verifiedName: string | null;
+    isBlacklisted?: boolean;
+    isVerifiedMerchant?: boolean;
+    reason?: string;
+}> {
     console.log(`Verifying UPI ID via API: ${upiId}`);
     try {
-        const response = await apiClient<{ verifiedName: string }>(`/upi/verify?upiId=${encodeURIComponent(upiId)}`);
-        if (!response || !response.verifiedName) {
-             throw new Error("Verification failed: No name returned.");
+        const response = await apiClient<{
+            verifiedName: string | null;
+            isBlacklisted?: boolean;
+            isVerifiedMerchant?: boolean; // Assuming backend adds this
+            reason?: string;
+        }>(`/upi/verify?upiId=${encodeURIComponent(upiId)}`);
+
+        if (!response) { // Handle case where API might return empty success
+             return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "Verification failed: Empty response from server." };
         }
-        return response.verifiedName;
-    } catch (error) {
+        console.log("Verification result from API:", response);
+        return response; // Return the full object
+    } catch (error: any) {
         console.error("UPI ID Verification failed via API:", error);
-        throw error; // Re-throw error
+         // If API client throws structured errors, handle 404 etc.
+         if (error.message?.includes('404')) {
+            return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "UPI ID not found." };
+         }
+        // Rethrow other errors or return a generic failure state
+         return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: `Verification failed: ${error.message}` };
     }
 }
 
@@ -197,3 +224,4 @@ export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 
         return 'Active'; // Default to 'Active' on error to avoid blocking unnecessarily
     }
 }
+

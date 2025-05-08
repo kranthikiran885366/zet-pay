@@ -22,7 +22,10 @@ export interface UserProfile {
     defaultPaymentMethod?: 'upi' | 'wallet' | string;
     isSeniorCitizenMode?: boolean;
     familyGroupIds?: string[];
+    // Added for contact list integration
+    upiId?: string; // User's primary UPI ID
 }
+
 
 export interface Transaction {
   id: string;
@@ -61,7 +64,9 @@ export interface BankAccount {
   userId: string; // Link to the user
   isDefault?: boolean;
   pinLength?: 4 | 6;
+  createdAt?: Date | string; // Allow string from API
 }
+
 
 export interface UpiTransactionResult {
   transactionId?: string;
@@ -73,7 +78,12 @@ export interface UpiTransactionResult {
   walletTransactionId?: string;
   ticketId?: string; // For failed transactions
   refundEta?: string; // ETA for refund on failure
+  // Added fields from backend type
+  success?: boolean; // Can likely be derived from status
+  errorCode?: string;
+  mightBeDebited?: boolean;
 }
+
 
 export interface Payee {
   id: string;
@@ -331,6 +341,8 @@ export interface BookingConfirmation {
 // For Marriage Venue Bookings (Client-side: Form Data / Search Result)
 export interface MarriageVenue extends BookingSearchResult {
     city: string;
+    requiresApproval?: boolean; // Added from backend mock
+    bookingFee?: number; // Added from backend mock
 }
 
 // For Marriage Venue Booking Request Payload (Client to Backend)
@@ -351,3 +363,4 @@ export interface MarriageBookingDetails {
 // Note: Where Date | string is used, API will return string (likely ISO 8601),
 // and the service function should convert it to a Date object for client use.
 // Backend types might use Timestamp directly.
+
