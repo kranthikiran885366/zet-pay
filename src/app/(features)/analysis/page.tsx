@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Info, TrendingUp, Target, DollarSign, Settings, PlusCircle, Edit, Trash2, Loader2, RefreshCw } from 'lucide-react'; // Added RefreshCw
+import { ArrowLeft, Info, TrendingUp, Target, DollarSign, Settings, PlusCircle, Edit, Trash2, Loader2, RefreshCw } from 'lucide-react'; // Removed AI-related icons if any
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Transaction } from '@/services/transactions'; // Use Transaction type
 import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions'; // Use real-time hook
-import { analyzeSpending, AnalyzeSpendingInput, AnalyzeSpendingOutput } from '@/ai/flows/spending-analysis';
+// Removed AI import: import { analyzeSpending, AnalyzeSpendingInput, AnalyzeSpendingOutput } from '@/ai/flows/spending-analysis';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
@@ -51,8 +51,8 @@ const categorizeTransaction = (tx: Transaction): string => {
 
 export default function SpendingAnalysisPage() {
     const [transactions, isLoading, refreshTransactions] = useRealtimeTransactions(); // Use real-time hook
-    const [analysis, setAnalysis] = useState<AnalyzeSpendingOutput | null>(null);
-    const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false); // Manages AI analysis loading state
+    // Removed AI state: const [analysis, setAnalysis] = useState<AnalyzeSpendingOutput | null>(null);
+    // Removed AI state: const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false); // Manages AI analysis loading state
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [isBudgetDialogOpen, setIsBudgetDialogOpen] = useState(false);
     const [currentBudget, setCurrentBudget] = useState<Partial<Budget>>({});
@@ -80,54 +80,14 @@ export default function SpendingAnalysisPage() {
             setIsLoggedIn(!!user);
             if (!user) {
                 // Clear data if user logs out
-                setAnalysis(null);
-                // refreshTransactions(); // Trigger hook to clear transactions
+                // Removed AI state clear: setAnalysis(null);
             }
         });
         return () => unsubscribe();
-     }, [refreshTransactions]);
+     }, []);
 
 
-    // Function to trigger AI analysis
-    const triggerAnalysis = async (currentTransactions: Transaction[]) => {
-         if (!isLoggedIn) return; // Don't analyse if not logged in
-        if (currentTransactions.length > 0) {
-            setIsLoadingAnalysis(true);
-            try {
-                 const input: AnalyzeSpendingInput = {
-                    transactionHistory: JSON.stringify(currentTransactions.map(tx => ({
-                        name: tx.name,
-                        description: tx.description,
-                        amount: tx.amount,
-                        date: tx.date ? new Date(tx.date).toISOString().split('T')[0] : undefined, // Handle potential string date
-                        type: tx.type,
-                        status: tx.status,
-                    }))),
-                 };
-                 const analysisResult = await analyzeSpending(input);
-                 setAnalysis(analysisResult);
-                 // Toast removed, happens too often with real-time updates
-                 // toast({ title: "Spending Analysis Updated", description: "AI insights generated based on latest transactions." });
-             } catch(error) {
-                 console.error("Error analyzing spending:", error);
-                 // Toast removed, can be annoying
-                 // toast({ variant: "destructive", title: "Analysis Error", description: "Could not generate spending analysis." });
-                 setAnalysis(null);
-             } finally {
-                 setIsLoadingAnalysis(false);
-             }
-        } else {
-             setAnalysis(null); // No transactions, no analysis
-             setIsLoadingAnalysis(false);
-        }
-    };
-
-
-     // Trigger analysis whenever transactions update from the hook
-    useEffect(() => {
-        triggerAnalysis(transactions);
-    }, [transactions]); // Re-run analysis when transactions change
-
+    // Removed AI analysis function: triggerAnalysis
 
     // Process data for charts and budgets based on the current transactions state
     const { spendingData, totalSpending, availableCategories } = useMemo(() => {
@@ -296,42 +256,8 @@ export default function SpendingAnalysisPage() {
                             </CardContent>
                         </Card>
 
-                        {/* AI Insights */}
-                         <Card className="shadow-md">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                     <Info className="h-5 w-5 text-primary"/> AI Insights & Recommendations
-                                </CardTitle>
-                                <CardDescription>Powered by AI to help you manage your finances.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3 text-sm">
-                                {isLoadingAnalysis && <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2 text-muted-foreground">Generating insights...</span></div>}
-                                {!isLoadingAnalysis && analysis ? (
-                                    <>
-                                         <Alert variant="default" className="bg-blue-50 border-blue-200">
-                                             <AlertTitle className="font-semibold text-blue-800">Summary</AlertTitle>
-                                             <AlertDescription className="text-blue-700">{analysis.summary || 'No summary generated.'}</AlertDescription>
-                                         </Alert>
-                                          <Alert variant="default" className="bg-yellow-50 border-yellow-200">
-                                             <AlertTitle className="font-semibold text-yellow-800">Key Insights</AlertTitle>
-                                             <AlertDescription className="text-yellow-700">{analysis.insights || 'No insights generated.'}</AlertDescription>
-                                         </Alert>
-                                         <Alert variant="default" className="bg-green-50 border-green-200">
-                                             <AlertTitle className="font-semibold text-green-800">Recommendations</AlertTitle>
-                                             <AlertDescription className="text-green-700">{analysis.recommendations || 'No recommendations generated.'}</AlertDescription>
-                                         </Alert>
-                                    </>
-                                ) : !isLoadingAnalysis && transactions.length > 0 ? (
-                                    <p className="text-muted-foreground text-center py-4">Could not generate AI insights at this time.</p>
-                                ) : !isLoadingAnalysis && transactions.length === 0 ? (
-                                     <p className="text-muted-foreground text-center py-4">No transactions yet to generate insights.</p>
-                                ) : null }
-                                {/* Manual Refresh Button */}
-                                <Button variant="link" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => triggerAnalysis(transactions)} disabled={isLoadingAnalysis || transactions.length === 0}>
-                                    <RefreshCw className="h-3 w-3 mr-1"/> {!isLoadingAnalysis && 'Regenerate Analysis'}
-                                </Button>
-                            </CardContent>
-                        </Card>
+                        {/* REMOVED AI Insights Section */}
+
 
                          {/* Budgets Section */}
                         <Card className="shadow-md">
@@ -437,3 +363,4 @@ export default function SpendingAnalysisPage() {
             </main>
         </div>
     );}
+

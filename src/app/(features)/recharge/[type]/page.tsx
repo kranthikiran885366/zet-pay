@@ -7,17 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban, HardDrive, Ticket } from 'lucide-react'; // Added HardDrive, Ticket
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban, HardDrive, Ticket, TramFront, Train, Play } from 'lucide-react';
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService, getRechargePlans, removed mock exports
 import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { recommendRechargePlans, RecommendRechargePlansInput } from '@/ai/flows/recharge-plan-recommendation';
+// Removed AI import: import { recommendRechargePlans, RecommendRechargePlansInput } from '@/ai/flows/recharge-plan-recommendation';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Added DialogTrigger, DialogClose
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"; // Added AlertDialog components
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, addDays, isBefore, differenceInMinutes } from "date-fns"; // Added differenceInMinutes, isBefore
@@ -31,7 +31,7 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 import { getWalletBalance } from '@/services/wallet'; // Import wallet balance service
 import { getBankStatus, BankAccount } from '@/services/upi'; // Import bank status service and BankAccount type
 import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions'; // Import Transaction related types and function
-import { auth } from '@/lib/firebase'; // Import auth
+import { auth } from '@/lib/firebase';
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
@@ -40,13 +40,14 @@ const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '
 const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string; identifierLabel: string; searchPlaceholder: string; recentLabel: string } } = {
   mobile: { icon: Smartphone, title: "Mobile Recharge", identifierLabel: "Mobile Number", searchPlaceholder: "Enter mobile number or name", recentLabel: "Recents & Contacts"},
   dth: { icon: Tv, title: "DTH Recharge", identifierLabel: "DTH Subscriber ID", searchPlaceholder: "Enter Customer ID or Mobile No.", recentLabel: "Recent DTH Providers"},
-  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers" }, // Keep for potential future use?
-  fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers"}, // Updated icon
-  datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers" }, // Added Data Card
-  buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes" }, // Added Bus Pass
-  metro: { icon: TramFront, title: "Metro Recharge", identifierLabel: "Metro Card Number", searchPlaceholder: "Enter Card Number", recentLabel: "Recent Metros"}, // Added Metro
+  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers" },
+  fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers"},
+  datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers" },
+  buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes" },
+  metro: { icon: TramFront, title: "Metro Recharge", identifierLabel: "Metro Card Number", searchPlaceholder: "Enter Card Number", recentLabel: "Recent Metros"},
   // Add more types as needed
 };
+
 
 // Mock user data (replace with actual fetching)
 const mockUsageHistory = {
@@ -107,8 +108,8 @@ export default function RechargePage() {
   const [isPlanLoading, setIsPlanLoading] = useState(false);
   const [planSearchTerm, setPlanSearchTerm] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<RechargePlan | null>(null);
-  const [recommendedPlanIds, setRecommendedPlanIds] = useState<string[]>([]);
-  const [isRecommending, setIsRecommending] = useState(false);
+  // Removed AI state: const [recommendedPlanIds, setRecommendedPlanIds] = useState<string[]>([]);
+  // Removed AI state: const [isRecommending, setIsRecommending] = useState(false);
   const [plansToCompare, setPlansToCompare] = useState<RechargePlan[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [showTariffModal, setShowTariffModal] = useState<RechargePlan | null>(null);
@@ -137,7 +138,7 @@ export default function RechargePage() {
       try {
          const userId = auth.currentUser?.uid; // Get current user ID
          if (userId) {
-            const balance = await getWalletBalance(userId);
+            const balance = await getWalletBalance();
             setAccountBalance(balance);
          } else {
             setAccountBalance(0); // Or null if preferred when logged out
@@ -234,7 +235,7 @@ export default function RechargePage() {
        fetchBankStatus(selectedBiller); // You might need a mapping from billerId to bank identifier
     } else {
       setRechargePlans([]);
-      setRecommendedPlanIds([]);
+      // Removed AI State: setRecommendedPlanIds([]);
       setSelectedBillerName('');
       setBankStatus(null); // Clear bank status
     }
@@ -315,16 +316,12 @@ export default function RechargePage() {
              }
              // Optionally redirect after success
              // router.push('/history');
-        } else if (result.status === 'Pending') {
+        } else { // Failed or Pending status
              toast({
-                title: "Recharge Pending",
-                description: `Recharge of ₹${amount} for ${identifier} is pending confirmation. Transaction ID: ${result.id}`,
+                title: `Recharge ${result.status}`,
+                description: result.description || `Recharge of ₹${amount} for ${identifier} is ${result.status}. Transaction ID: ${result.id}`,
                 duration: 5000,
              });
-             // Keep form state, maybe show pending status near the button
-        } else { // Failed status
-            // The error message from processRecharge will be used
-            throw new Error(`Recharge ${result.status || 'Failed'}`);
         }
 
     } catch (err: any) {
@@ -377,18 +374,15 @@ export default function RechargePage() {
     if (!selectedBiller) return;
     setIsPlanLoading(true);
     setRechargePlans([]);
-    setRecommendedPlanIds([]);
-    setIsRecommending(false);
+    // Removed AI State: setRecommendedPlanIds([]);
+    // Removed AI State: setIsRecommending(false);
     try {
       console.log(`Fetching plans for ${selectedBillerName} (${selectedBiller}) - Type: ${type}`);
       // Replace with actual API call
       const fetchedPlans = await getRechargePlans(selectedBiller, type, identifier); // Use service function
       setRechargePlans(fetchedPlans);
-      if (type === 'mobile' && fetchedPlans.length > 0) {
-        fetchRecommendations(fetchedPlans);
-      } else {
-         setRecommendedPlanIds([]); // Clear recommendations for non-mobile or if no plans
-      }
+      // Removed AI Call: fetchRecommendations(fetchedPlans);
+
     } catch (error) {
       console.error("Failed to fetch recharge plans:", error);
       toast({ variant: "destructive", title: "Could not load recharge plans" });
@@ -397,32 +391,7 @@ export default function RechargePage() {
     }
   };
 
-  const fetchRecommendations = async (plans: RechargePlan[]) => {
-    if (!selectedBillerName || plans.length === 0) return;
-    const userId = auth.currentUser?.uid;
-    if (!userId) return; // Need user ID for recommendations
-
-    setIsRecommending(true);
-    try {
-      const input: RecommendRechargePlansInput = {
-        userId: userId,
-        operatorName: selectedBillerName,
-        availablePlans: plans,
-        usageHistory: mockUsageHistory, // Replace with actual fetched usage history
-      };
-      const result = await recommendRechargePlans(input);
-      setRecommendedPlanIds(result.recommendedPlanIds);
-      if (result.reasoning && result.recommendedPlanIds.length > 0) {
-        toast({ title: "Plan Recommendations Loaded", description: result.reasoning, duration: 5000 });
-      }
-    } catch (error) {
-      console.error("Failed to get recommendations:", error);
-      console.log("AI Recommendation service might be unavailable.");
-       setRecommendedPlanIds([]); // Clear on error
-    } finally {
-      setIsRecommending(false);
-    }
-  };
+  // Removed AI Recommendation function: fetchRecommendations
 
    const { filteredPlansByCategory, planCategories } = useMemo(() => {
      let plans = rechargePlans;
@@ -452,8 +421,8 @@ export default function RechargePage() {
          let category = plan.category || 'Other';
           // Override category for mobile specific logic
           if (type === 'mobile') {
-            if (recommendedPlanIds.includes(plan.planId)) category = 'Recommended';
-            else if (plan.isOffer) category = 'Offers';
+             // Removed AI logic: if (recommendedPlanIds.includes(plan.planId)) category = 'Recommended';
+            if (plan.isOffer) category = 'Offers';
           }
 
          if (!acc[category]) acc[category] = [];
@@ -464,7 +433,7 @@ export default function RechargePage() {
       // Dynamically add Offer/Recommended tabs for mobile
       if (type === 'mobile') {
          if (grouped['Offers']) dynamicCategories.unshift('Offers');
-         if (grouped['Recommended']) dynamicCategories.unshift('Recommended');
+         // Removed AI logic: if (grouped['Recommended']) dynamicCategories.unshift('Recommended');
       }
 
      let finalCategories = dynamicCategories.filter(cat => grouped[cat]?.length > 0);
@@ -478,7 +447,7 @@ export default function RechargePage() {
      }
 
      return { filteredPlansByCategory: grouped, planCategories: finalCategories };
-   }, [rechargePlans, planSearchTerm, recommendedPlanIds, isPlanLoading, type]);
+   }, [rechargePlans, planSearchTerm, isPlanLoading, type]); // Removed AI dependency: recommendedPlanIds
 
   // Separate detection logic for better clarity
   const detectMobileOperator = useCallback(async () => {
@@ -622,7 +591,7 @@ export default function RechargePage() {
 
   const handleQuickRecharge = (entry: Transaction) => { // Changed type to Transaction
     if (entry.billerId && entry.amount) {
-      setIdentifier(entry.upiId || entry.identifier || ''); // Use identifier if available
+      setIdentifier(entry.identifier || entry.upiId || ''); // Use identifier if available
       setSelectedBiller(entry.billerId);
       setAmount(Math.abs(entry.amount).toString()); // Use absolute value
       // Attempt to find matching plan based on amount and potentially description
@@ -963,11 +932,11 @@ export default function RechargePage() {
                         />
                     </CardHeader>
                     <CardContent className="pt-2">
-                        {isPlanLoading || isRecommending ? (
+                        {isPlanLoading ? (
                            <div className="flex items-center justify-center py-6">
                              <Loader2 className="h-6 w-6 animate-spin text-primary" />
                              <p className="ml-2 text-sm text-muted-foreground">
-                                {isRecommending ? 'Finding best plans for you...' : 'Loading plans...'}
+                                Loading plans...
                              </p>
                            </div>
                          ) : planCategories.length === 0 && rechargePlans.length > 0 ? (
@@ -975,7 +944,7 @@ export default function RechargePage() {
                           ) : rechargePlans.length === 0 ? (
                            <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName}.</p>
                          ) : (
-                           <Tabs defaultValue={planCategories[0] || 'Recommended'} className="w-full">
+                           <Tabs defaultValue={planCategories[0]} className="w-full">
                              <ScrollArea className="w-full pb-3">
                                 <TabsList className="flex w-max mb-4">
                                     {planCategories.map(category => (
@@ -1001,7 +970,7 @@ export default function RechargePage() {
                                               <div>
                                                   <p className="font-bold text-lg">₹{plan.price}</p>
                                                    {plan.isOffer && <Badge variant="destructive" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1">Offer</Badge>}
-                                                   {category === 'Recommended' && type === 'mobile' && <Badge variant="secondary" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1 flex items-center gap-1 bg-yellow-100 text-yellow-800"><Star className="h-3 w-3 text-yellow-500 fill-current"/> Recommended</Badge>}
+                                                   {/* Removed AI Badge */}
                                               </div>
                                           </div>
                                            <p className="text-sm mt-1 text-muted-foreground">{plan.description}</p>
@@ -1262,3 +1231,4 @@ export default function RechargePage() {
     </div>
   );
 }
+

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -6,7 +5,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle, RefreshCw } from "lucide-react"; // Added RefreshCw
+import { QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, Settings, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet, Mic, MessageSquare, Loader2, HelpCircle, RefreshCw, Home as HomeIcon, Repeat } from "lucide-react"; // Added Repeat
 import Image from 'next/image';
 // Transaction imports are handled by the hook now
 import { useToast } from "@/hooks/use-toast";
@@ -28,9 +27,9 @@ const offers = [
 
 const switchApps = [
   { id: 1, name: "Book Flights", icon: Plane, color: "text-blue-500", bgColor: "bg-blue-100", dataAiHint: "travel flight booking", href: "/travels/flight" },
-  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/" }, // Placeholder href
+  { id: 2, name: "Shop Online", icon: ShoppingBag, color: "text-purple-500", bgColor: "bg-purple-100", dataAiHint: "ecommerce online shopping", href: "/shopping/online" }, // Updated href
   { id: 3, name: "Order Food", icon: UtensilsCrossed, color: "text-orange-500", bgColor: "bg-orange-100", dataAiHint: "food delivery restaurant", href: "/food"},
-  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/" }, // Placeholder href
+  { id: 4, name: "Book Hotels", icon: Landmark, color: "text-red-500", bgColor: "bg-red-100", dataAiHint: "hotel booking accommodation", href: "/hostels" }, // Updated href
 ];
 
 const quickLinks = [
@@ -74,15 +73,12 @@ export default function Home() {
 
   // Check auth state on mount
   useEffect(() => {
-    // setIsLoadingTransactions(true); // No longer needed, hook handles it
+    // isLoadingTransactions is handled by the hook
     console.log("Setting up auth listener for homepage...");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
         const loggedIn = !!user;
         console.log(`Auth state changed on homepage. User ${loggedIn ? 'logged in' : 'logged out'}.`);
         setIsLoggedIn(loggedIn);
-        // if (!loggedIn) {
-        //      setIsLoadingTransactions(false); // No longer needed, hook handles it
-        // }
         // Transaction subscription is handled by the useRealtimeTransactions hook
     });
 
@@ -194,23 +190,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Conversational Action Link */}
-        <Link href="/conversation" passHref legacyBehavior>
-            <a className="block">
-                <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-                    <CardContent className="p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <MessageSquare className="h-6 w-6"/>
-                            <div>
-                                <p className="font-semibold text-sm">Ask PayFriend</p>
-                                <p className="text-xs opacity-90">Try: "Recharge my Jio number"</p>
-                            </div>
-                        </div>
-                        <Mic className="h-5 w-5"/>
-                    </CardContent>
-                </Card>
-            </a>
-        </Link>
+        {/* REMOVED Conversational Action Link */}
 
         {/* Quick Links: Recharge, Bills & More Section */}
         <Card className="shadow-md">
@@ -328,7 +308,7 @@ export default function Home() {
       <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg flex justify-around items-center p-1"> {/* Reduced padding */}
          <Link href="/" passHref legacyBehavior>
             <a className="flex flex-col items-center h-auto p-1 text-primary">
-                <Landmark className="h-5 w-5 mb-0.5" /> {/* Adjusted spacing */}
+                <HomeIcon className="h-5 w-5 mb-0.5" /> {/* Changed to HomeIcon */}
                 <span className="text-[10px]">Home</span> {/* Adjusted size */}
             </a>
          </Link>
