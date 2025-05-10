@@ -2,16 +2,58 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Store, Utensils, ParkingMeter, Bed } from 'lucide-react';
+import { ArrowLeft, Store, Utensils, ParkingMeter, Bed, Fuel, Search, Filter, MapPin } from 'lucide-react';
 import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import Image from 'next/image';
+import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
-export default function RestStopBookingPage() {
+interface RestStop {
+    id: string;
+    name: string;
+    highway: string; // e.g., NH44, Mumbai-Pune Expressway
+    locationDesc: string; // e.g., "Near Krishnagiri Toll Plaza"
+    amenities: string[]; // "Food Court", "Clean Restrooms", "Fuel Station", "Parking", "ATM", "Dhaba", "Rooms"
+    rating?: number;
+    imageUrl?: string;
+    services?: { name: string, available: boolean }[];
+}
+
+const mockRestStops: RestStop[] = [
+    { id: 'rs1', name: 'Highway King - Behror', highway: 'NH48 (Delhi-Jaipur)', locationDesc: 'Approx. 130km from Delhi', amenities: ['Food Court', 'Clean Restrooms', 'Parking', 'Fuel Station', 'Dhaba'], rating: 4.2, imageUrl: 'https://picsum.photos/seed/reststop1/400/200', services: [{name: 'EV Charging', available: true}, {name: 'Air Filling', available: true}] },
+    { id: 'rs2', name: 'A1 Plaza - Karnal', highway: 'NH44 (Delhi-Chandigarh)', locationDesc: 'Karnal Bypass', amenities: ['Food Court', 'Restrooms', 'Parking', 'ATM', 'Rooms'], rating: 4.0, imageUrl: 'https://picsum.photos/seed/reststop2/400/200' },
+    { id: 'rs3', name: 'Food Express - Khalapur', highway: 'Mumbai-Pune Expressway', locationDesc: 'Near Khalapur Toll', amenities: ['Food Court', 'Clean Restrooms', 'Parking', 'Fuel Station'], rating: 3.8, imageUrl: 'https://picsum.photos/seed/reststop3/400/200' },
+];
+
+export default function RestStopInfoPage() {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [stops, setStops] = useState<RestStop[]>(mockRestStops);
+    const [isLoading, setIsLoading] = useState(false);
+    const { toast } = useToast();
+
+    const handleSearch = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        setIsLoading(true);
+        // Simulate API search
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const filtered = mockRestStops.filter(s =>
+            s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            s.highway.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            s.locationDesc.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        setStops(filtered);
+         if(filtered.length === 0) {
+            toast({ description: "No rest stops found matching your search."});
+        }
+        setIsLoading(false);
+    }
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-        <Link href="/services" passHref>
+        <Link href="/travels" passHref>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -20,25 +62,70 @@ export default function RestStopBookingPage() {
         <h1 className="text-lg font-semibold">Highway Rest Stops</h1>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-grow p-4 flex items-center justify-center">
-        <Card className="shadow-md w-full max-w-md text-center">
-          <CardHeader>
-            <CardTitle>Rest Stop Services</CardTitle>
-            <CardDescription>Find amenities and pre-book facilities on your route.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-center gap-4 mb-6 text-primary">
-                <Utensils className="h-10 w-10" />
-                <ParkingMeter className="h-10 w-10" />
-                <Bed className="h-10 w-10" />
+      <main className="flex-grow p-4 space-y-4 pb-20">
+        <form onSubmit={handleSearch} className="flex gap-2">
+            <Input
+                type="search"
+                placeholder="Search by highway (NH48), city, or name..."
+                className="flex-grow"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
+             <Button type="submit" disabled={isLoading}>{isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>}</Button>
+             <Button variant="outline" size="icon" disabled><Filter className="h-4 w-4"/></Button>
+        </form>
+
+         {/* Placeholder Map Area */}
+        <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground border mb-4">
+            <MapPin className="h-8 w-8 mr-2" /> Map View with Rest Stops (Coming Soon)
+        </div>
+
+        {isLoading && <div className="flex justify-center p-6"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
+
+        {!isLoading && stops.length === 0 && searchTerm && (
+             <Card className="shadow-md text-center">
+                <CardContent className="p-6">
+                    <Store className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No rest stops found for "{searchTerm}".</p>
+                </CardContent>
+            </Card>
+        )}
+
+         {!isLoading && stops.length > 0 && (
+            <div className="space-y-3">
+                {stops.map(stop => (
+                    <Card key={stop.id} className="shadow-sm overflow-hidden">
+                         <div className="flex">
+                            {stop.imageUrl && (
+                                <div className="relative w-1/3 sm:w-1/4 flex-shrink-0">
+                                    <Image src={stop.imageUrl} alt={stop.name} layout="fill" objectFit="cover" data-ai-hint="highway rest stop food court exterior"/>
+                                </div>
+                            )}
+                            <div className="p-3 flex-grow">
+                                <CardTitle className="text-base">{stop.name}</CardTitle>
+                                <CardDescription className="text-xs mb-1">{stop.highway} - {stop.locationDesc}</CardDescription>
+                                {stop.rating && <Badge variant="outline" className="text-xs mb-1">{stop.rating} ★</Badge>}
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {stop.amenities.map(amenity => (
+                                        <Badge key={amenity} variant="secondary" className="text-[10px]">{amenity}</Badge>
+                                    ))}
+                                </div>
+                                 {stop.services && stop.services.length > 0 && (
+                                    <div className="mt-1">
+                                        {stop.services.map(service => (
+                                            <Badge key={service.name} variant={service.available ? "default" : "outline"} className={`text-[10px] mr-1 ${service.available ? 'bg-green-100 text-green-700' : 'text-muted-foreground'}`}>
+                                                {service.name}: {service.available ? 'Yes' : 'No'}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                 )}
+                                 <Button size="xs" variant="link" className="p-0 h-auto text-xs mt-2" onClick={() => alert(`Viewing details for ${stop.name}`)}>View Details / Book Facility</Button>
+                            </div>
+                        </div>
+                    </Card>
+                ))}
             </div>
-            <p className="text-muted-foreground mb-4">
-              Locate highway rest stops, view available amenities like food courts, restrooms, parking, and even pre-book short-stay rooms or meals. Coming Soon!
-            </p>
-            <Button disabled>Find Rest Stops (Coming Soon)</Button>
-          </CardContent>
-        </Card>
+        )}
       </main>
     </div>
   );

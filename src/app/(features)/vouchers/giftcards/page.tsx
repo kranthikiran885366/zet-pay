@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Gift, Loader2, Wallet, Search, Mail, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Gift, Loader2, Wallet, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea';
 
 // Mock Data (Replace with actual API calls/data)
 interface GiftCardBrand {
@@ -30,13 +29,12 @@ const mockBrands: GiftCardBrand[] = [
     { id: 'flipkart', name: 'Flipkart Gift Card', logoUrl: '/logos/flipkart.png', categories: ['Shopping', 'Popular'], denominations: [250, 500, 1000, 2500, 5000], allowCustomAmount: false },
     { id: 'myntra', name: 'Myntra Gift Card', logoUrl: '/logos/myntra.png', categories: ['Fashion'], denominations: [500, 1000, 2000, 5000], allowCustomAmount: true, minCustomAmount: 100 },
     { id: 'bookmyshow', name: 'BookMyShow Gift Card', logoUrl: '/logos/bookmyshow.png', categories: ['Entertainment'], denominations: [250, 500, 1000], allowCustomAmount: true, minCustomAmount: 100 },
-    { id: 'bigbasket', name: 'Bigbasket Gift Card', logoUrl: '/logos/bigbasket.png', categories: ['Grocery'], denominations: [500, 1000, 2000], allowCustomAmount: false },
 ];
 
 const mockCategories = ['All', 'Popular', 'Shopping', 'Fashion', 'Entertainment', 'Grocery', 'Travel'];
 
 export default function GiftCardPurchasePage() {
-    const [brands, setBrands] = useState<GiftCardBrand[]>(mockBrands); // Start with mock data
+    const [brands] = useState<GiftCardBrand[]>(mockBrands);
     const [filteredBrands, setFilteredBrands] = useState<GiftCardBrand[]>(mockBrands);
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
@@ -45,12 +43,11 @@ export default function GiftCardPurchasePage() {
     const [customAmount, setCustomAmount] = useState<string>('');
     const [recipientName, setRecipientName] = useState('');
     const [recipientEmail, setRecipientEmail] = useState('');
-    const [senderName, setSenderName] = useState(''); // Default to user's name later
+    const [senderName, setSenderName] = useState('');
     const [message, setMessage] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
-    // Filter Brands based on category and search term
     useEffect(() => {
         let results = brands;
         if (selectedCategory !== 'All') {
@@ -62,7 +59,6 @@ export default function GiftCardPurchasePage() {
         setFilteredBrands(results);
     }, [brands, selectedCategory, searchTerm]);
 
-    // Reset details when brand changes
     useEffect(() => {
         setSelectedDenomination(null);
         setCustomAmount('');
@@ -77,11 +73,11 @@ export default function GiftCardPurchasePage() {
 
     const handleSelectDenomination = (amount: number) => {
         setSelectedDenomination(amount);
-        setCustomAmount(''); // Clear custom amount if denomination is selected
+        setCustomAmount('');
     };
 
     const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSelectedDenomination(null); // Clear denomination if custom amount is typed
+        setSelectedDenomination(null);
         setCustomAmount(e.target.value);
     };
 
@@ -92,45 +88,22 @@ export default function GiftCardPurchasePage() {
      }
      const totalAmount = getTotalAmount();
 
-
     const handlePurchase = async (e: React.FormEvent) => {
         e.preventDefault();
         const finalAmount = selectedDenomination || (customAmount ? Number(customAmount) : 0);
 
         if (!selectedBrand || finalAmount <= 0 || !recipientName || !recipientEmail) {
-            toast({ variant: "destructive", title: "Missing Information", description: "Please select a brand, amount, and enter recipient details." });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select brand, amount, and enter recipient details." });
             return;
         }
-        if (selectedBrand.allowCustomAmount === false && customAmount) {
-             toast({ variant: "destructive", title: "Invalid Amount", description: `${selectedBrand.name} does not allow custom amounts.` });
-            return;
-        }
-        if (customAmount) {
-             const numAmount = Number(customAmount);
-             if (selectedBrand.minCustomAmount && numAmount < selectedBrand.minCustomAmount) {
-                 toast({ variant: "destructive", title: "Amount Too Low", description: `Minimum amount is ₹${selectedBrand.minCustomAmount}.` });
-                 return;
-             }
-              if (selectedBrand.maxCustomAmount && numAmount > selectedBrand.maxCustomAmount) {
-                 toast({ variant: "destructive", title: "Amount Too High", description: `Maximum amount is ₹${selectedBrand.maxCustomAmount}.` });
-                 return;
-             }
-        }
+        // Add more validation logic if needed based on brand rules
+        // ...
 
         setIsProcessing(true);
-        console.log("Purchasing Gift Card:", {
-            brand: selectedBrand.name,
-            amount: finalAmount,
-            recipientName,
-            recipientEmail,
-            senderName: senderName || 'Your Friend',
-            message
-        });
+        console.log("Purchasing Gift Card:", { brand: selectedBrand.name, amount: finalAmount, recipientName, recipientEmail, senderName, message });
         try {
-            // Simulate API call (replace with actual)
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
             toast({ title: "Gift Card Purchased!", description: `₹${finalAmount} ${selectedBrand.name} gift card sent to ${recipientEmail}.` });
-            // Reset form
             setSelectedBrand(null); // Go back to brand selection
         } catch (err) {
             console.error("Gift card purchase failed:", err);
@@ -142,7 +115,6 @@ export default function GiftCardPurchasePage() {
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
                 <Link href="/services" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -150,48 +122,37 @@ export default function GiftCardPurchasePage() {
                     </Button>
                 </Link>
                 <Gift className="h-6 w-6" />
-                <h1 className="text-lg font-semibold">Gift Cards</h1>
+                <h1 className="text-lg font-semibold">Purchase Gift Cards</h1>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
                 {!selectedBrand ? (
-                    // Brand Selection View
                     <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle>Select a Brand</CardTitle>
-                            <Input
-                                type="search"
-                                placeholder="Search brands..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="mt-2"
-                            />
-                             <div className="flex flex-wrap gap-2 pt-3">
+                            <Input type="search" placeholder="Search brands (e.g., Amazon, Myntra)" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="mt-2" />
+                            <div className="flex flex-wrap gap-2 pt-3">
                                 {mockCategories.map(cat => (
-                                    <Button key={cat} variant={selectedCategory === cat ? "default" : "outline"} size="sm" onClick={() => setSelectedCategory(cat)}>
-                                        {cat}
-                                    </Button>
+                                    <Button key={cat} variant={selectedCategory === cat ? "default" : "outline"} size="sm" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
                                 ))}
                             </div>
                         </CardHeader>
-                        <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
-                             {filteredBrands.map((brand) => (
-                                <Card key={brand.id} className="p-2 cursor-pointer hover:shadow-lg text-center" onClick={() => handleSelectBrand(brand)}>
-                                    <Image src={brand.logoUrl || '/logos/default-gift.png'} alt={brand.name} width={60} height={40} className="h-10 w-auto mx-auto object-contain mb-2"/>
-                                    <p className="text-xs font-medium truncate">{brand.name}</p>
+                        <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {filteredBrands.map((brand) => (
+                                <Card key={brand.id} className="p-3 cursor-pointer hover:shadow-lg text-center flex flex-col items-center justify-center" onClick={() => handleSelectBrand(brand)}>
+                                    <Image src={brand.logoUrl || '/logos/default-gift.png'} alt={brand.name} width={80} height={50} className="h-12 w-auto object-contain mb-2" data-ai-hint="brand logo gift card"/>
+                                    <p className="text-xs font-medium truncate w-full">{brand.name}</p>
                                 </Card>
-                             ))}
-                             {filteredBrands.length === 0 && <p className="col-span-full text-center text-muted-foreground">No brands found.</p>}
+                            ))}
+                            {filteredBrands.length === 0 && <p className="col-span-full text-center text-muted-foreground py-4">No brands found matching your criteria.</p>}
                         </CardContent>
                     </Card>
                 ) : (
-                    // Purchase Details View
                     <Card className="shadow-md">
                          <CardHeader>
                              <div className="flex items-center gap-3">
                                  <Button variant="ghost" size="icon" className="h-7 w-7 -ml-2" onClick={() => setSelectedBrand(null)}><ArrowLeft className="h-4 w-4"/></Button>
-                                 <Image src={selectedBrand.logoUrl || '/logos/default-gift.png'} alt={selectedBrand.name} width={40} height={40} className="h-10 w-auto object-contain"/>
+                                 <Image src={selectedBrand.logoUrl || '/logos/default-gift.png'} alt={selectedBrand.name} width={40} height={40} className="h-10 w-auto object-contain" data-ai-hint="brand logo gift card"/>
                                  <div>
                                     <CardTitle>{selectedBrand.name}</CardTitle>
                                     <CardDescription>Select amount and enter recipient details</CardDescription>
@@ -200,79 +161,29 @@ export default function GiftCardPurchasePage() {
                          </CardHeader>
                          <CardContent>
                             <form onSubmit={handlePurchase} className="space-y-4">
-                                {/* Denomination Selection */}
                                 <div className="space-y-2">
                                      <Label>Select Amount (₹)</Label>
                                      <div className="flex flex-wrap gap-2">
                                         {selectedBrand.denominations.map(denom => (
-                                            <Button
-                                                key={denom}
-                                                type="button"
-                                                variant={selectedDenomination === denom ? "default" : "outline"}
-                                                onClick={() => handleSelectDenomination(denom)}
-                                            >
-                                                ₹{denom}
-                                            </Button>
+                                            <Button key={denom} type="button" variant={selectedDenomination === denom ? "default" : "outline"} onClick={() => handleSelectDenomination(denom)}>₹{denom}</Button>
                                         ))}
                                      </div>
                                 </div>
-
-                                {/* Custom Amount Input */}
                                 {selectedBrand.allowCustomAmount && (
                                      <div className="space-y-1">
                                          <Label htmlFor="customAmount">Or Enter Custom Amount (₹)</Label>
-                                         <div className="relative">
-                                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">₹</span>
-                                             <Input
-                                                 id="customAmount"
-                                                 type="number"
-                                                 placeholder={`Enter Amount ${selectedBrand.minCustomAmount ? `(Min ₹${selectedBrand.minCustomAmount})` : ''} ${selectedBrand.maxCustomAmount ? `(Max ₹${selectedBrand.maxCustomAmount})` : ''}`}
-                                                 value={customAmount}
-                                                 onChange={handleCustomAmountChange}
-                                                 min={selectedBrand.minCustomAmount || 0}
-                                                 max={selectedBrand.maxCustomAmount}
-                                                 step="1"
-                                                 className="pl-7"
-                                             />
-                                         </div>
+                                         <Input id="customAmount" type="number" placeholder={`Min ₹${selectedBrand.minCustomAmount || 1}`} value={customAmount} onChange={handleCustomAmountChange} min={selectedBrand.minCustomAmount || 1} max={selectedBrand.maxCustomAmount} step="1" />
                                      </div>
                                 )}
-
                                 <Separator />
-
-                                {/* Recipient Details */}
-                                <div className="space-y-1">
-                                    <Label htmlFor="recipientName">Recipient's Name</Label>
-                                    <Input id="recipientName" placeholder="Enter Name" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required/>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label htmlFor="recipientEmail">Recipient's Email</Label>
-                                    <Input id="recipientEmail" type="email" placeholder="Enter Email Address" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} required/>
-                                </div>
-                                <div className="space-y-1">
-                                     <Label htmlFor="senderName">Your Name (Optional)</Label>
-                                     <Input id="senderName" placeholder="Enter Your Name" value={senderName} onChange={(e) => setSenderName(e.target.value)} />
-                                </div>
-                                <div className="space-y-1">
-                                     <Label htmlFor="message">Message (Optional)</Label>
-                                     <Textarea id="message" placeholder="Add a personal message (max 150 chars)" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={150} />
-                                </div>
-
-                                {/* Purchase Button */}
-                                <div className="pt-4">
-                                     <Separator className="mb-4"/>
-                                      <div className="flex justify-between items-center text-sm mb-2">
-                                         <span className="text-muted-foreground">Total Amount:</span>
-                                         <span className="font-bold text-lg">₹{totalAmount.toFixed(2)}</span>
-                                     </div>
-                                    <Button
-                                        type="submit"
-                                        className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
-                                        disabled={isProcessing || totalAmount <= 0 || !recipientName || !recipientEmail}
-                                    >
-                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wallet className="mr-2 h-4 w-4" />}
-                                        {isProcessing ? 'Processing...' : `Purchase Gift Card`}
-                                    </Button>
+                                <div className="space-y-1"><Label htmlFor="recipientName">Recipient's Name</Label><Input id="recipientName" value={recipientName} onChange={e=>setRecipientName(e.target.value)} required/></div>
+                                <div className="space-y-1"><Label htmlFor="recipientEmail">Recipient's Email</Label><Input id="recipientEmail" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} required/></div>
+                                <div className="space-y-1"><Label htmlFor="senderName">Your Name (Optional)</Label><Input id="senderName" value={senderName} onChange={e=>setSenderName(e.target.value)} /></div>
+                                <div className="space-y-1"><Label htmlFor="message">Message (Optional)</Label><Textarea id="message" value={message} onChange={e=>setMessage(e.target.value)} maxLength={150} /></div>
+                                <div className="pt-2">
+                                    <Separator className="mb-3"/>
+                                    <div className="flex justify-between items-center text-base font-semibold mb-3"><span>Total Payable:</span><span>₹{totalAmount.toFixed(2)}</span></div>
+                                    <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white" disabled={isProcessing || totalAmount <= 0 || !recipientName || !recipientEmail}><Wallet className="mr-2 h-4 w-4"/> {isProcessing ? <Loader2 className="animate-spin"/> : 'Purchase Now'}</Button>
                                 </div>
                             </form>
                          </CardContent>

@@ -29,6 +29,7 @@ const userRoutes = require('./routes/userRoutes');
 const transactionRoutes = require('./routes/transactionRoutes.ts'); // Use .ts extension if applicable
 const upiRoutes = require('./routes/upiRoutes');
 const rechargeRoutes = require('./routes/rechargeRoutes');
+const billsRoutes = require('./routes/billsRoutes');
 const walletRoutes = require('./routes/walletRoutes.ts'); // Use .ts extension if applicable
 const offerRoutes = require('./routes/offerRoutes');
 const passesRoutes = require('./routes/passesRoutes');
@@ -36,7 +37,6 @@ const templeRoutes = require('./routes/templeRoutes');
 const contactsRoutes = require('./routes/contactsRoutes');
 const cardsRoutes = require('./routes/cardsRoutes');
 const autopayRoutes = require('./routes/autopayRoutes');
-const billsRoutes = require('./routes/billsRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const hyperlocalRoutes = require('./routes/hyperlocalRoutes');
 const investmentRoutes = require('./routes/investmentRoutes');
@@ -53,6 +53,8 @@ const supportRoutes = require('./routes/supportRoutes'); // Add support routes i
 const entertainmentRoutes = require('./routes/entertainmentRoutes');
 const shoppingRoutes = require('./routes/shoppingRoutes'); // Added shopping routes
 const scanRoutes = require('./routes/scanRoutes'); // Added scan routes
+const vaultRoutes = require('./routes/vaultRoutes'); // Added vault routes
+
 
 const app = express();
 const server = http.createServer(app);
@@ -310,7 +312,9 @@ app.use('/api/services', authMiddleware, serviceRoutes); // Generic services
 app.use('/api/support', authMiddleware, supportRoutes); // Support endpoint
 app.use('/api/entertainment', authMiddleware, entertainmentRoutes);
 app.use('/api/shopping/orders', authMiddleware, shoppingRoutes); // Protected shopping order routes
-app.use('/api/scan', authMiddleware, scanRoutes); // Add Scan & Pay routes
+app.use('/api/scan', authMiddleware, scanRoutes);
+app.use('/api/vault', authMiddleware, vaultRoutes); // Add Vault routes
+
 
 // --- Error Handling ---
 // 404 Handler (after all other routes)
@@ -358,4 +362,3 @@ const shutdown = (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
