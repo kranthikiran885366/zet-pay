@@ -65,7 +65,7 @@ export default function SendMoneyPage() {
   const [isVerifyingUpi, setIsVerifyingUpi] = useState(false); // Track UPI verification loading
   const [hasError, setHasError] = useState(false);
   const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
-  const [showConfirmation, setShowConfirmation] = useState(showConfirmation);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedAccountUpiId, setSelectedAccountUpiId] = useState('');
   const [paymentResult, setPaymentResult] = useState<UpiTransactionResult | null>(null);
