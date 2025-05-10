@@ -4,6 +4,7 @@
 import { apiClient } from '@/lib/apiClient';
 import type { BankAccount, UpiTransactionResult, Transaction } from './types'; // Import shared types, added Transaction
 import { auth } from '@/lib/firebase'; // Keep for potential client-side user checks if needed
+import type { Timestamp } from 'firebase/firestore'; // Import Timestamp type for potential conversion
 
 // Re-export types if components import them directly from here
 export type { BankAccount, UpiTransactionResult };
@@ -16,7 +17,7 @@ export type { BankAccount, UpiTransactionResult };
  * @returns A promise that resolves to the newly linked BankAccount object returned by the backend.
  * @throws Error if the user is not logged in or linking fails.
  */
-export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'userId' | 'isDefault' | 'upiId' | 'pinLength'>): Promise<BankAccount> {
+export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'userId' | 'isDefault' | 'upiId' | 'pinLength' | 'createdAt'>): Promise<BankAccount> {
     console.log("Linking bank account via API:", bankDetails);
     try {
         const linkedAccount = await apiClient<BankAccount>('/upi/accounts', {
@@ -25,10 +26,12 @@ export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'use
         });
         console.log("Bank account linked successfully via API:", linkedAccount);
         // Convert createdAt string if needed
-        if (linkedAccount.createdAt && typeof linkedAccount.createdAt === 'string') {
-            linkedAccount.createdAt = new Date(linkedAccount.createdAt);
-        }
-        return linkedAccount;
+        return {
+            ...linkedAccount,
+            createdAt: linkedAccount.createdAt && typeof linkedAccount.createdAt === 'string' 
+                       ? new Date(linkedAccount.createdAt) 
+                       : linkedAccount.createdAt, // Keep as is if already Date or Timestamp
+        };
     } catch (error) {
         console.error("Error linking bank account via API:", error);
         throw error; // Re-throw error caught by apiClient
@@ -45,14 +48,15 @@ export async function getLinkedAccounts(): Promise<BankAccount[]> {
     try {
         const accounts = await apiClient<BankAccount[]>('/upi/accounts');
         console.log(`Fetched ${accounts.length} linked accounts via API.`);
-         // Convert createdAt string if needed
          return accounts.map(acc => ({
             ...acc,
-            createdAt: acc.createdAt && typeof acc.createdAt === 'string' ? new Date(acc.createdAt) : acc.createdAt
+            createdAt: acc.createdAt && typeof acc.createdAt === 'string' 
+                       ? new Date(acc.createdAt) 
+                       : acc.createdAt,
         }));
     } catch (error) {
         console.error("Error fetching linked accounts via API:", error);
-        return []; // Return empty array on error
+        return [];
     }
 }
 
@@ -65,14 +69,13 @@ export async function getLinkedAccounts(): Promise<BankAccount[]> {
 export async function removeUpiId(upiId: string): Promise<void> {
     console.log(`Removing UPI ID via API: ${upiId}`);
     try {
-        // Backend endpoint handles checks (e.g., cannot remove default)
-        await apiClient<void>(`/upi/accounts/${encodeURIComponent(upiId)}`, { // Ensure UPI ID is encoded for URL
+        await apiClient<void>(`/upi/accounts/${encodeURIComponent(upiId)}`, {
             method: 'DELETE',
         });
         console.log(`UPI ID ${upiId} removed successfully via API.`);
     } catch (error: any) {
         console.error("Error removing UPI ID via API:", error);
-        throw error; // Re-throw error
+        throw error;
     }
 }
 
@@ -92,7 +95,7 @@ export async function setDefaultAccount(upiId: string): Promise<void> {
         console.log(`${upiId} set as default successfully via API.`);
     } catch (error) {
         console.error("Error setting default account via API:", error);
-        throw error; // Re-throw error
+        throw error;
     }
 }
 
@@ -116,7 +119,7 @@ export async function checkBalance(upiId: string, pin: string): Promise<number> 
         return response.balance;
     } catch (error) {
         console.error(`Balance check failed via API for ${upiId}:`, error);
-        throw error; // Re-throw error
+        throw error;
     }
 }
 
@@ -138,22 +141,20 @@ export async function verifyUpiId(upiId: string): Promise<{
         const response = await apiClient<{
             verifiedName: string | null;
             isBlacklisted?: boolean;
-            isVerifiedMerchant?: boolean; // Assuming backend adds this
+            isVerifiedMerchant?: boolean;
             reason?: string;
         }>(`/upi/verify?upiId=${encodeURIComponent(upiId)}`);
 
-        if (!response) { // Handle case where API might return empty success
+        if (!response) {
              return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "Verification failed: Empty response from server." };
         }
         console.log("Verification result from API:", response);
-        return response; // Return the full object
+        return response;
     } catch (error: any) {
         console.error("UPI ID Verification failed via API:", error);
-         // If API client throws structured errors, handle 404 etc.
          if (error.message?.includes('404')) {
             return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "UPI ID not found." };
          }
-        // Rethrow other errors or return a generic failure state
          return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: `Verification failed: ${error.message}` };
     }
 }
@@ -180,7 +181,7 @@ export async function processUpiPayment(
     console.log(`Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}`);
 
     const payload = {
-        recipientUpiId: recipientIdentifier, // Backend expects this key
+        recipientUpiId: recipientIdentifier,
         amount,
         pin,
         note: note || undefined,
@@ -188,7 +189,6 @@ export async function processUpiPayment(
     };
 
     try {
-        // Backend /upi/pay endpoint returns the UpiTransactionResult structure
         const result = await apiClient<UpiTransactionResult>('/upi/pay', {
             method: 'POST',
             body: JSON.stringify(payload),
@@ -197,7 +197,6 @@ export async function processUpiPayment(
         return result;
     } catch (error: any) {
         console.error("UPI Payment failed via API:", error);
-        // Return a standardized error format if API call fails fundamentally
         return {
             amount,
             recipientUpiId: recipientIdentifier,
@@ -216,12 +215,10 @@ export async function processUpiPayment(
 export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
     console.log(`Checking server status via API for bank: ${bankIdentifier}`);
     try {
-        // Endpoint expects the identifier in the path
         const response = await apiClient<{ status: 'Active' | 'Slow' | 'Down' }>(`/banks/status/${encodeURIComponent(bankIdentifier)}`);
         return response.status;
     } catch (error) {
         console.error(`Error checking bank status via API for ${bankIdentifier}:`, error);
-        return 'Active'; // Default to 'Active' on error to avoid blocking unnecessarily
+        return 'Active';
     }
 }
-

@@ -21,14 +21,14 @@ export interface WalletTransactionResult {
  */
 function sendBalanceUpdate(userId: string, newBalance: number) {
     if (userId && typeof newBalance === 'number') {
-        // Ensure sendToUser is available and callable
         if (typeof sendToUser === 'function') {
+            console.log(`[WS Backend - Wallet Service] Sending balance update to user ${userId}: ${newBalance}`);
             sendToUser(userId, {
                 type: 'balance_update',
                 payload: { balance: newBalance }
             });
         } else {
-            console.error("[Wallet Service] sendToUser function is not available. Cannot send balance update.");
+            console.error("[Wallet Service] sendToUser function is not available from server.js. Cannot send balance update.");
         }
     }
 }
@@ -48,7 +48,7 @@ export async function getWalletBalance(userId: string): Promise<number> {
             await walletDocRef.set({
                 userId: userId,
                 balance: 0,
-                lastUpdated: FieldValue.serverTimestamp() // Use admin SDK FieldValue
+                lastUpdated: FieldValue.serverTimestamp()
             });
             return 0;
         }
@@ -86,7 +86,6 @@ export async function ensureWalletExistsInternal(userId: string, transaction?: F
         if (transaction) {
             transaction.set(walletDocRef, initialData);
         } else {
-            // This case should ideally not happen if called from within a transaction context where creation is needed
             await walletDocRef.set(initialData);
         }
     } else {
@@ -113,7 +112,7 @@ export async function payViaWalletInternal(
     referenceId: string,
     amount: number,
     note?: string,
-    transactionType: Transaction['type'] | null = null // Allow specific type override
+    transactionType: Transaction['type'] | null = null
 ): Promise<WalletTransactionResult> {
     if (!userId || !referenceId || typeof amount !== 'number') {
         console.error("[Wallet Service - Internal] Invalid parameters", { userId, referenceId, amount });
@@ -126,51 +125,41 @@ export async function payViaWalletInternal(
     const isCredit = amount < 0;
     const absoluteAmount = Math.abs(amount);
     const operationType = isCredit ? 'credit' : 'debit';
-    // Determine log type based on operation, allow override
     const finalLogType = transactionType || (isCredit ? 'Received' : 'Sent');
 
     console.log(`[Wallet Service - Backend] Attempting wallet ${operationType} for user ${userId}, amount ${amount}, ref ${referenceId}`);
 
     try {
         await db.runTransaction(async (transaction) => {
-             // Ensure wallet exists and get current balance within transaction
              const currentBalance = await ensureWalletExistsInternal(userId, transaction);
-
              if (!isCredit && currentBalance < absoluteAmount) {
                  throw new Error(`Insufficient wallet balance. Available: ₹${currentBalance.toFixed(2)}`);
              }
-
-             // Calculate new balance
              newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
-
              const updateData = {
                  balance: newBalance,
                  lastUpdated: FieldValue.serverTimestamp()
              };
-             transaction.update(walletDocRef, updateData); // Use update as ensureWalletExistsInternal guarantees existence
+             transaction.update(walletDocRef, updateData);
          });
 
-         // Log successful transaction AFTER Firestore transaction commits
          const logData = {
              type: finalLogType,
-             name: referenceId, // Use reference ID as name (e.g., recipient UPI, biller ID)
-             description: `${note || `Wallet ${operationType}`}`, // Combine note and operation type
-             amount: amount, // Store the original amount (positive for debit, negative for credit)
+             name: referenceId,
+             description: `${note || `Wallet ${operationType}`}`,
+             amount: amount,
              status: 'Completed',
              userId: userId,
-             upiId: referenceId.includes('@') ? referenceId : undefined, // Basic check if it's a UPI ID
-             billerId: !referenceId.includes('@') && referenceId !== 'WALLET_RECOVERY_CREDIT' ? referenceId : undefined, // Crude check if not UPI/internal
+             upiId: referenceId.includes('@') ? referenceId : undefined,
+             billerId: !referenceId.includes('@') && referenceId !== 'WALLET_RECOVERY_CREDIT' ? referenceId : undefined,
              paymentMethodUsed: 'Wallet',
          };
-         const loggedTx = await addTransaction(logData as any); // Add transaction via logger service
-         loggedTxId = loggedTx.id;
+        const loggedTx = await addTransaction(logData as any);
+        loggedTxId = loggedTx.id;
 
-         // Send real-time balance update via WebSocket
-         sendBalanceUpdate(userId, newBalance);
+        sendBalanceUpdate(userId, newBalance); // Send WS update
 
-          // Log to blockchain (optional, non-blocking)
-         // Ensure data passed matches expected structure for blockchain logger
-         logTransactionToBlockchain(loggedTxId, loggedTx) // Pass the full logged transaction object
+        logTransactionToBlockchain(loggedTxId, loggedTx)
              .catch(err => console.error("[Wallet Service] Blockchain log failed:", err));
 
          console.log(`[Wallet Service - Backend] Wallet ${operationType} successful for ${userId}. Tx ID: ${loggedTxId}`);
@@ -178,14 +167,13 @@ export async function payViaWalletInternal(
 
     } catch (error: any) {
          console.error(`[Wallet Service - Backend] Wallet ${operationType} failed for user ${userId}:`, error);
-         // Log failed attempt only if it was a DEBIT
          let failedTxId: string | undefined;
          if (!isCredit) {
              const failLogData = {
-                 type: 'Failed', // Log type as Failed
+                 type: 'Failed',
                  name: referenceId,
                  description: `Wallet Payment Failed - ${error.message}`,
-                 amount: amount, // Store the original positive amount
+                 amount: amount,
                  status: 'Failed',
                  userId: userId,
                  upiId: referenceId.includes('@') ? referenceId : undefined,
@@ -194,10 +182,9 @@ export async function payViaWalletInternal(
              try {
                  const failedTx = await addTransaction(failLogData as any);
                  failedTxId = failedTx.id;
-                 sendBalanceUpdate(userId, await getWalletBalance(userId)); // Send updated balance even on failure if possible
-                 // Send failed transaction update via WebSocket
+                 sendBalanceUpdate(userId, await getWalletBalance(userId));
                   if (typeof sendToUser === 'function') {
-                      sendToUser(userId, { type: 'transaction_update', payload: failedTx });
+                      sendToUser(userId, { type: 'transaction_update', payload: {...failedTx, date: failedTx.date.toISOString()} }); // Send full failed TX
                   }
              } catch (logError) {
                   console.error("[Wallet Service] Failed to log failed internal wallet debit:", logError);
@@ -206,4 +193,3 @@ export async function payViaWalletInternal(
          return { success: false, transactionId: failedTxId, message: error.message || `Internal wallet ${operationType} failed.` };
     }
 }
-

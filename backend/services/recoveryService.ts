@@ -1,5 +1,3 @@
-
-
 /**
  * @fileOverview Service functions for scheduling and processing wallet recovery deductions using Firestore.
  * Intended for BACKEND execution (e.g., via a scheduled Cloud Function).
@@ -8,10 +6,12 @@ import admin from 'firebase-admin'; // Use Node.js Admin SDK
 const db = admin.firestore();
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Import Timestamp from Admin SDK
 import { getLinkedAccounts } from './upi'; // Import Node.js version of the service
-import { payViaWalletInternal } from '../controllers/walletController'; // Import internal wallet payment function
+// Import internal wallet payment function (payViaWalletInternal from wallet.ts)
+// and its result type.
+import { payViaWalletInternal, WalletTransactionResult } from './wallet';
 const upiProviderService = require('./upiProviderService'); // For initiating debit
 import type { BankAccount } from './types'; // Import shared type
-// Removed import for client-side addTransaction
+import { addTransaction, logTransactionToBlockchain } from './transactionLogger'; // For logging transactions if needed
 
 interface RecoveryTask {
     id?: string; // Firestore document ID
@@ -45,10 +45,9 @@ export async function scheduleRecovery(userId: string, amount: number, originalR
     }
     console.log(`[Recovery Service] Scheduling recovery of ₹${amount} for user ${userId}`);
 
-    // Calculate next midnight for scheduling
     const now = new Date();
     const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 1, 0); // Set to 00:00:01 of the next day
+    nextMidnight.setHours(24, 0, 1, 0);
 
     const recoveryData: Omit<RecoveryTask, 'id' | 'createdAt' | 'updatedAt' | 'recoveryTransactionId' | 'walletCreditTransactionId'> = {
         userId: userId,
@@ -56,14 +55,14 @@ export async function scheduleRecovery(userId: string, amount: number, originalR
         originalRecipientUpiId: originalRecipientUpiId,
         recoveryStatus: 'Scheduled',
         scheduledTime: Timestamp.fromDate(nextMidnight),
-        bankUpiId: recoverySourceUpiId // Store intended source if provided
+        bankUpiId: recoverySourceUpiId
     };
 
     try {
         const recoveryColRef = db.collection('recoveryTasks');
         const docRef = await recoveryColRef.add({
             ...recoveryData,
-            createdAt: FieldValue.serverTimestamp(), // Use Admin SDK FieldValue
+            createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
         });
         console.log("[Recovery Service] Recovery task scheduled with ID:", docRef.id);
@@ -85,8 +84,8 @@ export async function processPendingRecoveries(): Promise<void> {
     const q = recoveryColRef
         .where('recoveryStatus', '==', 'Scheduled')
         .where('scheduledTime', '<=', now)
-        .orderBy('scheduledTime') // Process older ones first
-        .limit(10); // Process in batches
+        .orderBy('scheduledTime')
+        .limit(10);
 
     try {
         const querySnapshot = await q.get();
@@ -96,28 +95,20 @@ export async function processPendingRecoveries(): Promise<void> {
             return;
         }
 
-        const batch = db.batch(); // Use Admin SDK batch
-        const recoveryPromises: Promise<void>[] = []; // Store promises for async processing
+        const batch = db.batch();
+        const recoveryPromises: Promise<void>[] = [];
 
         for (const taskDoc of querySnapshot.docs) {
             const task = { id: taskDoc.id, ...taskDoc.data() } as RecoveryTask;
             const taskRef = db.collection('recoveryTasks').doc(task.id!);
-
             console.log(`[Recovery Service] Marking task ${task.id} as 'Processing' for user ${task.userId}, amount ₹${task.amount}`);
             batch.update(taskRef, { recoveryStatus: 'Processing', updatedAt: FieldValue.serverTimestamp() });
-
-            // Push the async recovery attempt promise
             recoveryPromises.push(attemptRecoveryForTask(task));
         }
-
-        // Commit the status updates ('Processing') first
         await batch.commit();
         console.log("[Recovery Service] Marked tasks as 'Processing'. Starting recovery attempts...");
-
-        // Wait for all recovery attempts to complete (or fail)
         await Promise.allSettled(recoveryPromises);
         console.log("[Recovery Service] Finished processing batch of recovery attempts.");
-
     } catch (error) {
         console.error("[Recovery Service] Error fetching/batch-updating pending recovery tasks:", error);
     }
@@ -132,16 +123,15 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
     let recoverySuccess = false;
     let failureMessage = 'Unknown recovery error';
     let debitTxId: string | undefined;
-    let creditTxId: string | undefined;
-    let finalBankUpiId = task.bankUpiId; // Store the UPI ID used
+    let creditResult: WalletTransactionResult | undefined; // Store result from payViaWalletInternal
+    let finalBankUpiId = task.bankUpiId;
 
     try {
-        // 1. Determine Recovery Source Account if not specified in task
         if (!finalBankUpiId) {
-            const userAccounts = await getLinkedAccounts(task.userId); // Fetch user's accounts using Node.js service
-            const defaultAccount = userAccounts.find((acc: BankAccount) => acc.isDefault); // Type annotation needed
+            const userAccounts = await getLinkedAccounts(task.userId);
+            const defaultAccount = userAccounts.find((acc: BankAccount) => acc.isDefault);
             if (!defaultAccount && userAccounts.length > 0) {
-                 finalBankUpiId = userAccounts[0].upiId; // Fallback to first account if no default
+                 finalBankUpiId = userAccounts[0].upiId;
                  console.log(`[Recovery Service] No default account, using first linked: ${finalBankUpiId} for task ${task.id}`);
             } else if (defaultAccount) {
                  finalBankUpiId = defaultAccount.upiId;
@@ -150,11 +140,8 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
                 throw new Error("No linked bank account found for recovery.");
             }
         }
-        if (!finalBankUpiId) throw new Error("Could not determine bank account for recovery."); // Ensure finalBankUpiId is set
+        if (!finalBankUpiId) throw new Error("Could not determine bank account for recovery.");
 
-
-        // 2. Debit from User's Bank Account using the service
-        // CRITICAL: This needs a secure, non-interactive debit mechanism (e.g., mandate)
         const debitResult = await upiProviderService.initiateDebit(finalBankUpiId, task.amount, `ZetPayWalletRecovery_${task.id}`);
         if (!debitResult.success) {
             throw new Error(debitResult.message || 'Bank debit failed during recovery.');
@@ -162,50 +149,39 @@ async function attemptRecoveryForTask(task: RecoveryTask): Promise<void> {
         debitTxId = debitResult.transactionId;
         console.log(`[Recovery Service] Debit successful for task ${task.id}. Tx ID: ${debitTxId}`);
 
-
-        // 3. Credit to User's Zet Pay Wallet (using internal function from walletController)
         console.log(`[Recovery Service] Crediting ₹${task.amount} back to user ${task.userId}'s wallet for task ${task.id}...`);
-         // Use payViaWalletInternal with negative amount to simulate credit/top-up via internal logic
-        const creditResult = await payViaWalletInternal(task.userId, 'WALLET_RECOVERY_CREDIT', -task.amount, `Recovery Credit from ${finalBankUpiId}`);
+        // Use payViaWalletInternal with negative amount to trigger credit
+        creditResult = await payViaWalletInternal(task.userId, 'WALLET_RECOVERY_CREDIT', -task.amount, `Recovery Credit from ${finalBankUpiId}`);
         if (!creditResult.success) {
-            // CRITICAL: Debit succeeded, but wallet credit failed. Needs manual intervention/alerting.
             failureMessage = `Wallet credit failed after successful bank debit (Msg: ${creditResult.message}). Manual intervention required. Debit Tx: ${debitTxId}`;
             throw new Error(failureMessage);
         }
-        creditTxId = creditResult.transactionId;
-        console.log(`[Recovery Service] Wallet credit successful for task ${task.id}. Tx ID: ${creditTxId}`);
-
-        // 4. Mark Recovery as Successful
+        console.log(`[Recovery Service] Wallet credit successful for task ${task.id}. Tx ID: ${creditResult.transactionId}`);
         recoverySuccess = true;
-
     } catch (recoveryError: any) {
         console.error(`[Recovery Service] Recovery failed for task ${task.id}:`, recoveryError.message);
         failureMessage = recoveryError.message || failureMessage;
         recoverySuccess = false;
-        // TODO: Implement alerting for critical failures (debit success, credit fail)
     }
 
-    // 5. Update Task Status in Firestore
     try {
         const taskRef = db.collection('recoveryTasks').doc(task.id!);
         await taskRef.update({
             recoveryStatus: recoverySuccess ? 'Completed' : 'Failed',
             failureReason: recoverySuccess ? null : failureMessage,
             updatedAt: FieldValue.serverTimestamp(),
-            bankUpiId: finalBankUpiId, // Record the final account used/attempted
+            bankUpiId: finalBankUpiId,
             recoveryTransactionId: debitTxId || null,
-            walletCreditTransactionId: creditTxId || null,
+            walletCreditTransactionId: creditResult?.transactionId || null,
         });
         console.log(`[Recovery Service] Updated status for recovery task ${task.id} to ${recoverySuccess ? 'Completed' : 'Failed'}.`);
     } catch (updateError) {
         console.error(`[Recovery Service] FATAL: Failed to update final status for recovery task ${task.id}:`, updateError);
-        // Log this critical error for monitoring
     }
 }
 
-
-module.exports = {
-    scheduleRecovery,
-    processPendingRecoveries, // Keep export if triggered externally by scheduler
-    // attemptRecoveryForTask is internal, not exported directly
-};
+// This export seems unnecessary if only processPendingRecoveries is called externally
+// module.exports = {
+//     scheduleRecovery,
+//     processPendingRecoveries,
+// };

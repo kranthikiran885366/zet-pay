@@ -5,8 +5,8 @@
  */
 
 import { apiClient } from '@/lib/apiClient'; // For calling backend APIs
-// Client-side Firebase auth can be used if needed for userId, but not for direct DB writes here.
-// import { auth } from '@/lib/firebase';
+import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
+import { sendToUser } from '@/lib/websocket'; // Correct path to import WebSocket sender from frontend lib
 import type { Transaction } from './types'; // Import shared Transaction type
 
 /**
@@ -24,28 +24,23 @@ export async function addTransaction(
     console.log(`[Client Service Logger] Requesting backend to log transaction. Type: ${transactionData.type}`);
 
     try {
-        // The backend endpoint (e.g., POST /api/transactions) handles creation.
-        // The backend's controller for this route will use the actual backend transactionLogger service.
         const newTransactionFromBackend = await apiClient<Transaction>('/transactions', {
             method: 'POST',
-            body: JSON.stringify(transactionData), // Send data without userId, backend infers it
+            body: JSON.stringify(transactionData),
         });
 
         console.log("[Client Service Logger] Transaction logged via backend, ID:", newTransactionFromBackend.id);
 
-        // Convert date strings from API response to Date objects for client-side consistency
         return {
             ...newTransactionFromBackend,
             date: new Date(newTransactionFromBackend.date),
             createdAt: newTransactionFromBackend.createdAt ? new Date(newTransactionFromBackend.createdAt) : undefined,
             updatedAt: newTransactionFromBackend.updatedAt ? new Date(newTransactionFromBackend.updatedAt) : undefined,
-            // Ensure avatarSeed is present client-side, use backend's or generate fallback
             avatarSeed: newTransactionFromBackend.avatarSeed || newTransactionFromBackend.name?.toLowerCase().replace(/\s+/g, '') || newTransactionFromBackend.id,
         };
 
     } catch (error: any) {
         console.error(`[Client Service Logger] Error logging transaction via backend:`, error);
-        // Re-throw the error so the calling component/service can handle it (e.g., show a toast)
         throw new Error(error.message || "Could not log transaction via backend.");
     }
 }
@@ -60,7 +55,6 @@ export async function addTransaction(
 export async function getBlockchainTransactionInfoClient(transactionId: string): Promise<any | null> {
     console.log(`[Client Service Logger] Fetching blockchain info for tx: ${transactionId} via backend API.`);
     try {
-        // Assuming a backend endpoint like GET /api/blockchain/tx/:transactionId
         const info = await apiClient<any>(`/blockchain/tx/${transactionId}`);
         return info;
     } catch (error: any) {
@@ -69,11 +63,5 @@ export async function getBlockchainTransactionInfoClient(transactionId: string):
     }
 }
 
-// The `logTransactionToBlockchain` function that attempts direct logging from client-side
-// is removed as this is a backend responsibility, typically triggered after
-// a transaction is successfully saved to the primary database (Firestore).
-// If client needs to trigger it manually (uncommon), it should be via an API call.
-// For querying blockchain data, the getBlockchainTransactionInfoClient (or similar) is appropriate.
-// The actual `logTransactionToBlockchain` function that interacts with the blockchain
-// resides in `backend/services/blockchainLogger.ts` (or `.js`) and is called by
-// the backend's `transactionLogger` service.
+// logTransactionToBlockchain is a backend function, client calls it indirectly via addTransaction if configured.
+// No direct client-side function to log TO blockchain.

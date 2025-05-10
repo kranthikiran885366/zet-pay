@@ -1,7 +1,7 @@
 // backend/services/upi.js
 const admin = require('../config/firebaseAdmin'); // Use admin SDK from config
 const db = admin.firestore();
-const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp } = db; // Use Firestore functions from admin SDK
+const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp } = require('firebase/firestore'); // Use Firestore functions from admin SDK
 const upiProviderService = require('./upiProviderService'); // Simulated PSP/Bank interaction
 const { getBankStatus } = require('./bankStatusService'); // Simulated bank status check
 
@@ -123,7 +123,7 @@ async function setDefaultAccount(userId, upiId) {
 
     try {
         const accountsColRef = collection(db, 'users', userId, 'linkedAccounts');
-        const batch = db.batch();
+        const batch = writeBatch(db);
 
         const newDefaultQuery = query(accountsColRef, where('upiId', '==', upiId), limit(1));
         const newDefaultSnap = await getDocs(newDefaultQuery);
