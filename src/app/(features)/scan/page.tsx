@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion } from 'lucide-react';
+import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -16,6 +16,8 @@ import { getCurrentUserProfile } from '@/services/user';
 import { apiClient } from '@/lib/apiClient';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input'; // Added input for report reason
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"; // Import Dialog components
+
 
 // QR Code Decoding Logic (Simulation) - Keep for upload testing
 async function decodeQrCodeFromImage(file: File): Promise<string | null> {
@@ -129,7 +131,7 @@ export default function ScanPage() {
           const profile = await getCurrentUserProfile();
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
           // Assuming profile has primary UPI ID. Fallback if not.
-          upiIdToUse = (profile && 'upiId' in profile && profile.upiId) ? profile.upiId as string : `${currentUser.uid.substring(0, 5)}@payfriend`;
+          upiIdToUse = (profile && profile.upiId) ? profile.upiId as string : `${currentUser.uid.substring(0, 5)}@payfriend`;
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
           if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0, 5)}@payfriend`;
