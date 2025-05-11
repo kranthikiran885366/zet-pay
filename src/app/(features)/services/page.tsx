@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter,
-  Fuel,
-  CarTaxiFront as TaxiIcon, // Use alias
+  ParkingMeter, 
+  Fuel, 
+  CarTaxiFront as TaxiIcon, 
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
+    Gift as GiftIcon, 
+    Home as HomeIcon, 
     Car,
-    Bike as Motorbike, // Use alias
+    Bike as Motorbike, 
     CalendarCheck,
     Video,
     Sparkles,
@@ -75,26 +75,29 @@ import {
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
     ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, // Added MoreHorizontal back
-    FolderLock, // Secure Vault
-    GraduationCap, // Education Fees
-    PiggyBank, // Pocket Money / Goals
-    BellRing, // Reminders
-    ListChecks, // Subscription Mgr
-    WandSparkles, // AI Assistant
-    TrendingUp, // Spending Analysis / Stocks
-    LucideIcon, // Generic fallback
-    ThermometerSnowflake, // Added ThermometerSnowflake
-    IndianRupee, // Added IndianRupee
-    Search // Added Search
-} from "lucide-react";
+    MoreHorizontal, 
+    FolderLock, 
+    GraduationCap, 
+    PiggyBank, 
+    BellRing, 
+    ListChecks, 
+    WandSparkles, 
+    TrendingUp, 
+    Target,
+    BedSingle,
+    Tv2,
+    ThermometerSnowflake,
+    IndianRupee,
+    Search,
+    Flame // Added Flame icon
+} from "lucide-react"; 
 import Image from 'next/image';
-import { useState } from 'react'; // Import useState
-import { Input } from '@/components/ui/input'; // Added Input import
+import { useState } from 'react'; 
+import { Input } from '@/components/ui/input'; 
 
 interface Service {
     name: string;
-    icon: LucideIcon;
+    icon: React.ElementType;
     href: string;
     category: string;
     tags?: string[];
@@ -110,7 +113,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -138,7 +141,7 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
@@ -171,7 +174,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
      { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
+     { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -208,7 +211,7 @@ const healthcareServicesData: Service[] = [
 ];
 
 
-const hyperlocalServicesData: Service[] = [ // Renamed
+const hyperlocalServicesData: Service[] = [ 
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
@@ -248,7 +251,7 @@ const vouchersMoreServices: Service[] = [
 const paymentsServicesData: Service[] = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
-    { name: "Cab/Taxi Bill Payment", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
+    { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
 
@@ -339,10 +342,8 @@ export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
 
     const filteredCategories = categories.filter(category => {
-        if (!searchTerm.trim()) return true; // Show all if no search term
-        // Check if category name matches
+        if (!searchTerm.trim()) return true; 
         if (category.toLowerCase().includes(searchTerm.toLowerCase())) return true;
-        // Check if any service name or tags in this category match
         return groupedServices[category].some(service =>
             service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
@@ -359,7 +360,6 @@ export default function AllServicesPage() {
                 </Link>
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
-                 {/* Search Input */}
                  <div className="relative w-full max-w-xs">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -388,7 +388,7 @@ export default function AllServicesPage() {
                                (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
                      });
 
-                     if(servicesInCategory.length === 0 && searchTerm) return null; // Don't render category if search filters it out
+                     if(servicesInCategory.length === 0 && searchTerm) return null; 
 
                     return (
                          <Card key={category} className="shadow-md">
