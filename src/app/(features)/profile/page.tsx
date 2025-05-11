@@ -1,11 +1,10 @@
-
 'use client';
 
-import { useState, useEffect } from 'react'; // Import useEffect
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2, Wallet } from 'lucide-react'; // Added Wallet
+import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -15,32 +14,38 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { logout } from '@/services/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { getCurrentUserProfile, UserProfile, updateUserProfileSettings } from '@/services/user'; // Import user profile service & CORRECT update function
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { getCurrentUserProfile, UserProfile, updateUserProfileSettings } from '@/services/user';
+import { Skeleton } from '@/components/ui/skeleton';
+import { auth } from '@/lib/firebase'; // For checking initial auth state
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<UserProfile | null>(null); // State for user profile
-  const [isLoading, setIsLoading] = useState(true); // Loading state
-  const [notifications, setNotifications] = useState(true); // Mock state, replace later
-  const [biometric, setBiometric] = useState(false); // Mock state, replace later
-  const [smartWalletBridgeEnabled, setSmartWalletBridgeEnabled] = useState(false); // State for smart wallet bridge
-  const [isUpdating, setIsUpdating] = useState(false); // State for async updates
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [appLockEnabled, setAppLockEnabled] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [smartWalletBridgeEnabled, setSmartWalletBridgeEnabled] = useState(false);
+  const [isUpdating, setIsUpdating] = useState<Record<string, boolean>>({}); // For multiple switches
 
   const { toast } = useToast();
   const router = useRouter();
 
-  // Fetch user profile on mount
   useEffect(() => {
     const fetchProfile = async () => {
       setIsLoading(true);
       try {
         const profile = await getCurrentUserProfile();
-        setUser(profile);
-        // Set switch states based on fetched profile if available
-         // Assuming settings are stored directly on the profile for simplicity
-        setNotifications(profile?.notificationsEnabled ?? true);
-        setBiometric(profile?.biometricEnabled ?? false);
-        setSmartWalletBridgeEnabled(profile?.isSmartWalletBridgeEnabled ?? false);
+        if (profile) {
+          setUser(profile);
+          setNotificationsEnabled(profile.notificationsEnabled ?? true);
+          setAppLockEnabled(profile.appLockEnabled ?? false);
+          setBiometricEnabled(profile.biometricEnabled ?? false);
+          setSmartWalletBridgeEnabled(profile.isSmartWalletBridgeEnabled ?? false);
+        } else if (auth.currentUser === null) {
+          // Only show error if definitely logged out and profile is null
+          toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to view your profile." });
+          router.push('/login'); // Redirect if not logged in
+        }
       } catch (error) {
         console.error("Failed to fetch user profile:", error);
         toast({
@@ -48,66 +53,82 @@ export default function ProfilePage() {
           title: "Error",
           description: "Could not load your profile information.",
         });
-        // Optionally logout or redirect if profile fetch critical and fails
-        // handleLogout();
       } finally {
         setIsLoading(false);
       }
     };
     fetchProfile();
-  }, [toast]);
+  }, [toast, router]);
 
-   const handleLogout = async () => {
-     try {
-        await logout();
-        toast({ title: "Logout Successful", description: "You have been logged out." });
-        router.push('/login'); // Redirect to login page
-     } catch (error) {
-        console.error("Logout failed:", error);
-         toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
-     }
-   };
+  const handleSettingChange = async (settingKey: keyof UserProfile, value: boolean) => {
+    if (!user) return;
+    setIsUpdating(prev => ({ ...prev, [settingKey]: true }));
+
+    const originalValue = user[settingKey]; // Get current value from state to revert on error
+
+    // Optimistic UI update
+    setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: value } : null);
+    if (settingKey === 'notificationsEnabled') setNotificationsEnabled(value);
+    if (settingKey === 'appLockEnabled') {
+      setAppLockEnabled(value);
+      if (!value) setBiometricEnabled(false); // If app lock off, biometric off
+    }
+    if (settingKey === 'biometricEnabled') setBiometricEnabled(value);
+    if (settingKey === 'isSmartWalletBridgeEnabled') setSmartWalletBridgeEnabled(value);
+
+
+    try {
+      // Specific check for Smart Wallet Bridge
+      if (settingKey === 'isSmartWalletBridgeEnabled' && value && user.kycStatus !== 'Verified') {
+        toast({ variant: "destructive", title: "KYC Required", description: "Please complete KYC verification to enable Smart Wallet Bridge." });
+        // Revert optimistic update
+        setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: originalValue } : null);
+        setSmartWalletBridgeEnabled(false);
+        setIsUpdating(prev => ({ ...prev, [settingKey]: false }));
+        return;
+      }
+
+      await updateUserProfileSettings({ [settingKey]: value });
+      toast({ title: "Settings Updated", description: `${String(settingKey).replace(/([A-Z])/g, ' $1').trim()} ${value ? 'enabled' : 'disabled'}.` });
+    } catch (error: any) {
+      console.error(`Failed to update ${settingKey}:`, error);
+      // Revert optimistic UI update on error
+      setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: originalValue } : null);
+      if (settingKey === 'notificationsEnabled') setNotificationsEnabled(originalValue as boolean);
+      if (settingKey === 'appLockEnabled') setAppLockEnabled(originalValue as boolean);
+      if (settingKey === 'biometricEnabled') setBiometricEnabled(originalValue as boolean);
+      if (settingKey === 'isSmartWalletBridgeEnabled') setSmartWalletBridgeEnabled(originalValue as boolean);
+
+      toast({ variant: "destructive", title: "Update Failed", description: error.message || `Could not update ${settingKey}.` });
+    } finally {
+      setIsUpdating(prev => ({ ...prev, [settingKey]: false }));
+    }
+  };
+
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({ title: "Logout Successful", description: "You have been logged out." });
+      router.push('/login');
+    } catch (error) {
+      console.error("Logout failed:", error);
+      toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
+    }
+  };
 
   const handleKYCClick = () => {
-      if (!user) return;
-      // TODO: Navigate to KYC verification flow or show status details
-      toast({ title: `KYC Status: ${user.kycStatus || 'Not Verified'}`, description: "This is your current KYC verification status." });
-  }
+    if (!user) return;
+    // TODO: Navigate to KYC verification flow or show status details
+    // For now, just a toast
+    toast({ title: `KYC Status: ${user.kycStatus || 'Not Verified'}`, description: "Manage your KYC verification here." });
+    // router.push('/profile/kyc'); // Example navigation
+  };
 
   const kycStatus = user?.kycStatus || 'Not Verified';
 
-  // Handle Smart Wallet Bridge Toggle
-   const handleSmartWalletBridgeChange = async (checked: boolean) => {
-       if (!user) return; // Need user profile for KYC check
-       setIsUpdating(true);
-       setSmartWalletBridgeEnabled(checked); // Optimistic UI update
-
-       try {
-            // Check KYC status before enabling
-            if (checked && user.kycStatus !== 'Verified') {
-                 toast({ variant: "destructive", title: "KYC Required", description: "Please complete KYC verification to enable Smart Wallet Bridge." });
-                 setSmartWalletBridgeEnabled(false); // Revert optimistic update
-                 setIsUpdating(false);
-                 return;
-            }
-            // Use the correct update function
-            await updateUserProfileSettings({ isSmartWalletBridgeEnabled: checked }); // Update only this setting
-            toast({ title: `Smart Wallet Bridge ${checked ? 'Enabled' : 'Disabled'}` });
-            // Update local user state if needed
-            setUser(prev => prev ? { ...prev, isSmartWalletBridgeEnabled: checked } : null);
-       } catch (error: any) {
-           console.error("Failed to update Smart Wallet Bridge setting:", error);
-           setSmartWalletBridgeEnabled(!checked); // Revert UI on error
-           toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update setting." });
-       } finally {
-           setIsUpdating(false);
-       }
-   };
-
-
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
         <Link href="/" passHref>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -118,212 +139,207 @@ export default function ProfilePage() {
         <h1 className="text-lg font-semibold">Profile & Settings</h1>
       </header>
 
-      {/* Main Content */}
       <main className="flex-grow p-4 space-y-6 pb-20">
-        {/* User Info Card */}
         <Card className="shadow-md">
           <CardContent className="p-4 flex items-center gap-4">
-             {isLoading ? (
-                <>
-                     <Skeleton className="h-16 w-16 rounded-full" />
-                     <div className="space-y-2">
-                        <Skeleton className="h-5 w-32" />
-                        <Skeleton className="h-4 w-48" />
-                         <Skeleton className="h-4 w-24" />
-                     </div>
-                </>
-             ) : user ? (
-                <>
-                    <Avatar className="h-16 w-16">
-                        <AvatarImage src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`} alt={user.name} data-ai-hint="user profile large"/>
-                        <AvatarFallback>{user.name?.split(' ').map(n => n[0]).join('') || 'U'}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                        <p className="text-lg font-semibold">{user.name}</p>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                         {user.phone && <p className="text-sm text-muted-foreground">{user.phone}</p>}
-                    </div>
-                </>
-             ) : (
-                 <p className="text-sm text-muted-foreground">Could not load profile.</p>
-             )}
+            {isLoading ? (
+              <>
+                <Skeleton className="h-16 w-16 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </>
+            ) : user ? (
+              <>
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`} alt={user.name} data-ai-hint="user profile large" />
+                  <AvatarFallback>{user.name?.split(' ').map(n => n[0]).join('') || 'U'}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-lg font-semibold">{user.name}</p>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                  {user.phone && <p className="text-sm text-muted-foreground">{user.phone}</p>}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Could not load profile. Please try logging in again.</p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Settings Sections */}
         <Card className="shadow-md">
-            <CardContent className="p-0 divide-y divide-border">
-                <SettingsItem href="/profile/upi" icon={CreditCard} title="UPI & Payment Settings" description="Manage linked accounts & UPI IDs" />
-                <SettingsItem href="/scan?showMyQR=true" icon={QrCode} title="My UPI QR Code" description="Show your QR to receive payments" />
-                 <SettingsItem icon={ShieldCheck} title="KYC Verification" description={`Status: ${kycStatus}`} onClick={handleKYCClick} badgeStatus={kycStatus} disabled={isLoading} />
-                <SettingsItem href="/profile/security" icon={Lock} title="Security Settings" description="Change PIN, manage app lock" />
-            </CardContent>
+          <CardContent className="p-0 divide-y divide-border">
+            <SettingsItem href="/profile/edit" icon={User} title="Edit Profile" description="Update your name, contact, avatar" disabled={isLoading || !user} />
+            <SettingsItem href="/profile/upi" icon={CreditCard} title="UPI & Payment Settings" description="Manage linked accounts & UPI IDs" disabled={isLoading || !user} />
+            <SettingsItem href="/scan?showMyQR=true" icon={QrCode} title="My UPI QR Code" description="Show your QR to receive payments" disabled={isLoading || !user} />
+            <SettingsItem icon={ShieldCheck} title="KYC Verification" description={`Status: ${kycStatus}`} onClick={handleKYCClick} badgeStatus={kycStatus} disabled={isLoading || !user} />
+            <SettingsItem href="/profile/security" icon={Lock} title="Security Settings" description="Change PIN, manage app lock" disabled={isLoading || !user} />
+          </CardContent>
         </Card>
 
         <Card className="shadow-md">
-             <CardContent className="p-0 divide-y divide-border">
-                <SettingsSwitchItem
-                    icon={Bell}
-                    title="Notifications"
-                    description="Receive alerts & updates"
-                    checked={notifications}
-                    onCheckedChange={setNotifications} // Basic toggle for now
-                    disabled={isLoading || isUpdating}
-                />
-                 <SettingsSwitchItem
-                    icon={Lock} // Using Lock icon as Biometric might be handled in Security
-                    title="App Lock"
-                    description="Use PIN/Biometric to open app"
-                    checked={appLock}
-                    onCheckedChange={handleAppLockChange} // Basic toggle for now
-                    disabled={isLoading || isUpdating}
-                />
-                 {/* Smart Wallet Bridge Toggle */}
-                  <SettingsSwitchItem
-                    icon={Wallet}
-                    title="Smart Wallet Bridge"
-                    description="Auto-pay via Wallet if UPI limit exceeded"
-                    checked={smartWalletBridgeEnabled}
-                    onCheckedChange={handleSmartWalletBridgeChange}
-                    disabled={isLoading || isUpdating} // Disable while loading or updating
-                />
-            </CardContent>
+          <CardContent className="p-0 divide-y divide-border">
+            <SettingsSwitchItem
+              icon={Bell}
+              title="Notifications"
+              description="Receive alerts & updates"
+              checked={notificationsEnabled}
+              onCheckedChange={(val) => handleSettingChange('notificationsEnabled', val)}
+              disabled={isLoading || isUpdating['notificationsEnabled'] || !user}
+            />
+            <SettingsSwitchItem
+              icon={Lock}
+              title="App Lock"
+              description="Use PIN/Biometric to open app"
+              checked={appLockEnabled}
+              onCheckedChange={(val) => handleSettingChange('appLockEnabled', val)}
+              disabled={isLoading || isUpdating['appLockEnabled'] || !user}
+            />
+             <SettingsSwitchItem
+              icon={Fingerprint}
+              title="Biometric Unlock"
+              description="Use fingerprint/face instead of PIN"
+              checked={biometricEnabled}
+              onCheckedChange={(val) => handleSettingChange('biometricEnabled', val)}
+              disabled={isLoading || !appLockEnabled || isUpdating['biometricEnabled'] || !user}
+            />
+            <SettingsSwitchItem
+              icon={Wallet}
+              title="Smart Wallet Bridge"
+              description="Auto-pay via Wallet if UPI limit exceeded"
+              checked={smartWalletBridgeEnabled}
+              onCheckedChange={(val) => handleSettingChange('isSmartWalletBridgeEnabled', val)}
+              disabled={isLoading || isUpdating['isSmartWalletBridgeEnabled'] || !user}
+            />
+          </CardContent>
         </Card>
 
+        <Card className="shadow-md">
+          <CardContent className="p-0 divide-y divide-border">
+            <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="24/7 Live Chat, FAQs" disabled={isLoading || !user} />
+            <SettingsItem href="/about" icon={Info} title="About PayFriend" description="App version, legal information" />
+          </CardContent>
+        </Card>
 
-         <Card className="shadow-md">
-             <CardContent className="p-0 divide-y divide-border">
-                {/* Link to the 24/7 Live Support Chat */}
-                <SettingsItem href="/support" icon={MessageSquare} title="Help & Support" description="24/7 Live Chat, FAQs" />
-                <SettingsItem href="/about" icon={Info} title="About PayFriend" description="App version, legal information" />
-             </CardContent>
-         </Card>
-
-        {/* Logout Button */}
         <AlertDialog>
-            <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="w-full" disabled={isLoading}>
-                    <LogOut className="mr-2 h-4 w-4" /> Logout
-                </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Are you sure you want to log out of PayFriend?
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleLogout} className="bg-destructive hover:bg-destructive/90">Logout</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" className="w-full" disabled={isLoading || !user}>
+              <LogOut className="mr-2 h-4 w-4" /> Logout
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to log out of PayFriend?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleLogout} className="bg-destructive hover:bg-destructive/90">Logout</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
-
       </main>
     </div>
   );
 }
 
-
-// Helper Component for Settings Items
 interface SettingsItemProps {
-    icon: React.ElementType;
-    title: string;
-    description: string;
-    href?: string;
-    onClick?: () => void;
-    badgeStatus?: string;
-    disabled?: boolean; // Added disabled prop
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  href?: string;
+  onClick?: () => void;
+  badgeStatus?: string;
+  disabled?: boolean;
 }
 
 function SettingsItem({ icon: Icon, title, description, href, onClick, badgeStatus, disabled = false }: SettingsItemProps) {
-    const commonClasses = "flex items-center justify-between p-4 transition-colors";
-    const interactiveClasses = !disabled ? "hover:bg-accent cursor-pointer" : "opacity-50 cursor-not-allowed";
+  const commonClasses = "flex items-center justify-between p-4 transition-colors";
+  const interactiveClasses = !disabled ? "hover:bg-accent cursor-pointer" : "opacity-50 cursor-not-allowed";
 
-    const content = (
-        <>
-            <div className="flex items-center gap-4">
-                <Icon className="h-5 w-5 text-primary" />
-                <div>
-                    <p className="text-sm font-medium">{title}</p>
-                    <p className="text-xs text-muted-foreground">{description}</p>
-                </div>
-            </div>
-            <div className="flex items-center gap-2">
-                 {badgeStatus && (
-                    <Badge variant={badgeStatus === 'Verified' ? 'default' : badgeStatus === 'Pending' ? 'secondary' : 'destructive'} className={`${badgeStatus === 'Verified' ? 'bg-green-100 text-green-700' : badgeStatus === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'} pointer-events-none`}>
-                        {badgeStatus}
-                    </Badge>
-                 )}
-                 {(href || onClick) && !disabled && <ChevronRight className="h-5 w-5 text-muted-foreground" />}
-            </div>
-        </>
-    );
+  const content = (
+    <>
+      <div className="flex items-center gap-4">
+        <Icon className="h-5 w-5 text-primary" />
+        <div>
+          <p className="text-sm font-medium">{title}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {badgeStatus && (
+          <Badge variant={badgeStatus === 'Verified' ? 'default' : badgeStatus === 'Pending' ? 'secondary' : 'destructive'} className={`${badgeStatus === 'Verified' ? 'bg-green-100 text-green-700' : badgeStatus === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'} pointer-events-none`}>
+            {badgeStatus}
+          </Badge>
+        )}
+        {(href || onClick) && !disabled && <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+      </div>
+    </>
+  );
 
   if (href && !disabled) {
     return (
-        <Link href={href} passHref legacyBehavior>
-           <a className={`${commonClasses} ${interactiveClasses}`}>{content}</a>
-        </Link>
+      <Link href={href} passHref legacyBehavior>
+        <a className={`${commonClasses} ${interactiveClasses}`}>{content}</a>
+      </Link>
     );
   }
 
   if (onClick && !disabled) {
-     return <button onClick={onClick} className={`${commonClasses} ${interactiveClasses} w-full text-left`} disabled={disabled}>{content}</button>
+    return <button onClick={onClick} className={`${commonClasses} ${interactiveClasses} w-full text-left`} disabled={disabled}>{content}</button>
   }
 
-  // Non-interactive item (div)
   return <div className={`${commonClasses} ${disabled ? 'opacity-50' : ''}`}>{content}</div>;
 }
 
-
-// Helper Component for Settings Items with a Switch
 interface SettingsSwitchItemProps {
-    icon: React.ElementType;
-    title: string;
-    description: string;
-    checked: boolean;
-    onCheckedChange: (checked: boolean) => void;
-    disabled?: boolean; // Added disabled prop
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
 function SettingsSwitchItem({ icon: Icon, title, description, checked, onCheckedChange, disabled = false }: SettingsSwitchItemProps) {
-    const id = title.toLowerCase().replace(/\s+/g, '-');
-    const [isUpdatingSwitch, setIsUpdatingSwitch] = useState(false); // Renamed internal state
+  const id = title.toLowerCase().replace(/\s+/g, '-');
+  const [isSwitchUpdating, setIsSwitchUpdating] = useState(false);
 
-    const handleChange = async (newChecked: boolean) => {
-        if (disabled || isUpdatingSwitch) return; // Prevent change if disabled or already updating
-        setIsUpdatingSwitch(true);
-        try {
-            await onCheckedChange(newChecked); // Call the async handler passed via props
-        } catch (error) {
-            // Error handled in the parent component's toast
-            console.error("Error during switch change:", error);
-        } finally {
-            setIsUpdatingSwitch(false);
-        }
-    };
+  const handleChange = async (newChecked: boolean) => {
+    if (disabled || isSwitchUpdating) return;
+    setIsSwitchUpdating(true);
+    try {
+      await onCheckedChange(newChecked);
+    } catch (error) {
+      console.error("Error during switch change:", error);
+    } finally {
+      setIsSwitchUpdating(false);
+    }
+  };
 
-    return (
-        <div className={`flex items-center justify-between p-4 ${disabled && !isUpdatingSwitch ? 'opacity-50' : ''}`}>
-            <div className="flex items-center gap-4">
-                <Icon className="h-5 w-5 text-primary" />
-                <div>
-                    <Label htmlFor={id} className={`text-sm font-medium ${disabled && !isUpdatingSwitch ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
-                    <p className="text-xs text-muted-foreground">{description}</p>
-                </div>
-            </div>
-            <div className="flex items-center">
-                {isUpdatingSwitch && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground"/>}
-                <Switch
-                    id={id}
-                    checked={checked}
-                    onCheckedChange={handleChange} // Use internal handler
-                    aria-label={title}
-                    disabled={disabled || isUpdatingSwitch} // Disable if globally disabled or if this switch is updating
-                />
-            </div>
+  return (
+    <div className={`flex items-center justify-between p-4 ${disabled && !isSwitchUpdating ? 'opacity-50' : ''}`}>
+      <div className="flex items-center gap-4">
+        <Icon className="h-5 w-5 text-primary" />
+        <div>
+          <Label htmlFor={id} className={`text-sm font-medium ${disabled && !isSwitchUpdating ? 'cursor-not-allowed' : 'cursor-pointer'}`}>{title}</Label>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
-    );
+      </div>
+      <div className="flex items-center">
+        {(isSwitchUpdating || (disabled && !isSwitchUpdating)) && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground" />}
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={handleChange}
+          aria-label={title}
+          disabled={disabled || isSwitchUpdating}
+        />
+      </div>
+    </div>
+  );
 }
