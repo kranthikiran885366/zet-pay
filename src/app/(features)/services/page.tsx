@@ -13,7 +13,6 @@ import {
   Loader2,
   Smartphone,
   Tv,
-  Tv2, // Added Tv2
   Bolt,
   Droplet,
   ShieldCheck,
@@ -40,14 +39,14 @@ import {
   History,
   ParkingMeter,
   Fuel,
-  CarTaxiFront as TaxiIcon, // Use alias
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Gift as GiftIcon,
     Home as HomeIcon, // Alias Home icon
     Car,
-    Bike as Motorbike, // Use alias
+    Bike as Motorbike,
     CalendarCheck,
     Video,
     Sparkles,
@@ -76,7 +75,7 @@ import {
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
     ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal,
+    MoreHorizontal, // Added MoreHorizontal back
     FolderLock, // Secure Vault
     GraduationCap, // Education Fees
     PiggyBank, // Pocket Money / Goals
@@ -91,13 +90,13 @@ import {
     Drama, // Comedy Shows
     Stethoscope, // Doctor
     BedDouble, // Hospital Beds
+    BedSingle, // Hostels
     FlaskConical, // Lab Tests
     Dumbbell, // Fitness Trainer
     Pill, // Pharmacy
     Ambulance, // Emergency Ambulance
     Repeat, // Medicine Subscription / Autopay
     BadgePercent, // Health Offers / Shopping Offers
-    BedSingle, // Hostels
     Play, // Google Play / Watch Party
     Target, // Savings Goals
     Wallet, // Pay Later / Wallet Bridge
@@ -114,9 +113,10 @@ import {
     CalendarClock, // Smart Schedule / SIP Reminders
     UserCheck, // KYC Verification
     LucideIcon, // Generic fallback
+    ThermometerSnowflake, // Added missing import
 } from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react';
+import { useState } from 'react'; // Import useState
 
 interface Service {
     name: string;
@@ -136,7 +136,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Corrected Tv2 to Tv
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -197,7 +197,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
      { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Corrected Tv2 to Tv
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -206,7 +206,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Watch Party", icon: Play, href: "/entertainment/watchparty", category: "Entertainment & Gaming", tags: ["sync", "online", "friends"] },
 ];
 
-const templeServicesData: Service[] = [ // Renamed to avoid conflict
+const templeServicesData: Service[] = [
   { name: "Book Darshan Slot", icon: CalendarCheck, href: "/temple/darshan", category: "Temple Services", tags: ["tirupati", "shirdi", "vaishno", "visit"] },
   { name: "Live Darshan", icon: Video, href: "/temple/live", category: "Temple Services", tags: ["stream", "watch", "online"] },
   { name: "Virtual Pooja", icon: Sparkles, href: "/temple/pooja", category: "Temple Services", tags: ["online", "remote", "ritual"] },
@@ -220,7 +220,7 @@ const templeServicesData: Service[] = [ // Renamed to avoid conflict
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services", tags: ["entry", "qr", "digital"] },
 ];
 
-const hyperlocalServicesData: Service[] = [ // Renamed
+const hyperlocalServicesData: Service[] = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
@@ -233,7 +233,7 @@ const hyperlocalServicesData: Service[] = [ // Renamed
     { name: "Salon/Barber", icon: ScissorsLineDashed, href: "/hyperlocal/salon", category: "Hyperlocal Services", tags: ["haircut", "beauty", "appointment"] },
 ];
 
-const municipalServicesData: Service[] = [ // Renamed
+const municipalServicesData: Service[] = [
     { name: "Property Tax", icon: HomeIcon, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
     { name: "Housing Society", icon: Building, href: "/housing-society", category: "Municipal Services", tags: ["maintenance", "apartment", "dues"]},
     { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services", tags: ["local", "government", "certificates"]},
@@ -257,14 +257,14 @@ const vouchersMoreServices: Service[] = [
     { name: "AI Gifting Assistant", icon: WandSparkles, href: "/ai-gifting", category: "Vouchers & More", tags: ["suggest", "present", "recommend", "idea"]},
 ];
 
-const paymentsServicesData: Service[] = [ // Renamed
+const paymentsServicesData: Service[] = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
     { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
 
-const healthcareServicesData: Service[] = [ // Renamed
+const healthcareServicesData: Service[] = [
     { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
     { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
     { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
@@ -298,13 +298,13 @@ const allServices: Service[] = [
     ...transitTollServices,
     ...foodAndShoppingServices,
     ...entertainmentGamingServices,
-    ...templeServicesData, // Use renamed variable
-    ...healthcareServicesData, // Use renamed variable
-    ...hyperlocalServicesData, // Use renamed variable
-    ...municipalServicesData, // Use renamed variable
+    ...templeServicesData,
+    ...healthcareServicesData,
+    ...hyperlocalServicesData,
+    ...municipalServicesData,
     ...utilityToolsServices,
     ...vouchersMoreServices,
-    ...paymentsServicesData, // Use renamed variable
+    ...paymentsServicesData,
     ...eventsCelebrationsServices,
     ...aiAndToolsServices,
 ];
@@ -360,29 +360,67 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const groupedServices = groupServicesByCategory(allServices);
     const categories = Object.keys(groupedServices);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredCategories = categories.filter(category => {
+        if (!searchTerm.trim()) return true; // Show all if no search term
+        // Check if category name matches
+        if (category.toLowerCase().includes(searchTerm.toLowerCase())) return true;
+        // Check if any service name or tags in this category match
+        return groupedServices[category].some(service =>
+            service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
+        );
+    });
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
+            <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-2 shadow-md">
                 <Link href="/" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                 </Link>
                 <Sparkles className="h-6 w-6" />
-                <h1 className="text-lg font-semibold">All Services</h1>
+                <h1 className="text-lg font-semibold flex-grow">All Services</h1>
+                 {/* Search Input */}
+                 <div className="relative w-full max-w-xs">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Search services (e.g., Flight, Food)"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8 h-9 bg-primary/20 text-primary-foreground placeholder:text-primary-foreground/70 border-primary-foreground/30 focus:bg-background focus:text-foreground"
+                    />
+                </div>
             </header>
 
             <main className="flex-grow p-4 space-y-6 pb-20">
-                 {categories.map((category) => {
-                     if (!groupedServices[category] || groupedServices[category].length === 0) return null;
+                 {filteredCategories.length === 0 && searchTerm && (
+                     <Card className="shadow-md text-center">
+                         <CardContent className="p-6">
+                             <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
+                             <p className="text-muted-foreground">No services found matching "{searchTerm}".</p>
+                         </CardContent>
+                     </Card>
+                 )}
+                 {filteredCategories.map((category) => {
+                     const servicesInCategory = groupedServices[category].filter(service => {
+                        if (!searchTerm.trim()) return true;
+                        return service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                               (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
+                     });
+
+                     if(servicesInCategory.length === 0 && searchTerm) return null; // Don't render category if search filters it out
+
                     return (
                          <Card key={category} className="shadow-md">
                             <CardHeader>
                                 <CardTitle>{category}</CardTitle>
                             </CardHeader>
                             <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
-                                {groupedServices[category].map((service: Service) => (
+                                {servicesInCategory.map((service: Service) => (
                                      <Link key={service.name} href={service.href} passHref legacyBehavior>
                                         <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                                             <div className="bg-primary/10 text-primary p-3 rounded-full">
