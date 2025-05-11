@@ -48,7 +48,7 @@ export async function getWalletBalance(userId: string): Promise<number> {
             await walletDocRef.set({
                 userId: userId,
                 balance: 0,
-                lastUpdated: FieldValue.serverTimestamp()
+                lastUpdated: FieldValue.serverTimestamp() // Firestore server timestamp
             });
             return 0;
         }
@@ -81,7 +81,7 @@ export async function ensureWalletExistsInternal(userId: string, transaction?: F
         const initialData = {
             userId: userId,
             balance: 0,
-            lastUpdated: FieldValue.serverTimestamp()
+            lastUpdated: FieldValue.serverTimestamp() // Firestore server timestamp
         };
         if (transaction) {
             transaction.set(walletDocRef, initialData);
@@ -104,7 +104,7 @@ export async function ensureWalletExistsInternal(userId: string, transaction?: F
  * @param {string} referenceId Identifier for the transaction (e.g., recipient UPI, biller ID, 'RECOVERY_CREDIT').
  * @param {number} amount Amount (positive for debit, negative for credit).
  * @param {string} note Transaction description/note.
- * @param {string} [transactionType=null] Optional override for the transaction log type.
+ * @param {string} [transactionType=null] The type for the transaction log ('Sent', 'Received', 'Wallet Top-up', 'Refund', etc.).
  * @returns {Promise<WalletTransactionResult>} Result object.
  */
 export async function payViaWalletInternal(
@@ -138,12 +138,12 @@ export async function payViaWalletInternal(
              newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
              const updateData = {
                  balance: newBalance,
-                 lastUpdated: FieldValue.serverTimestamp()
+                 lastUpdated: FieldValue.serverTimestamp() // Firestore server timestamp
              };
              transaction.update(walletDocRef, updateData);
          });
 
-         const logData = {
+         const logData: Partial<Omit<Transaction, 'id' | 'date'>> & {userId: string} = { // Type assertion for logData
              type: finalLogType,
              name: referenceId,
              description: `${note || `Wallet ${operationType}`}`,
@@ -151,16 +151,16 @@ export async function payViaWalletInternal(
              status: 'Completed',
              userId: userId,
              upiId: referenceId.includes('@') ? referenceId : undefined,
-             billerId: !referenceId.includes('@') && referenceId !== 'WALLET_RECOVERY_CREDIT' ? referenceId : undefined,
+             billerId: !referenceId.includes('@') && referenceId !== 'WALLET_RECOVERY_CREDIT' && referenceId !== 'ZETPAY_ECOMMERCE' ? referenceId : undefined, // More specific billerId
              paymentMethodUsed: 'Wallet',
          };
-        const loggedTx = await addTransaction(logData as any);
+        const loggedTx = await addTransaction(logData); // This is the backend logger now
         loggedTxId = loggedTx.id;
 
-        sendBalanceUpdate(userId, newBalance); // Send WS update
+        sendBalanceUpdate(userId, newBalance);
 
-        logTransactionToBlockchain(loggedTxId, loggedTx)
-             .catch(err => console.error("[Wallet Service] Blockchain log failed:", err));
+        // Ensure the loggedTx (which is a full Transaction object from backend logger) is passed
+        await logTransactionToBlockchain(loggedTxId, loggedTx);
 
          console.log(`[Wallet Service - Backend] Wallet ${operationType} successful for ${userId}. Tx ID: ${loggedTxId}`);
          return { success: true, transactionId: loggedTxId, newBalance, message: `Wallet ${operationType} successful` };
@@ -168,8 +168,8 @@ export async function payViaWalletInternal(
     } catch (error: any) {
          console.error(`[Wallet Service - Backend] Wallet ${operationType} failed for user ${userId}:`, error);
          let failedTxId: string | undefined;
-         if (!isCredit) {
-             const failLogData = {
+         if (!isCredit) { // Only log failed debits, not failed credits generally
+             const failLogData: Partial<Omit<Transaction, 'id'|'date'>> & {userId: string} = {
                  type: 'Failed',
                  name: referenceId,
                  description: `Wallet Payment Failed - ${error.message}`,
@@ -180,14 +180,11 @@ export async function payViaWalletInternal(
                  paymentMethodUsed: 'Wallet',
              };
              try {
-                 const failedTx = await addTransaction(failLogData as any);
+                 const failedTx = await addTransaction(failLogData);
                  failedTxId = failedTx.id;
-                 sendBalanceUpdate(userId, await getWalletBalance(userId));
-                  if (typeof sendToUser === 'function') {
-                      sendToUser(userId, { type: 'transaction_update', payload: {...failedTx, date: failedTx.date.toISOString()} }); // Send full failed TX
-                  }
+                 // No need to call sendToUser for failed transaction from here, addTransaction does it
              } catch (logError) {
-                  console.error("[Wallet Service] Failed to log failed internal wallet debit:", logError);
+                  console.error("[Wallet Service - Backend] Failed to log failed internal wallet debit:", logError);
              }
          }
          return { success: false, transactionId: failedTxId, message: error.message || `Internal wallet ${operationType} failed.` };

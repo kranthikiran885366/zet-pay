@@ -6,7 +6,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 /**
  * Validates scanned QR data.
  * Checks against verified merchants, blacklisted QRs.
- * Logs the scan attempt. Backend no longer handles "recent duplicate scan" logic for blocking.
+ * Logs the scan attempt. Backend service now handles duplicate scan logic.
  */
 exports.validateQr = asyncHandler(async (req, res, next) => {
     const userId = req.user.uid; // Assuming authMiddleware provides this
@@ -15,19 +15,19 @@ exports.validateQr = asyncHandler(async (req, res, next) => {
     // Validation already done by router
     const validationResult = await scanService.validateScannedQr(userId, qrData);
 
-    // Prepare response based on backend validation
-    const parsedUpi = scanService.parseUpiDataFromQr(qrData); // Reparse to ensure consistency in response
+    // Reparse to ensure consistency in response if not already provided by service
+    const parsedUpi = validationResult.upiId ? { pa: validationResult.upiId, pn: validationResult.merchantNameFromDb, am: null, tn: null} : scanService.parseUpiDataFromQr(qrData);
 
     res.status(200).json({
         isVerifiedMerchant: validationResult.isVerifiedMerchant,
         isBlacklisted: validationResult.isBlacklisted,
-        isDuplicateRecent: validationResult.isDuplicateRecent, // This will likely be false from backend if not explicitly checked there
-        merchantName: validationResult.merchantNameFromDb || parsedUpi?.pn, // Prioritize DB name
-        payeeAddress: parsedUpi?.pa,
+        isDuplicateRecent: validationResult.isDuplicateRecent, // Service provides this now
+        merchantName: validationResult.merchantNameFromDb || parsedUpi?.pn,
+        payeeAddress: parsedUpi?.pa || validationResult.upiId,
         amount: parsedUpi?.am,
         note: parsedUpi?.tn,
         message: validationResult.message,
-        upiId: validationResult.upiId, // Pass back the parsed UPI ID from validation service
+        upiId: validationResult.upiId, // Pass back the parsed/verified UPI ID
     });
 });
 
@@ -43,6 +43,3 @@ exports.reportQr = asyncHandler(async (req, res, next) => {
     const reportId = await scanService.reportQrCode(userId, qrData, reason);
     res.status(200).json({ success: true, message: 'QR code reported successfully.', reportId });
 });
-
-// Add other scan-related controller functions if needed
-// e.g., getScanHistory (if storing logs per user and want to expose)

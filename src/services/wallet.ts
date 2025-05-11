@@ -3,8 +3,9 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-// Removed import: import { addTransaction, logTransactionToBlockchain } from '@/services/transactionLogger';
-import type { WalletTransactionResult } from './types'; // Use shared types
+// Removed direct import of transactionLogger, backend handles logging
+// import { addTransaction } from '@/services/transactionLogger'; 
+import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
 
 // Re-export types if needed by components
 export type { WalletTransactionResult };
@@ -19,14 +20,19 @@ export type { WalletTransactionResult };
  */
 export async function getWalletBalance(userId?: string): Promise<number> {
     const currentUserId = userId || auth.currentUser?.uid;
-    console.log(`Fetching wallet balance via API for user: ${currentUserId || 'current'}`);
+    if (!currentUserId && !userId) { // If userId is not passed and no user is logged in
+        console.warn("[Wallet Service Client] No user ID provided and no user logged in. Returning 0 balance.");
+        return 0; // Or throw error depending on desired behavior for unauthenticated users
+    }
+    console.log(`[Wallet Service Client] Fetching wallet balance via API for user: ${currentUserId || 'current'}`);
 
     try {
+        // Backend infers user from token if userId is not explicitly part of the path/query
         const response = await apiClient<{ balance: number }>('/wallet/balance');
         return response.balance;
     } catch (error) {
-        console.error("Error fetching wallet balance via API:", error);
-        throw error;
+        console.error("[Wallet Service Client] Error fetching wallet balance via API:", error);
+        throw error; // Re-throw for UI to handle
     }
 }
 
@@ -41,21 +47,25 @@ export async function getWalletBalance(userId?: string): Promise<number> {
  */
 export async function topUpWallet(userId: string | undefined, amount: number, fundingSourceInfo: string): Promise<WalletTransactionResult> {
      const currentUserId = userId || auth.currentUser?.uid;
-     console.log(`Attempting wallet top-up via API for user ${currentUserId} with ₹${amount} from ${fundingSourceInfo}`);
+     if (!currentUserId && !userId) {
+        return { success: false, message: "User not authenticated for top-up." };
+     }
+     console.log(`[Wallet Service Client] Attempting wallet top-up via API for user ${currentUserId} with ₹${amount} from ${fundingSourceInfo}`);
 
      if (amount <= 0) {
         return { success: false, message: "Invalid top-up amount." };
      }
 
      try {
+        // Backend infers user from token
         const result = await apiClient<WalletTransactionResult>('/wallet/topup', {
             method: 'POST',
             body: JSON.stringify({ amount, fundingSourceInfo }),
         });
-        console.log("Wallet top-up API response:", result);
-        return result;
+        console.log("[Wallet Service Client] Wallet top-up API response:", result);
+        return result; // Backend returns full WalletTransactionResult including newBalance and transactionId
      } catch (error: any) {
-        console.error("Error topping up wallet via API:", error);
+        console.error("[Wallet Service Client] Error topping up wallet via API:", error);
         return { success: false, message: error.message || "Failed to process top-up." };
      }
 }
@@ -78,31 +88,33 @@ export async function payViaWallet(
     note?: string
 ): Promise<WalletTransactionResult> {
      const currentUserId = userId || auth.currentUser?.uid;
-     console.log(`Attempting wallet payment via API for user ${currentUserId} of ₹${amount} to ${recipientIdentifier}`);
+     if (!currentUserId && !userId) {
+        return { success: false, message: "User not authenticated for payment." };
+     }
+     console.log(`[Wallet Service Client] Attempting wallet payment via API for user ${currentUserId} of ₹${amount} to ${recipientIdentifier}`);
 
     if (amount <= 0 || !recipientIdentifier) {
         return { success: false, message: "Invalid parameters for wallet payment." };
     }
 
      try {
+        // Backend infers user from token
         const result = await apiClient<WalletTransactionResult>('/wallet/pay', {
             method: 'POST',
             body: JSON.stringify({ recipientIdentifier, amount, note: note || undefined }),
         });
-        console.log("Wallet payment API response:", result);
-        return result;
+        console.log("[Wallet Service Client] Wallet payment API response:", result);
+        return result; // Backend returns full WalletTransactionResult
      } catch (error: any) {
-        console.error("Error processing wallet payment via API:", error);
+        console.error("[Wallet Service Client] Error processing wallet payment via API:", error);
          return { success: false, message: error.message || "Failed to process wallet payment." };
      }
 }
 
 /**
- * Internal client-side function for direct wallet debit/credit simulation or local state update.
- * Handles balance check, atomic update (if interacting directly with Firestore), transaction logging, and WebSocket updates.
- * Use this function internally within the frontend if needed, but prefer API calls for actual backend operations.
- * IMPORTANT: Negative amount signifies a CREDIT to the wallet (like a top-up/refund).
- * **WARNING**: This function does NOT interact with the backend logger. Use `payViaWallet` for actual payments.
+ * Client-side simulation or local state update function.
+ * This does NOT interact with the backend for actual payment or logging.
+ * Use for optimistic UI updates if necessary, but actual operations must go through API.
  *
  * @param userId The ID of the user whose wallet is affected.
  * @param identifier An identifier for the transaction (e.g., recipient UPI, biller ID, 'WALLET_RECOVERY').
@@ -116,24 +128,24 @@ export async function payViaWalletInternal(
     amount: number,
     note?: string
 ): Promise<WalletTransactionResult> {
-    console.warn("payViaWalletInternal called on client-side. No transaction logging will occur. Prefer using API via payViaWallet.");
+    console.warn("[Wallet Service Client - payViaWalletInternal] This is a client-side simulation. For actual payments, use backend API via payViaWallet.");
     const isCredit = amount < 0;
     const absoluteAmount = Math.abs(amount);
     const operationType = isCredit ? 'credit' : 'debit';
-    let newBalance = 0;
+    let currentBalance = 0; // Assume we'd fetch this or have it in state for UI
 
     try {
-        const currentBalance = await getWalletBalance(userId); // This now calls the API
-        if (!isCredit && currentBalance < absoluteAmount) {
-             throw new Error(`Insufficient wallet balance. Available: ₹${currentBalance.toFixed(2)}`);
-         }
-         newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
-
-        // No actual transaction logging or backend update happens here.
-        // This is purely a client-side simulation for UI updates IF NEEDED.
-        // The real balance update and logging should happen via backend API calls.
+        // Simulate getting current balance (in a real UI, this would come from state/hook)
+        // currentBalance = await getWalletBalance(userId); // This would be an API call
+        
+        // Simulate balance check for debit
+        // if (!isCredit && currentBalance < absoluteAmount) {
+        //      throw new Error(`Insufficient wallet balance (simulated). Available: ₹${currentBalance.toFixed(2)}`);
+        //  }
+        const newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
 
         console.log(`[Client Sim] Internal wallet ${operationType} successful simulation for ${userId}. New simulated balance: ₹${newBalance.toFixed(2)}`);
+        // This is a local/optimistic update. No actual transaction is logged on backend here.
         return { success: true, transactionId: `local-sim-${Date.now()}`, newBalance, message: `Wallet ${operationType} successful (Client Sim)` };
 
     } catch (error: any) {

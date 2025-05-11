@@ -2,7 +2,8 @@
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
 
-import { admin, db } from '../config/firebaseAdmin'; // Use configured admin instance - Correct path for backend
+import admin from 'firebase-admin'; // Use admin SDK
+const db = admin.firestore();
 import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
 import { sendToUser } from '../server'; // Correct path to import WebSocket sender from backend server.js
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
@@ -30,14 +31,14 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const dataToSave = {
             ...rest,
             userId: userId,
-            date: FieldValue.serverTimestamp(), 
+            date: FieldValue.serverTimestamp(), // Use server timestamp for the main transaction date
             avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
             billerId: rest.billerId ?? null,
             upiId: rest.upiId ?? null,
             loanId: rest.loanId ?? null,
-            ticketId: rest.ticketId ?? null, 
-            refundEta: rest.refundEta ?? null, 
-            blockchainHash: rest.blockchainHash ?? null, 
+            ticketId: rest.ticketId ?? null,
+            refundEta: rest.refundEta ?? null,
+            blockchainHash: rest.blockchainHash ?? null,
             paymentMethodUsed: rest.paymentMethodUsed ?? null,
             originalTransactionId: rest.originalTransactionId ?? null,
             operatorReferenceId: (rest as any).operatorReferenceId ?? null,
@@ -45,8 +46,12 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             planId: (rest as any).planId ?? null,
             identifier: (rest as any).identifier ?? null,
             withdrawalRequestId: (rest as any).withdrawalRequestId ?? null,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(), // Always set by server
+            updatedAt: FieldValue.serverTimestamp(), // Always set by server
+            // Ensure all fields from Transaction type are considered or set to null/default
+            pspTransactionId: (rest as any).pspTransactionId ?? null,
+            refundTransactionId: (rest as any).refundTransactionId ?? null,
+            failureReason: (rest as any).failureReason ?? null,
         };
 
         Object.keys(dataToSave).forEach(key => {
@@ -62,18 +67,19 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const newDocSnap = await docRef.get();
         const savedData = newDocSnap.data();
 
-        if (!savedData || !savedData.date) {
-            console.error("[Backend Logger] Failed to retrieve saved transaction data or timestamp for ID:", docRef.id);
-            throw new Error("Failed to retrieve saved transaction data.");
+        if (!savedData || !savedData.date || !savedData.createdAt || !savedData.updatedAt) {
+            console.error("[Backend Logger] Failed to retrieve saved transaction data or timestamps for ID:", docRef.id);
+            throw new Error("Failed to retrieve saved transaction data with server timestamps.");
         }
 
         const finalTransaction: Transaction = {
             id: docRef.id,
             ...savedData,
+            // Convert Firestore Timestamps to JS Dates for return and WS payload
             date: (savedData.date as Timestamp).toDate(),
-            createdAt: savedData.createdAt ? (savedData.createdAt as Timestamp).toDate() : undefined,
-            updatedAt: savedData.updatedAt ? (savedData.updatedAt as Timestamp).toDate() : undefined,
-        } as Transaction;
+            createdAt: (savedData.createdAt as Timestamp).toDate(),
+            updatedAt: (savedData.updatedAt as Timestamp).toDate(),
+        } as Transaction; // Assert type after conversion
 
 
         const wsPayload = {
@@ -96,20 +102,20 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         }
 
 
-        const blockchainPayload = {
+        const blockchainPayloadForLog = { // Renamed to avoid conflict
             userId: finalTransaction.userId,
             type: finalTransaction.type,
             amount: finalTransaction.amount,
-            date: finalTransaction.date.toISOString(),
+            date: finalTransaction.date.toISOString(), // Use ISO string for logging
             recipient: finalTransaction.upiId || finalTransaction.billerId || undefined,
             name: finalTransaction.name,
             description: finalTransaction.description,
             status: finalTransaction.status,
-            originalId: finalTransaction.id, 
-            ticketId: finalTransaction.ticketId 
+            originalId: finalTransaction.id,
+            ticketId: finalTransaction.ticketId
         };
 
-        blockchainLogger.logTransaction(finalTransaction.id, blockchainPayload)
+        blockchainLogger.logTransaction(finalTransaction.id, blockchainPayloadForLog)
             .then(hash => {
                 if (hash) {
                     docRef.update({ blockchainHash: hash, updatedAt: FieldValue.serverTimestamp() }).catch(err => console.error("[Backend Logger] Failed to update tx with blockchain hash:", err));
@@ -131,12 +137,14 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
  * Separated for clarity and potential independent use.
  *
  * @param {string} transactionId The unique ID of the transaction from our system.
- * @param {Transaction} data The full transaction data object.
+ * @param {Transaction} data The full transaction data object, expecting JS Dates.
  * @returns {Promise<string | null>} A promise resolving to the blockchain transaction hash or null.
  */
 export async function logTransactionToBlockchain(transactionId: string, data: Transaction): Promise<string | null> {
     const { userId, amount, type, date, name, description, status, id, ticketId } = data;
+    // Ensure date is ISO string for consistent logging format
     const isoDate = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? date : new Date().toISOString());
+
     const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id, ticketId };
 
     if (blockchainLogger && typeof blockchainLogger.logTransaction === 'function') {

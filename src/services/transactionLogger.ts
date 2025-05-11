@@ -5,8 +5,8 @@
  */
 
 import { apiClient } from '@/lib/apiClient'; // For calling backend APIs
-import blockchainLogger from '@/services/blockchainLogger'; // Import the blockchain service using alias
-import { sendToUser } from '@/lib/websocket'; // Correct path to import WebSocket sender from frontend lib
+// Removed direct import of backend blockchainLogger, client doesn't call it directly
+// import blockchainLogger from './blockchainLogger'; 
 import type { Transaction } from './types'; // Import shared Transaction type
 
 /**
@@ -24,6 +24,8 @@ export async function addTransaction(
     console.log(`[Client Service Logger] Requesting backend to log transaction. Type: ${transactionData.type}`);
 
     try {
+        // The backend /api/transactions POST endpoint will handle creating the transaction
+        // and calling the backend transactionLogger service internally.
         const newTransactionFromBackend = await apiClient<Transaction>('/transactions', {
             method: 'POST',
             body: JSON.stringify(transactionData),
@@ -31,6 +33,7 @@ export async function addTransaction(
 
         console.log("[Client Service Logger] Transaction logged via backend, ID:", newTransactionFromBackend.id);
 
+        // Ensure dates are Date objects for client-side consistency
         return {
             ...newTransactionFromBackend,
             date: new Date(newTransactionFromBackend.date),
@@ -55,6 +58,7 @@ export async function addTransaction(
 export async function getBlockchainTransactionInfoClient(transactionId: string): Promise<any | null> {
     console.log(`[Client Service Logger] Fetching blockchain info for tx: ${transactionId} via backend API.`);
     try {
+        // Assumes backend endpoint /api/blockchain/tx/:transactionId
         const info = await apiClient<any>(`/blockchain/tx/${transactionId}`);
         return info;
     } catch (error: any) {
@@ -63,5 +67,5 @@ export async function getBlockchainTransactionInfoClient(transactionId: string):
     }
 }
 
-// logTransactionToBlockchain is a backend function, client calls it indirectly via addTransaction if configured.
-// No direct client-side function to log TO blockchain.
+// Client-side should not directly log to blockchain; backend handles this.
+// Removed: export async function logTransactionToBlockchain(...)
