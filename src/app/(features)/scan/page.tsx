@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription as it's not used
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet } from 'lucide-react';
 import Link from 'next/link';
@@ -15,14 +15,15 @@ import { auth } from '@/lib/firebase';
 import { getCurrentUserProfile } from '@/services/user';
 import { apiClient } from '@/lib/apiClient';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input'; // Added input for report reason
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"; // Import Dialog components
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label'; // Added Label import
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 
 // QR Code Decoding Logic (Simulation) - Keep for upload testing
 async function decodeQrCodeFromImage(file: File): Promise<string | null> {
   console.log("[Client Scan] Decoding QR from file:", file.name);
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
   if (file.name.toLowerCase().includes("valid_upi_merchant")) {
     return "upi://pay?pa=verifiedmerchant@okaxis&pn=Good%20Foods%20Store&am=150&tn=Groceries";
   } else if (file.name.toLowerCase().includes("valid_upi_unverified")) {
@@ -68,15 +69,15 @@ const parseUpiUrl = (url: string): ParsedUpiData => {
 interface QrValidationResult {
     isVerifiedMerchant: boolean;
     isBlacklisted: boolean;
-    isDuplicateRecent: boolean; // This will now be informational
+    isDuplicateRecent: boolean;
     merchantNameFromDb?: string;
     message?: string;
-    upiId?: string; // Added to include UPI ID in validation result
+    upiId?: string;
 }
 
 const RECENT_SCANS_KEY = 'payfriend_recent_scans';
 const RECENT_SCANS_MAX = 5;
-const RECENT_SCAN_COOLDOWN_MS = 15000; // 15 seconds cooldown for *informational* message
+const RECENT_SCAN_COOLDOWN_MS = 15000;
 
 interface RecentScanEntry {
     qrDataHash: string;
@@ -130,7 +131,6 @@ export default function ScanPage() {
         try {
           const profile = await getCurrentUserProfile();
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
-          // Assuming profile has primary UPI ID. Fallback if not.
           upiIdToUse = (profile && profile.upiId) ? profile.upiId as string : `${currentUser.uid.substring(0, 5)}@payfriend`;
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
@@ -167,6 +167,56 @@ export default function ScanPage() {
     }
   }, [torchOn]);
 
+  const handleScannedData = useCallback(async (data: string) => {
+    stopCameraStream();
+    setIsProcessingScan(true);
+    setRawScannedText(data);
+
+    const parsedData = parseUpiUrl(data);
+    setScannedUpiData(parsedData);
+
+    if (!parsedData.isValidUpi || !parsedData.payeeAddress) {
+        toast({ variant: "destructive", title: "Invalid QR Code", description: "This QR code is not a valid UPI payment code." });
+        setValidationResult(null);
+        setIsProcessingScan(false);
+        return;
+    }
+
+    const qrHash = simpleHash(data);
+    const recentScans: RecentScanEntry[] = JSON.parse(localStorage.getItem(RECENT_SCANS_KEY) || '[]');
+    const isRecentlyScanned = recentScans.some(scan => scan.qrDataHash === qrHash && (Date.now() - scan.timestamp) < RECENT_SCAN_COOLDOWN_MS);
+
+    if (isRecentlyScanned) {
+        // toast({ variant: "default", title: "Duplicate Scan Info", description: "This QR was scanned recently.", duration: 3000 });
+    }
+
+    const updatedRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...recentScans].slice(0, RECENT_SCANS_MAX);
+    localStorage.setItem(RECENT_SCANS_KEY, JSON.stringify(updatedRecentScans));
+
+    try {
+      const validation: QrValidationResult = await apiClient('/scan/validate', {
+        method: 'POST',
+        body: JSON.stringify({ qrData: data, userId: auth.currentUser?.uid }),
+      });
+      setValidationResult({...validation, isDuplicateRecent: isRecentlyScanned, upiId: parsedData.payeeAddress });
+      if (validation.merchantNameFromDb && parsedData.payeeName !== validation.merchantNameFromDb) {
+          setScannedUpiData(prev => prev ? ({...prev, payeeName: validation.merchantNameFromDb}) : null);
+      }
+      if (validation.isBlacklisted) {
+        toast({ variant: "destructive", title: "Warning: Suspicious QR", description: validation.message || "This QR code is flagged as suspicious." });
+      } else if (!validation.isVerifiedMerchant && !isRecentlyScanned) {
+        toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant. Proceed with caution.", duration: 5000 });
+      }
+    } catch (error: any) {
+      console.error("QR Validation Error:", error);
+      toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
+      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isRecentlyScanned});
+    } finally {
+      setIsProcessingScan(false);
+    }
+  }, [stopCameraStream, toast]);
+
+
   const getCameraStream = useCallback(async () => {
     setHasCameraPermission(null);
     setTorchSupported(false);
@@ -188,14 +238,26 @@ export default function ScanPage() {
         setTorchSupported(!!capabilities?.torch);
       }
       setIsScanningActive(true);
-      // Simulate QR code detection after a delay (replace with actual library)
-      setTimeout(() => {
-        if (isScanningActive && streamRef.current) {
-             const mockData = "upi://pay?pa=simulatedlive@okaxis&pn=Live%20Scan%20Demo&am=75&tn=LiveScanTest";
-             console.log("[Client Scan] Simulated Live QR detected:", mockData);
-             handleScannedData(mockData);
+      
+      // Simulate QR code detection (replace with actual library like html5-qrcode or Zxing)
+      // This timeout simulates a continuous scanning attempt
+      const scanInterval = setInterval(() => {
+        if (isScanningActive && streamRef.current) { // Check if still active and stream exists
+            // In a real app, you'd analyze frames from videoRef.current here
+            // For demo, let's randomly "detect" a QR after some time
+            if (Math.random() < 0.05) { // ~5% chance per interval to "find" a QR
+                 const mockQrData = "upi://pay?pa=simulatedlive@okaxis&pn=Live%20Scan%20Demo&am=75&tn=LiveScanTest";
+                 console.log("[Client Scan] Simulated Live QR detected:", mockQrData);
+                 handleScannedData(mockQrData);
+                 clearInterval(scanInterval); // Stop scanning after detection
+            }
+        } else {
+            clearInterval(scanInterval); // Stop if no longer active or stream lost
         }
-      }, 7000);
+      }, 2000); // Check every 2 seconds
+
+      // Make sure to clear interval if component unmounts or tab changes
+      return () => clearInterval(scanInterval);
 
     } catch (error: any) {
       console.error('[Client Scan] Error accessing camera:', error.name, error.message);
@@ -203,13 +265,21 @@ export default function ScanPage() {
       streamRef.current = null;
       toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please check permissions.'});
     }
-  }, [toast, stopCameraStream, isScanningActive]); // Removed handleScannedData from deps to avoid re-triggering on its own update
+  }, [toast, stopCameraStream, isScanningActive, handleScannedData]);
 
   useEffect(() => {
-    if (activeTab === 'scan') getCameraStream();
-    else stopCameraStream();
-    return () => stopCameraStream();
-  }, [activeTab, getCameraStream, stopCameraStream]);
+    let cleanupScanInterval: (() => void) | undefined;
+    if (activeTab === 'scan' && !scannedUpiData) { // Only start if not already processed a QR
+        getCameraStream().then(cleanup => { cleanupScanInterval = cleanup; });
+    } else {
+        stopCameraStream();
+    }
+    return () => {
+        stopCameraStream();
+        if (cleanupScanInterval) cleanupScanInterval();
+    };
+  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData]);
+
 
   const toggleTorch = useCallback(async () => {
     if (!streamRef.current || !torchSupported) {
@@ -228,55 +298,6 @@ export default function ScanPage() {
     }
   }, [torchOn, torchSupported, toast]);
 
-  const handleScannedData = useCallback(async (data: string) => {
-    stopCameraStream();
-    setIsProcessingScan(true);
-    setRawScannedText(data);
-
-    const parsedData = parseUpiUrl(data);
-    setScannedUpiData(parsedData);
-
-    if (!parsedData.isValidUpi || !parsedData.payeeAddress) {
-        toast({ variant: "destructive", title: "Invalid QR Code", description: "This QR code is not a valid UPI payment code." });
-        setValidationResult(null);
-        setIsProcessingScan(false);
-        return;
-    }
-
-    const qrHash = simpleHash(data);
-    const recentScans: RecentScanEntry[] = JSON.parse(localStorage.getItem(RECENT_SCANS_KEY) || '[]');
-    const isRecentlyScanned = recentScans.some(scan => scan.qrDataHash === qrHash && (Date.now() - scan.timestamp) < RECENT_SCAN_COOLDOWN_MS);
-
-    if (isRecentlyScanned) {
-        // Informational toast, does not block flow
-        // toast({ variant: "default", title: "Duplicate Scan Info", description: "This QR was scanned recently.", duration: 3000 });
-    }
-
-    const updatedRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...recentScans].slice(0, RECENT_SCANS_MAX);
-    localStorage.setItem(RECENT_SCANS_KEY, JSON.stringify(updatedRecentScans));
-
-    try {
-      const validation: QrValidationResult = await apiClient('/scan/validate', {
-        method: 'POST',
-        body: JSON.stringify({ qrData: data, userId: auth.currentUser?.uid }),
-      });
-      setValidationResult({...validation, isDuplicateRecent: isRecentlyScanned, upiId: parsedData.payeeAddress });
-      if (validation.merchantNameFromDb && parsedData.payeeName !== validation.merchantNameFromDb) {
-          setScannedUpiData(prev => prev ? ({...prev, payeeName: validation.merchantNameFromDb}) : null);
-      }
-      if (validation.isBlacklisted) {
-        toast({ variant: "destructive", title: "Warning: Suspicious QR", description: validation.message || "This QR code is flagged as suspicious." });
-      } else if (!validation.isVerifiedMerchant && !isRecentlyScanned) { // Only show unverified toast if not a recent duplicate warning
-        toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant. Proceed with caution.", duration: 5000 });
-      }
-    } catch (error: any) {
-      console.error("QR Validation Error:", error);
-      toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
-      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isRecentlyScanned}); // Default to not blacklisted, not verified
-    } finally {
-      setIsProcessingScan(false);
-    }
-  }, [stopCameraStream, toast]); // Removed getCameraStream
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -299,10 +320,10 @@ export default function ScanPage() {
       } finally {
          setIsProcessingUpload(false);
          if (event.target) event.target.value = '';
-         if (activeTab === 'scan' && !streamRef.current) getCameraStream();
+         if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) getCameraStream(); // Restart camera if needed
       }
     }
-  }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData]);
+  }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData, scannedUpiData]);
 
   const proceedToPayment = () => {
     if (!scannedUpiData || !scannedUpiData.isValidUpi || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted) {
@@ -314,7 +335,6 @@ export default function ScanPage() {
     if (scannedUpiData.payeeName) query.set('pn', scannedUpiData.payeeName);
     if (scannedUpiData.amount) query.set('am', scannedUpiData.amount);
     if (scannedUpiData.note) query.set('tn', scannedUpiData.note);
-    // Add original QR data for backend verification if needed
     query.set('qrData', scannedUpiData.originalData);
     router.push(`/pay?${query.toString()}`);
   };
@@ -331,8 +351,7 @@ export default function ScanPage() {
             body: JSON.stringify({ qrData: rawScannedText, userId: auth.currentUser?.uid, reason: reportReason }),
         });
         toast({ title: "QR Reported", description: "Thank you for helping keep PayFriend safe." });
-        setReportReason(""); // Clear reason
-        // Optionally mark this QR as reported locally to prevent repeated reports on same session
+        setReportReason("");
     } catch (error: any) {
         toast({ variant: "destructive", title: "Report Failed", description: error.message || "Could not submit report." });
     }
