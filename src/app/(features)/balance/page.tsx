@@ -9,10 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, Clock, Loader2, RefreshCw, Banknote, ArrowLeft, Lock, WifiOff } from 'lucide-react'; // Added Lock, WifiOff
 import { getLinkedAccounts, BankAccount, checkBalance, getBankStatus } from '@/services/upi'; // Use the service function
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from '@/components/ui/badge'; // Import Badge
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert
+import { auth } from '@/lib/firebase'; // Import auth for checking login state
+import { cn } from '@/lib/utils';
+
 
 // Interface extending BankAccount with UI state
 interface AccountBalance extends BankAccount {
@@ -30,10 +33,32 @@ export default function CheckBalancePage() {
   const [accountToCheck, setAccountToCheck] = useState<AccountBalance | null>(null);
   const [upiPin, setUpiPin] = useState<string>('');
   const { toast } = useToast();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // Added state to track login
+  const pinPromiseResolverRef = useRef<{ resolve: (pin: string | null) => void } | null>(null);
 
-   // Load accounts and their statuses on mount
+
+  // Effect to track auth state
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      setIsLoggedIn(!!user);
+      if (!user) {
+        setAccounts([]); // Clear accounts if user logs out
+        setIsLoadingAccounts(false); // Stop loading
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+   // Load accounts and their statuses on mount, only if logged in
    useEffect(() => {
      const fetchAccountsAndStatuses = async () => {
+       // Guard clause: only fetch if isLoggedIn is true
+       if (isLoggedIn !== true) {
+            setIsLoadingAccounts(false); // Ensure loading state is reset
+            return;
+       }
+
        setIsLoadingAccounts(true);
        try {
          const fetchedAccounts = await getLinkedAccounts();
@@ -47,18 +72,26 @@ export default function CheckBalancePage() {
          setAccounts(accountsWithState);
        } catch (error: any) {
          console.error("Failed to fetch accounts:", error);
-         toast({ variant: "destructive", title: "Error Loading Accounts", description: error.message || "Could not load accounts." });
+         // Don't show toast if it's an auth error, as apiClient already throws it and it might be handled by a global error boundary or login redirect.
+         // Only toast for other types of errors or if error.message !== "User not authenticated."
+         if (error.message !== "User not authenticated.") {
+            toast({ variant: "destructive", title: "Error Loading Accounts", description: error.message || "Could not load accounts." });
+         }
          setAccounts([]);
        } finally {
          setIsLoadingAccounts(false);
        }
      };
      fetchAccountsAndStatuses();
-   }, [toast]);
+   }, [isLoggedIn, toast]);
 
 
    const handleCheckBalanceClick = (account: AccountBalance) => {
        if (account.isLoading) return;
+       if (!isLoggedIn) {
+         toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to check balance." });
+         return;
+       }
        // Check bank status before prompting for PIN
        if (account.bankStatus === 'Down') {
            toast({ variant: "destructive", title: "Bank Server Down", description: `Cannot check balance for ${account.bankName} currently.` });
@@ -72,19 +105,35 @@ export default function CheckBalancePage() {
    const handlePinCancel = () => {
        setIsPinDialogOpen(false);
        setAccountToCheck(null);
+       if (pinPromiseResolverRef.current) {
+        pinPromiseResolverRef.current.resolve(null);
+        pinPromiseResolverRef.current = null;
+      }
    };
 
    const handlePinSubmit = async () => {
        if (!accountToCheck || !upiPin) return;
+       if(!isLoggedIn) {
+         toast({ variant: "destructive", title: "Not Logged In"});
+         handlePinCancel();
+         return;
+       }
 
        const expectedLength = accountToCheck.pinLength;
        const isValidPin = expectedLength ? upiPin.length === expectedLength : (upiPin.length === 4 || upiPin.length === 6);
 
        if (!isValidPin) {
            toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
+            if (pinPromiseResolverRef.current) {
+                pinPromiseResolverRef.current.resolve(null); // Resolve with null if PIN is invalid
+                pinPromiseResolverRef.current = null;
+            }
            return;
        }
-
+        if (pinPromiseResolverRef.current) {
+            pinPromiseResolverRef.current.resolve(upiPin);
+            pinPromiseResolverRef.current = null;
+        }
        setIsPinDialogOpen(false); // Close dialog immediately
        // Set loading state for the specific account
        setAccounts(prev => prev.map(acc => (acc.upiId === accountToCheck.upiId ? { ...acc, isLoading: true, error: null, balance: null } : acc)));
@@ -108,24 +157,31 @@ export default function CheckBalancePage() {
 
    // Refresh all accounts sequentially
     const handleRefreshAll = async () => {
+        if (!isLoggedIn) {
+             toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to refresh accounts." });
+             return;
+        }
         setIsRefreshingAll(true);
         toast({ title: "Refreshing Balances", description: "Fetching status and preparing to check balances..." });
 
         // Refetch statuses first
-        const accountsWithState: AccountBalance[] = await Promise.all(
-            accounts.map(async (acc) => {
-                const bankIdentifier = acc.upiId.split('@')[1];
-                const status = bankIdentifier ? await getBankStatus(bankIdentifier) : 'Active';
-                return { ...acc, balance: null, isLoading: false, error: null, bankStatus: status }; // Reset balance/error/loading
-            })
-         );
-         setAccounts(accountsWithState); // Update statuses
-
-        toast({ description: "Statuses updated. You may need to enter PIN for each account if checking balance." });
-        setIsRefreshingAll(false);
-        // Note: The user still needs to click 'Check Balance' for each account individually
-        // to trigger the PIN prompt and actual balance fetch. Auto-checking all is not
-        // feasible due to PIN requirement.
+        try {
+            const fetchedAccounts = await getLinkedAccounts(); // Refetch accounts in case new ones were added/removed
+            const accountsWithState: AccountBalance[] = await Promise.all(
+                fetchedAccounts.map(async (acc) => {
+                    const bankIdentifier = acc.upiId.split('@')[1];
+                    const status = bankIdentifier ? await getBankStatus(bankIdentifier) : 'Active';
+                    return { ...acc, balance: null, isLoading: false, error: null, bankStatus: status }; // Reset balance/error/loading
+                })
+            );
+            setAccounts(accountsWithState);
+            toast({ description: "Statuses updated. You may need to enter PIN for each account if checking balance." });
+        } catch (error: any) {
+             console.error("Failed to refresh accounts and statuses:", error);
+             toast({ variant: "destructive", title: "Refresh Failed", description: error.message || "Could not refresh account data." });
+        } finally {
+             setIsRefreshingAll(false);
+        }
     };
 
      const getBankStatusBadge = (status: 'Active' | 'Slow' | 'Down' | undefined) => {
@@ -152,59 +208,72 @@ export default function CheckBalancePage() {
 
       {/* Main Content */}
       <main className="flex-grow p-4 space-y-4 pb-20">
-        <Card className="shadow-md">
-          <CardHeader className="flex flex-row justify-between items-center">
-            <CardTitle>Linked Accounts</CardTitle>
-            <Button variant="outline" size="sm" onClick={handleRefreshAll} disabled={isLoadingAccounts || isRefreshingAll}>
-                {isRefreshingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                {isRefreshingAll ? "Refreshing..." : "Refresh Statuses"}
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isLoadingAccounts ? (
-              <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
-            ) : accounts.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No linked accounts found.</p>
-            ) : (
-              accounts.map((account) => (
-                <div key={account.upiId} className="border rounded-md p-3 space-y-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold">{account.bankName} {getBankStatusBadge(account.bankStatus)}</p>
-                      <p className="text-sm text-muted-foreground">A/C: {account.accountNumber}</p>
-                      <p className="text-xs text-primary flex items-center gap-1">UPI ID: {account.upiId}</p>
-                       {account.bankStatus === 'Slow' && <p className="text-xs text-yellow-600 mt-1">Bank server is slow, balance check might take longer.</p>}
-                       {account.bankStatus === 'Down' && <p className="text-xs text-destructive mt-1">Bank server is down, balance check unavailable.</p>}
+        {isLoggedIn === null && ( // Initial auth check state
+             <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2">Checking login status...</span></div>
+        )}
+        {isLoggedIn === false && ( // Explicitly not logged in
+            <Card className="shadow-md text-center">
+                <CardContent className="p-6">
+                    <p className="text-muted-foreground">Please log in to view and check account balances.</p>
+                </CardContent>
+            </Card>
+        )}
+
+        {isLoggedIn === true && (
+            <Card className="shadow-md">
+            <CardHeader className="flex flex-row justify-between items-center">
+                <CardTitle>Linked Accounts</CardTitle>
+                <Button variant="outline" size="sm" onClick={handleRefreshAll} disabled={isLoadingAccounts || isRefreshingAll}>
+                    {isRefreshingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    {isRefreshingAll ? "Refreshing..." : "Refresh Statuses"}
+                </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                {isLoadingAccounts ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
+                ) : accounts.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No linked accounts found. Please link an account in UPI Settings.</p>
+                ) : (
+                accounts.map((account) => (
+                    <div key={account.upiId} className="border rounded-md p-3 space-y-2">
+                    <div className="flex justify-between items-start">
+                        <div>
+                        <p className="font-semibold">{account.bankName} {getBankStatusBadge(account.bankStatus)}</p>
+                        <p className="text-sm text-muted-foreground">A/C: {account.accountNumber}</p>
+                        <p className="text-xs text-primary flex items-center gap-1">UPI ID: {account.upiId}</p>
+                        {account.bankStatus === 'Slow' && <p className="text-xs text-yellow-600 mt-1">Bank server is slow, balance check might take longer.</p>}
+                        {account.bankStatus === 'Down' && <p className="text-xs text-destructive mt-1">Bank server is down, balance check unavailable.</p>}
+                        </div>
+                        <div className="text-right">
+                        {account.isLoading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : account.error ? (
+                                <XCircle className="h-5 w-5 text-destructive" title={account.error}/>
+                        ) : account.balance !== undefined && account.balance !== null ? (
+                            <>
+                            <p className="text-lg font-bold">₹{account.balance.toFixed(2)}</p>
+                            <CheckCircle className="h-4 w-4 text-green-500 inline-block align-middle ml-1"/>
+                            </>
+                        ) : null}
+                        </div>
                     </div>
-                     <div className="text-right">
-                       {account.isLoading ? (
-                           <Loader2 className="h-5 w-5 animate-spin" />
-                       ) : account.error ? (
-                            <XCircle className="h-5 w-5 text-destructive" title={account.error}/>
-                       ) : account.balance !== undefined && account.balance !== null ? (
-                         <>
-                           <p className="text-lg font-bold">₹{account.balance.toFixed(2)}</p>
-                           <CheckCircle className="h-4 w-4 text-green-500 inline-block align-middle ml-1"/>
-                         </>
-                       ) : null}
-                     </div>
-                  </div>
-                  <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={() => handleCheckBalanceClick(account)}
-                     disabled={account.isLoading || account.bankStatus === 'Down'}
-                     className="w-full sm:w-auto"
-                  >
-                       {account.isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null}
-                       {account.isLoading ? 'Checking...' : 'Check Balance'}
-                  </Button>
-                   {account.error && <p className="text-xs text-destructive mt-1">{account.error}</p>}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCheckBalanceClick(account)}
+                        disabled={account.isLoading || account.bankStatus === 'Down'}
+                        className="w-full sm:w-auto"
+                    >
+                        {account.isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null}
+                        {account.isLoading ? 'Checking...' : 'Check Balance'}
+                    </Button>
+                    {account.error && <p className="text-xs text-destructive mt-1">{account.error}</p>}
+                    </div>
+                ))
+                )}
+            </CardContent>
+            </Card>
+        )}
       </main>
 
        {/* UPI PIN Dialog */}
@@ -213,7 +282,7 @@ export default function CheckBalancePage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
                      <AlertDialogDescription>
-                          Enter your {accountToCheck?.pinLength || '4 or 6'} digit UPI PIN for {accountToCheck?.bankName || 'your account'} ending in ...{accountToCheck?.accountNumber.slice(-4)} to check balance.
+                          Enter your {accountToCheck?.pinLength || '4 or 6'} digit UPI PIN for {accountToCheck?.bankName || 'your account'} ending in ...{accountToCheck?.accountNumber?.slice(-4)} to check balance.
                      </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4">
@@ -247,3 +316,5 @@ export default function CheckBalancePage() {
         </AlertDialog>
     </div>
   );
+}
+
