@@ -39,14 +39,14 @@ import {
   History,
   ParkingMeter,
   Fuel,
-  CarTaxiFront as TaxiIcon,
+  CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon,
-    Home as HomeIcon, // Alias Home icon
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
     Car,
-    Bike as Motorbike,
+    Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
     Sparkles,
@@ -63,9 +63,9 @@ import {
     Gauge, // For Credit Score
     Coins, // For Gold
     Building2, // For Zet Bank
-    Zap, // For EV Charging / Game Zones
+    Zap, // For EV Charging
     Siren, // For Emergency Assistance
-    Store, // For Rest Stop / Marketplace
+    Store, // For Rest Stop (placeholder)
     HeartPulse, // For Healthcare
     Wrench, // Electrician/Plumber
     SprayCan, // Home Cleaning/Pest Control
@@ -83,40 +83,14 @@ import {
     ListChecks, // Subscription Mgr
     WandSparkles, // AI Assistant
     TrendingUp, // Spending Analysis / Stocks
-    BookUser, // Mobile Postpaid
-    Receipt, // Traffic Challan
-    Flame, // LPG
-    Building, // Housing Society
-    Drama, // Comedy Shows
-    Stethoscope, // Doctor
-    BedDouble, // Hospital Beds
-    BedSingle, // Hostels
-    FlaskConical, // Lab Tests
-    Dumbbell, // Fitness Trainer
-    Pill, // Pharmacy
-    Ambulance, // Emergency Ambulance
-    Repeat, // Medicine Subscription / Autopay
-    BadgePercent, // Health Offers / Shopping Offers
-    Play, // Google Play / Watch Party
-    Target, // Savings Goals
-    Wallet, // Pay Later / Wallet Bridge
-    Lock, // App Lock / Payment Freeze
-    Lightbulb, // Torch control placeholder (might not have direct page)
-    Fingerprint, // Biometric Auth placeholder
-    AlarmClockOff, // Transaction Lock Timer placeholder
-    BatteryCharging, // Battery Lite Mode placeholder
-    Key, // Temporary UPI ID placeholder
-    ShieldAlert, // Fraud Alert placeholder
-    HandCoins, // Karma Banking / Micro-Loans
-    UsersRound, // Community Gifting/Lending
-    AlertTriangle, // Emergency Mode Button
-    CalendarClock, // Smart Schedule / SIP Reminders
-    UserCheck, // KYC Verification
     LucideIcon, // Generic fallback
-    ThermometerSnowflake, // Added missing import
+    ThermometerSnowflake, // Added ThermometerSnowflake
+    IndianRupee, // Added IndianRupee
+    Search // Added Search
 } from "lucide-react";
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
+import { Input } from '@/components/ui/input'; // Added Input import
 
 interface Service {
     name: string;
@@ -128,7 +102,7 @@ interface Service {
 
 const rechargeBillPayServices: Service[] = [
    { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills", tags: ["phone", "topup"] },
-   { name: "Mobile Postpaid", icon: BookUser, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
+   { name: "Mobile Postpaid", icon: Smartphone, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
    { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills", tags: ["tv", "satellite"] },
    { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills", tags: ["power", "utility"] },
    { name: "Rent Payment", icon: HomeIcon, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
@@ -136,7 +110,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Corrected Tv2 to Tv
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -197,7 +171,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
      { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Corrected Tv2 to Tv
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -220,7 +194,21 @@ const templeServicesData: Service[] = [
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services", tags: ["entry", "qr", "digital"] },
 ];
 
-const hyperlocalServicesData: Service[] = [
+const healthcareServicesData: Service[] = [
+    { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
+    { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
+    { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
+    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
+    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
+    { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
+    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
+    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
+    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
+    { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
+];
+
+
+const hyperlocalServicesData: Service[] = [ // Renamed
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
@@ -260,22 +248,10 @@ const vouchersMoreServices: Service[] = [
 const paymentsServicesData: Service[] = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
     { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
-    { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
+    { name: "Cab/Taxi Bill Payment", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
 
-const healthcareServicesData: Service[] = [
-    { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
-    { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
-    { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
-    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
-    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
-    { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
-    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
-    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
-    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
-    { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
-];
 
 const aiAndToolsServices: Service[] = [
      { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools", tags: ["chat", "voice", "command", "assistant"]},
@@ -388,7 +364,7 @@ export default function AllServicesPage() {
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         type="search"
-                        placeholder="Search services (e.g., Flight, Food)"
+                        placeholder="Search services..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-8 h-9 bg-primary/20 text-primary-foreground placeholder:text-primary-foreground/70 border-primary-foreground/30 focus:bg-background focus:text-foreground"
@@ -432,7 +408,7 @@ export default function AllServicesPage() {
                                 ))}
                             </CardContent>
                         </Card>
-                     )
+                     );
                  })}
             </main>
         </div>
