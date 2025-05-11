@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, 
-  Fuel, 
-  CarTaxiFront as TaxiIcon, 
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
+  CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon, 
-    Home as HomeIcon, 
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home as HomeIcon, // Used for Rent Payment and Property Tax
     Car,
-    Bike as Motorbike, 
+    Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
     Sparkles,
@@ -62,8 +62,8 @@ import {
     Database, // For Deposits
     Gauge, // For Credit Score
     Coins, // For Gold
-    Building2, // For Zet Bank
-    Zap, // For EV Charging
+    Building2, // For Zet Bank & Municipal Services
+    Zap, // For EV Charging & Game Zones
     Siren, // For Emergency Assistance
     Store, // For Rest Stop (placeholder)
     HeartPulse, // For Healthcare
@@ -75,25 +75,26 @@ import {
     BriefcaseBusiness, // Coworking
     Dog, // Pet Grooming/Vet
     ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, 
-    FolderLock, 
-    GraduationCap, 
-    PiggyBank, 
-    BellRing, 
-    ListChecks, 
-    WandSparkles, 
-    TrendingUp, 
+    MoreHorizontal, // Added MoreHorizontal back
+    FolderLock,
+    GraduationCap,
+    PiggyBank,
+    BellRing,
+    ListChecks,
+    WandSparkles,
+    TrendingUp,
     Target,
     BedSingle,
     Tv2,
     ThermometerSnowflake,
     IndianRupee,
     Search,
-    Flame // Added Flame icon
-} from "lucide-react"; 
+    Flame,
+    HandCoins, // Added HandCoins
+} from "lucide-react"; // Added specific icons
 import Image from 'next/image';
-import { useState } from 'react'; 
-import { Input } from '@/components/ui/input'; 
+import { useState } from 'react'; // Import useState
+import { Input } from '@/components/ui/input'; // Import Input
 
 interface Service {
     name: string;
@@ -173,10 +174,10 @@ const entertainmentGamingServices: Service[] = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming", tags: ["cinema", "tickets", "bookmyshow"] },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
+     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] }, // Using Drama icon
      { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
-     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
+     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] }, // Using Play Store
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
      { name: "AR/VR Events", icon: Sparkles, href: "/entertainment/arvr", category: "Entertainment & Gaming", tags: ["virtual", "augmented", "reality", "metaverse"] },
      { name: "Group Booking", icon: Users, href: "/entertainment/group", category: "Entertainment & Gaming", tags: ["movie", "split", "invite"] },
@@ -210,8 +211,7 @@ const healthcareServicesData: Service[] = [
     { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
 ];
 
-
-const hyperlocalServicesData: Service[] = [ 
+const hyperlocalServicesData: Service[] = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
@@ -254,7 +254,6 @@ const paymentsServicesData: Service[] = [
     { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
-
 
 const aiAndToolsServices: Service[] = [
      { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools", tags: ["chat", "voice", "command", "assistant"]},
@@ -338,11 +337,10 @@ const groupServicesByCategory = (services: Service[]) => {
 
 export default function AllServicesPage() {
     const groupedServices = groupServicesByCategory(allServices);
-    const categories = Object.keys(groupedServices);
     const [searchTerm, setSearchTerm] = useState('');
 
-    const filteredCategories = categories.filter(category => {
-        if (!searchTerm.trim()) return true; 
+    const filteredCategories = Object.keys(groupedServices).filter(category => {
+        if (!searchTerm.trim()) return true;
         if (category.toLowerCase().includes(searchTerm.toLowerCase())) return true;
         return groupedServices[category].some(service =>
             service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -388,7 +386,7 @@ export default function AllServicesPage() {
                                (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
                      });
 
-                     if(servicesInCategory.length === 0 && searchTerm) return null; 
+                     if(servicesInCategory.length === 0 && searchTerm) return null;
 
                     return (
                          <Card key={category} className="shadow-md">
