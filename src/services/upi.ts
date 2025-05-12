@@ -13,7 +13,7 @@ export type { BankAccount, UpiTransactionResult };
 /**
  * Asynchronously links a bank account for UPI transactions via the backend API.
  *
- * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId, pinLength).
+ * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId, pinLength' | 'createdAt').
  * @returns A promise that resolves to the newly linked BankAccount object returned by the backend.
  * @throws Error if the user is not logged in or linking fails.
  */
@@ -169,6 +169,7 @@ export async function verifyUpiId(upiId: string): Promise<{
  * @param pin The UPI PIN for authentication.
  * @param note An optional transaction note/description.
  * @param sourceAccountUpiId Optional: The specific UPI ID to use for payment.
+ * @param stealthScan Optional: Flag indicating if the payment was initiated via stealth scan.
  * @returns A promise that resolves to a UpiTransactionResult object.
  */
 export async function processUpiPayment(
@@ -176,9 +177,10 @@ export async function processUpiPayment(
   amount: number,
   pin: string,
   note?: string,
-  sourceAccountUpiId?: string
+  sourceAccountUpiId?: string,
+  stealthScan?: boolean 
 ): Promise<UpiTransactionResult> {
-    console.log(`Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}`);
+    console.log(`Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}, Stealth: ${stealthScan}`);
 
     const payload = {
         recipientUpiId: recipientIdentifier,
@@ -186,6 +188,7 @@ export async function processUpiPayment(
         pin,
         note: note || undefined,
         sourceAccountUpiId: sourceAccountUpiId || undefined,
+        stealthScan: stealthScan || false, // Include stealthScan in payload
     };
 
     try {

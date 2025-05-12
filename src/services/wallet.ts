@@ -3,8 +3,6 @@
  */
 import { apiClient } from '@/lib/apiClient';
 import { auth } from '@/lib/firebase'; // Keep for client-side user checks if needed
-// Removed direct import of transactionLogger, backend handles logging
-// import { addTransaction } from '@/services/transactionLogger'; 
 import type { Transaction, WalletTransactionResult } from './types'; // Use shared types
 
 // Re-export types if needed by components
@@ -88,7 +86,7 @@ export async function payViaWallet(
     note?: string
 ): Promise<WalletTransactionResult> {
      const currentUserId = userId || auth.currentUser?.uid;
-     if (!currentUserId && !userId) {
+     if (!currentUserId && !userId) { // Check again, as auth.currentUser might be null if called too early
         return { success: false, message: "User not authenticated for payment." };
      }
      console.log(`[Wallet Service Client] Attempting wallet payment via API for user ${currentUserId} of ₹${amount} to ${recipientIdentifier}`);
@@ -112,9 +110,9 @@ export async function payViaWallet(
 }
 
 /**
- * Client-side simulation or local state update function.
- * This does NOT interact with the backend for actual payment or logging.
- * Use for optimistic UI updates if necessary, but actual operations must go through API.
+ * INTERNAL USE ONLY (by other client-side services if absolutely necessary for optimistic updates).
+ * This function DOES NOT make backend calls for payment or logging.
+ * The actual payment logic and logging should be handled by the backend API called via `payViaWallet`.
  *
  * @param userId The ID of the user whose wallet is affected.
  * @param identifier An identifier for the transaction (e.g., recipient UPI, biller ID, 'WALLET_RECOVERY').
@@ -128,28 +126,12 @@ export async function payViaWalletInternal(
     amount: number,
     note?: string
 ): Promise<WalletTransactionResult> {
-    console.warn("[Wallet Service Client - payViaWalletInternal] This is a client-side simulation. For actual payments, use backend API via payViaWallet.");
-    const isCredit = amount < 0;
-    const absoluteAmount = Math.abs(amount);
-    const operationType = isCredit ? 'credit' : 'debit';
-    let currentBalance = 0; // Assume we'd fetch this or have it in state for UI
-
-    try {
-        // Simulate getting current balance (in a real UI, this would come from state/hook)
-        // currentBalance = await getWalletBalance(userId); // This would be an API call
-        
-        // Simulate balance check for debit
-        // if (!isCredit && currentBalance < absoluteAmount) {
-        //      throw new Error(`Insufficient wallet balance (simulated). Available: ₹${currentBalance.toFixed(2)}`);
-        //  }
-        const newBalance = isCredit ? currentBalance + absoluteAmount : currentBalance - absoluteAmount;
-
-        console.log(`[Client Sim] Internal wallet ${operationType} successful simulation for ${userId}. New simulated balance: ₹${newBalance.toFixed(2)}`);
-        // This is a local/optimistic update. No actual transaction is logged on backend here.
-        return { success: true, transactionId: `local-sim-${Date.now()}`, newBalance, message: `Wallet ${operationType} successful (Client Sim)` };
-
-    } catch (error: any) {
-         console.error(`[Client Sim] Internal wallet ${operationType} simulation failed for ${userId}:`, error);
-         return { success: false, transactionId: undefined, message: error.message || `Internal wallet ${operationType} failed (Client Sim).` };
-    }
+    // This function is now a thin wrapper around the actual API call.
+    // It's kept for compatibility if other client services were calling it,
+    // but its "internal" nature is now shifted to the backend.
+    console.warn("[Wallet Service Client - payViaWalletInternal] Redirecting to API call. This function should ideally not be used for direct client-side payment simulation anymore.");
+    
+    // Delegate to the API-calling version
+    return payViaWallet(userId, identifier, amount, note);
 }
+
