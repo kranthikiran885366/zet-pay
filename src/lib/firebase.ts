@@ -4,7 +4,7 @@ import { getAuth, Auth, getIdToken as getFirebaseIdToken, User } from 'firebase/
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAnalytics, Analytics } from "firebase/analytics"; // Added Analytics
 
-// User-provided Firebase configuration as fallbacks
+// User-provided Firebase configuration. This will be used directly.
 const userProvidedConfig = {
   apiKey: "AIzaSyDmTwsxQyZsx27XnL8-12neJpE2xo_1988",
   authDomain: "zepto-app-e24e9.firebaseapp.com",
@@ -15,45 +15,49 @@ const userProvidedConfig = {
   measurementId: "G-06L18DPJ3Q"
 };
 
-// Determine API key source and log it
-let apiKeySource = "fallback";
-let effectiveApiKey = userProvidedConfig.apiKey;
+// Directly use the user-provided config.
+// If environment variables (e.g., NEXT_PUBLIC_FIREBASE_API_KEY) are set in .env,
+// they will be IGNORED by this client-side setup.
+// The user must ensure the values in `userProvidedConfig` are correct for their Firebase project.
+const firebaseConfig = {
+  apiKey: userProvidedConfig.apiKey,
+  authDomain: userProvidedConfig.authDomain,
+  projectId: userProvidedConfig.projectId,
+  storageBucket: userProvidedConfig.storageBucket,
+  messagingSenderId: userProvidedConfig.messagingSenderId,
+  appId: userProvidedConfig.appId,
+  measurementId: userProvidedConfig.measurementId,
+};
 
-if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-  effectiveApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  apiKeySource = "environment variable (NEXT_PUBLIC_FIREBASE_API_KEY)";
-} else {
-  console.warn("[Firebase Setup] NEXT_PUBLIC_FIREBASE_API_KEY not found, using hardcoded fallback API key.");
+// Log which config is being used
+if (typeof window !== 'undefined') {
+  console.log(`[Firebase Setup] Initializing Firebase client. Using explicitly provided config. API Key (masked): ${firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 4) + "..." + firebaseConfig.apiKey.substring(firebaseConfig.apiKey.length - 4) : "N/A"}`);
+  if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY && process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== userProvidedConfig.apiKey) {
+      console.warn("[Firebase Setup] Note: Environment variable NEXT_PUBLIC_FIREBASE_API_KEY is set but IS NOT being used for client-side config. Using the hardcoded values from `userProvidedConfig` in `src/lib/firebase.ts` instead.");
+  } else if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+      console.info("[Firebase Setup] Note: NEXT_PUBLIC_FIREBASE_API_KEY environment variable is not set. Using hardcoded values from `userProvidedConfig` in `src/lib/firebase.ts`.");
+  }
 }
 
-const firebaseConfig = {
-  apiKey: effectiveApiKey,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || userProvidedConfig.authDomain,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || userProvidedConfig.projectId,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || userProvidedConfig.storageBucket,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || userProvidedConfig.messagingSenderId,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || userProvidedConfig.appId,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || userProvidedConfig.measurementId,
-};
 
 // Initialize Firebase
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
-let analytics: Analytics | null = null; // Initialize analytics as null
+let analytics: Analytics | null = null;
 
-if (typeof window !== 'undefined') { // Ensure Firebase is initialized only on the client-side
-  console.log(`[Firebase Setup] Initializing Firebase with API key from: ${apiKeySource}. Key (masked): ${effectiveApiKey ? effectiveApiKey.substring(0, 4) + "..." + effectiveApiKey.substring(effectiveApiKey.length - 4) : "N/A"}`);
+if (typeof window !== 'undefined') { 
   if (!getApps().length) {
     try {
       app = initializeApp(firebaseConfig);
-      console.log("[Firebase Setup] Firebase initialized successfully.");
+      console.log("[Firebase Setup] Firebase initialized successfully with provided config.");
     } catch (e: any) {
       console.error("[Firebase Setup] CRITICAL: Firebase initialization failed:", e.message, "Config used:", firebaseConfig);
-      // Display a more prominent error to the user if initialization fails
-      // For example, by setting a global error state or directly manipulating the DOM
-      // This part depends on how you want to handle critical init failures in your UI.
-      // For now, we'll just log it heavily.
+      // Consider adding a UI notification for critical failure
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = "position:fixed;top:0;left:0;width:100%;padding:10px;background:red;color:white;text-align:center;z-index:9999;";
+      errorDiv.innerText = "Error: Could not initialize Firebase. App may not work correctly. Please check console (F12).";
+      document.body.prepend(errorDiv);
     }
   } else {
     app = getApps()[0];
