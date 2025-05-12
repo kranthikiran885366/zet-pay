@@ -96,3 +96,86 @@ body {
 .animate-progress-bar {
   animation: progress-bar 2.5s ease-out forwards;
 }
+
+/* Enhanced Animations for Splash Screen */
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+@keyframes slide-in-bottom {
+  0% {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-in-bottom {
+  animation: slide-in-bottom 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+
+@keyframes logo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.animate-logo-pulse {
+  animation: logo-pulse 2s infinite ease-in-out;
+}
+
+@keyframes shine {
+  0% { transform: translateX(-100%) skewX(-20deg); opacity: 0.1; }
+  20% { transform: translateX(100%) skewX(-20deg); opacity: 0.3; }
+  100% { transform: translateX(100%) skewX(-20deg); opacity: 0; }
+}
+.animate-shine {
+  animation: shine 3s infinite linear;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.animate-cursor-blink {
+  animation: cursor-blink 0.7s infinite;
+  display: inline-block; /* Ensure it affects layout correctly */
+}
+
+@keyframes progress-bar-enhanced {
+  0% { width: 0%; background-position: 100% 0; }
+  100% { width: 100%; background-position: -100% 0; }
+}
+.animate-progress-bar-enhanced {
+  animation: progress-bar-enhanced 2.8s ease-out forwards; /* Slightly longer duration */
+  /* For gradient animation */
+  background-size: 200% 100%;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.1; transform: scale(0.95); }
+  50% { opacity: 0.3; transform: scale(1.05); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 8s infinite ease-in-out;
+}
+
+/* Fade in animation */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
