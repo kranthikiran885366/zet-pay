@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -5,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet, Fingerprint, MessageSquare, EyeOff, Eye, VolumeX, Volume2, Check } from 'lucide-react';
+import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet, Fingerprint, MessageSquare, EyeOff, Eye, VolumeX, Volume2, Check, Minus, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -17,28 +18,13 @@ import { apiClient } from '@/lib/apiClient';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { ZetChat } from '@/components/zet-chat';
-import { Switch } from '@/components/ui/switch'; // For toggles
+import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { validateQrCodeApi, reportQrCodeApi, QrValidationResult as ApiQrValidationResult } from '@/services/scan';
 
-
-// QR Code Decoding Logic (Simulation) - Keep for upload testing
-async function decodeQrCodeFromImage(file: File): Promise<string | null> {
-  console.log("[Client Scan] Decoding QR from file:", file.name);
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-  if (file.name.toLowerCase().includes("valid_upi_merchant")) {
-    return "upi://pay?pa=verifiedmerchant@okaxis&pn=Good%20Foods%20Store&am=150&tn=Groceries&sign=VALID_SIGNATURE_XYZ";
-  } else if (file.name.toLowerCase().includes("valid_upi_unverified")) {
-    return "upi://pay?pa=unverifiedperson@okicici&pn=Some%20Person&am=20";
-  } else if (file.name.toLowerCase().includes("blacklisted_upi")) {
-    return "upi://pay?pa=scammer@okpaytm&pn=Suspicious%20Payee&am=1000";
-  } else if (file.name.toLowerCase().includes("nonupi_qr")) {
-    return "This is some plain text data from a QR code.";
-  } else if (file.name.toLowerCase().includes("reported_qr")) {
-    return "upi://pay?pa=reporteduser@okaxis&pn=Previously%20Reported";
-  }
-  return null;
-}
 
 interface ParsedUpiData {
   payeeName?: string;
@@ -75,20 +61,13 @@ const parseUpiUrl = (url: string): ParsedUpiData => {
     }
 };
 
-interface QrValidationResult {
-    isVerifiedMerchant: boolean;
-    isBlacklisted: boolean;
-    isDuplicateRecent: boolean; // This is now client-side, but backend can re-verify
-    merchantNameFromDb?: string;
-    message?: string;
-    upiId?: string;
-    hasValidSignature?: boolean;
-    isReportedPreviously?: boolean;
+interface QrValidationResult extends ApiQrValidationResult {
+    isDuplicateRecent: boolean;
 }
 
 const RECENT_SCANS_KEY = 'payfriend_recent_scans';
 const RECENT_SCANS_MAX = 5;
-const RECENT_SCAN_COOLDOWN_MS = 15000;
+const RECENT_SCAN_COOLDOWN_MS = 15000; // 15 seconds
 
 interface RecentScanEntry {
     qrDataHash: string;
@@ -105,13 +84,12 @@ const simpleHash = (str: string): string => {
     return hash.toString();
 };
 
-// Mock for previously scanned/trusted QRs
 const TRUSTED_QRS_KEY = 'payfriend_trusted_qrs';
 interface TrustedQrEntry {
     qrDataHash: string;
     payeeAddress: string;
     payeeName?: string;
-    amount?: string; // Last paid amount to this QR
+    amount?: string;
     count: number;
 }
 
@@ -142,12 +120,10 @@ export default function ScanPage() {
   const [reportReason, setReportReason] = useState("");
   const [ambientLight, setAmbientLight] = useState<'bright' | 'dim' | 'unknown'>('unknown');
 
-  // Stealth Scan Mode States
   const [isStealthMode, setIsStealthMode] = useState(false);
-  const [isStealthSilentMode, setIsStealthSilentMode] = useState(false); // For no sound/vibration
-  const [hideAmountInStealth, setHideAmountInStealth] = useState(true); // To obscure amount display
+  const [isStealthSilentMode, setIsStealthSilentMode] = useState(false);
+  const [hideAmountInStealth, setHideAmountInStealth] = useState(true);
 
-  // Zet Chat states
   const [showChatModal, setShowChatModal] = useState(false);
   const [chatRecipient, setChatRecipient] = useState<{ id: string; name: string; avatar?: string } | null>(null);
 
@@ -170,7 +146,7 @@ export default function ScanPage() {
       }
       setUserName(nameToUse);
       setUserUpiId(upiIdToUse);
-      setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(nameToUse)}`);
+      setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(nameToUse)}&mc=0000`); // Added mc code
       setIsQrLoading(false);
     };
 
@@ -199,7 +175,9 @@ export default function ScanPage() {
   }, [torchOn]);
 
   const handleScannedData = useCallback(async (data: string) => {
-    await stopCameraStream(false); // Stop camera but keep torch state if it was on
+    if (isProcessingScan) return; // Prevent multiple processing if called rapidly
+
+    await stopCameraStream(false); // Stop camera but don't toggle torch yet
     setIsProcessingScan(true);
     setRawScannedText(data);
     if (!isStealthSilentMode) toast({ title: "QR Code Scanned", description: "Validating details..." });
@@ -218,55 +196,51 @@ export default function ScanPage() {
     const trustedQrs: TrustedQrEntry[] = JSON.parse(localStorage.getItem(TRUSTED_QRS_KEY) || '[]');
     const trustedEntry = trustedQrs.find(t => t.qrDataHash === qrHash);
 
-    if (isStealthMode && trustedEntry && trustedEntry.count > 2) { // Example: auto-confirm if scanned > 2 times
+    if (isStealthMode && trustedEntry && trustedEntry.count > 2) {
         console.log("[Stealth Mode] Trusted QR detected, proceeding with auto-confirmation logic.");
-        setValidationResult({ // Assume pre-validated for trusted
-            isVerifiedMerchant: true, // Or fetch from trustedEntry
+        setValidationResult({
+            isVerifiedMerchant: true,
             isBlacklisted: false,
-            isDuplicateRecent: false, // Bypass duplicate check for auto-confirm
+            isDuplicateRecent: false, // Not checking duplicate for trusted stealth
             merchantNameFromDb: trustedEntry.payeeName,
             upiId: trustedEntry.payeeAddress,
-            hasValidSignature: true, // Assume trusted QRs have valid signatures
+            hasValidSignature: true,
         });
-        // Pre-fill details for payment page
         const paymentParams = new URLSearchParams();
         paymentParams.set('pa', trustedEntry.payeeAddress);
         if (trustedEntry.payeeName) paymentParams.set('pn', trustedEntry.payeeName);
-        if (trustedEntry.amount) paymentParams.set('am', trustedEntry.amount); // Use last paid amount
+        if (trustedEntry.amount) paymentParams.set('am', trustedEntry.amount);
         paymentParams.set('tn', 'Stealth Mode Quick Pay');
         paymentParams.set('qrData', data);
-        paymentParams.set('stealth', 'true'); // Indicate stealth mode payment
+        paymentParams.set('stealth', 'true');
         router.push(`/pay?${paymentParams.toString()}`);
         setIsProcessingScan(false);
         return;
     }
 
-
     const recentScans: RecentScanEntry[] = JSON.parse(localStorage.getItem(RECENT_SCANS_KEY) || '[]');
     const isRecentlyScanned = recentScans.some(scan => scan.qrDataHash === qrHash && (Date.now() - scan.timestamp) < RECENT_SCAN_COOLDOWN_MS);
 
-    if (isRecentlyScanned && !isStealthMode) { // Don't show duplicate toast in stealth mode if not auto-confirming
-        if (!isStealthSilentMode) toast({ variant: "default", title: "Duplicate Scan", description: "This QR code was scanned recently. Proceed if intended.", duration: 5000 });
-    }
-    const updatedRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...recentScans].slice(0, RECENT_SCANS_MAX);
+    // Removed: If recently scanned is not allowed, return here for non-stealth mode.
+    // Kept logic to add to recent scans:
+    const updatedRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...recentScans.filter(s => s.qrDataHash !== qrHash)].slice(0, RECENT_SCANS_MAX);
     localStorage.setItem(RECENT_SCANS_KEY, JSON.stringify(updatedRecentScans));
+    if(isRecentlyScanned && !isStealthSilentMode) toast({description: "This QR was scanned recently. Proceed if intended.", duration: 3000});
+
 
     try {
-      const validation: QrValidationResult = await apiClient('/scan/validate', {
-        method: 'POST',
-        body: JSON.stringify({ qrData: data, userId: auth.currentUser?.uid, signature: parsedData.signature, stealthModeInitiated: isStealthMode }),
-      });
+      const validation: ApiQrValidationResult = await validateQrCodeApi(data, parsedData.signature, isStealthMode);
       setValidationResult({...validation, isDuplicateRecent: isRecentlyScanned, upiId: parsedData.payeeAddress });
       if (validation.merchantNameFromDb && parsedData.payeeName !== validation.merchantNameFromDb) {
           setScannedUpiData(prev => prev ? ({...prev, payeeName: validation.merchantNameFromDb}) : null);
       }
 
-      if (!isStealthSilentMode) { // Suppress toasts in silent stealth mode
+      if (!isStealthSilentMode) {
         if (validation.isBlacklisted) {
           toast({ variant: "destructive", title: "Warning: Suspicious QR", description: validation.message || "This QR code is flagged as suspicious.", duration: 7000 });
         } else if (validation.isReportedPreviously) {
           toast({ variant: "destructive", title: "Warning: Reported QR", description: "This QR code has been reported by other users. Proceed with extreme caution.", duration: 7000 });
-        } else if (!validation.isVerifiedMerchant && !isRecentlyScanned && !validation.hasValidSignature) {
+        } else if (!validation.isVerifiedMerchant && !validation.hasValidSignature && !isRecentlyScanned) {
           toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant and QR signature is missing/invalid. Proceed with caution.", duration: 7000 });
         } else if (!validation.isVerifiedMerchant && !isRecentlyScanned){
           toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant. Proceed with caution.", duration: 5000 });
@@ -281,7 +255,7 @@ export default function ScanPage() {
     } finally {
       setIsProcessingScan(false);
     }
-  }, [stopCameraStream, toast, isStealthMode, isStealthSilentMode, router]);
+  }, [stopCameraStream, toast, isStealthMode, isStealthSilentMode, router, isProcessingScan]);
 
   const getCameraStream = useCallback(async () => {
     setHasCameraPermission(null);
@@ -305,7 +279,7 @@ export default function ScanPage() {
         const hour = new Date().getHours();
         const currentAmbientLight = (hour < 7 || hour > 19) ? 'dim' : 'bright';
         setAmbientLight(currentAmbientLight);
-        // Auto-activate torch in stealth mode or normal mode if dim
+
         if (currentAmbientLight === 'dim' && !!capabilities?.torch && !torchOn && (isStealthMode || activeTab === 'scan')) {
             try {
                 await (videoTrack as any).applyConstraints({ advanced: [{ torch: true }] });
@@ -316,18 +290,22 @@ export default function ScanPage() {
       }
       setIsScanningActive(true);
 
-      const scanInterval = setInterval(() => {
-        if (isScanningActive && streamRef.current) {
-            if (Math.random() < 0.05) {
-                 const mockQrData = "upi://pay?pa=simulatedlive@okaxis&pn=Live%20Scan%20Demo&am=75&tn=LiveScanTest&sign=MOCK_SIGNATURE_LIVE";
+      // Simulate QR code scanning with a library like 'html5-qrcode' or 'jsQR'
+      // For demo, we'll use a placeholder that occasionally "detects" a QR
+      const scanInterval = setInterval(async () => { // Made async
+        if (isScanningActive && streamRef.current && !isProcessingScan) { // Check !isProcessingScan
+            if (Math.random() < 0.05) { // Simulate detection rate
+                 const mockQrData = Math.random() > 0.5
+                    ? "upi://pay?pa=demomerchant@okbank&pn=Demo%20Store&am=100&tn=TestPayment&sign=MOCK_SIGNATURE_VALID"
+                    : "upi://pay?pa=anotheruser@okupi&pn=Another%20User";
                  console.log("[Client Scan] Simulated Live QR detected:", mockQrData);
-                 handleScannedData(mockQrData);
-                 clearInterval(scanInterval);
+                 await handleScannedData(mockQrData); // Await the handler
+                 clearInterval(scanInterval); // Stop scanning after one detection
             }
-        } else {
+        } else if (!isScanningActive || !streamRef.current) {
             clearInterval(scanInterval);
         }
-      }, 2000);
+      }, 2000); // Check every 2 seconds
 
       return () => clearInterval(scanInterval);
 
@@ -337,7 +315,7 @@ export default function ScanPage() {
       streamRef.current = null;
       if (!isStealthSilentMode) toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please check permissions.'});
     }
-  }, [toast, stopCameraStream, isScanningActive, handleScannedData, torchOn, isStealthMode, isStealthSilentMode, activeTab]);
+  }, [toast, stopCameraStream, isScanningActive, handleScannedData, torchOn, isStealthMode, isStealthSilentMode, activeTab, isProcessingScan]); // Added isProcessingScan
 
   useEffect(() => {
     if (activeTab === 'scan' && isScanningActive && ambientLight === 'dim' && torchSupported && !torchOn && !isStealthMode && !isStealthSilentMode) {
@@ -347,7 +325,7 @@ export default function ScanPage() {
 
   useEffect(() => {
     let cleanupScanInterval: (() => void) | undefined;
-    if (activeTab === 'scan' && !scannedUpiData) {
+    if (activeTab === 'scan' && !scannedUpiData && !isProcessingScan) { // Added !isProcessingScan
         getCameraStream().then(cleanup => { cleanupScanInterval = cleanup; });
     } else {
         stopCameraStream();
@@ -356,7 +334,7 @@ export default function ScanPage() {
         stopCameraStream();
         if (cleanupScanInterval) cleanupScanInterval();
     };
-  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData]);
+  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData, isProcessingScan]); // Added isProcessingScan
 
   const toggleTorch = useCallback(async () => {
     if (!streamRef.current || !torchSupported) {
@@ -386,19 +364,40 @@ export default function ScanPage() {
       await stopCameraStream();
       if (!isStealthSilentMode) toast({ title: "Processing Image...", description: "Attempting to decode QR code." });
       try {
-        const decodedData = await decodeQrCodeFromImage(file);
-        if (decodedData) {
-          await handleScannedData(decodedData);
-        } else {
-          if (!isStealthSilentMode) toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a QR code in the image." });
-        }
+        // Simulate decoding logic
+        const qrReader = new FileReader();
+        qrReader.onload = async (e) => {
+            const image = new window.Image();
+            image.src = e.target?.result as string;
+            image.onload = async () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = image.width;
+                canvas.height = image.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    throw new Error("Could not get canvas context");
+                }
+                ctx.drawImage(image, 0, 0);
+                // Placeholder for actual QR decoding library (e.g., jsQR)
+                // For demo, using the filename based mock decodeQrCodeFromImage
+                const decodedData = await decodeQrCodeFromImage(file); // MOCK
+                if (decodedData) {
+                    await handleScannedData(decodedData);
+                } else {
+                    if (!isStealthSilentMode) toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a QR code in the image." });
+                }
+            };
+        };
+        qrReader.readAsDataURL(file);
       } catch(error) {
         console.error("Error processing uploaded QR:", error);
         if (!isStealthSilentMode) toast({ variant: "destructive", title: "Processing Error", description: "Failed to process the image." });
       } finally {
          setIsProcessingUpload(false);
          if (event.target) event.target.value = '';
-         if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) getCameraStream();
+         if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) {
+            getCameraStream();
+         }
       }
     }
   }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData, scannedUpiData, isStealthSilentMode]);
@@ -425,10 +424,7 @@ export default function ScanPage() {
     }
     setShowReportDialog(false);
     try {
-        await apiClient('/scan/report', {
-            method: 'POST',
-            body: JSON.stringify({ qrData: rawScannedText, userId: auth.currentUser?.uid, reason: reportReason }),
-        });
+        await reportQrCodeApi(rawScannedText, reportReason);
         toast({ title: "QR Reported", description: "Thank you for helping keep PayFriend safe." });
         setReportReason("");
     } catch (error: any) {
@@ -441,10 +437,10 @@ export default function ScanPage() {
         toast({variant: "destructive", title: "Cannot Save", description: validationResult?.isBlacklisted || validationResult?.isReportedPreviously ? "Cannot save suspicious contact." : "Invalid contact details."});
         return;
     }
-    router.push(`/contacts/add?upiId=${encodeURIComponent(scannedUpiData.payeeAddress)}&name=${encodeURIComponent(scannedUpiData.payeeName || validationResult?.merchantNameFromDb || '')}`);
-  }
+    router.push(`/send/bank?upiId=${encodeURIComponent(scannedUpiData.payeeAddress)}&name=${encodeURIComponent(scannedUpiData.payeeName || validationResult?.merchantNameFromDb || '')}&type=bank&action=add`);
+  };
 
-  const resetScanState = () => {
+  const resetScanState = useCallback(() => {
     setScannedUpiData(null);
     setRawScannedText(null);
     setValidationResult(null);
@@ -452,7 +448,7 @@ export default function ScanPage() {
     if (activeTab === 'scan' && !streamRef.current) {
         getCameraStream();
     }
-  };
+  },[activeTab, getCameraStream]);
 
   const getVerificationBadge = () => {
     if (!validationResult) return null;
@@ -473,7 +469,7 @@ export default function ScanPage() {
         return <Badge variant="secondary" className={cn(baseClasses, "bg-blue-100 text-blue-700")}><Fingerprint className="h-3 w-3"/>Authentic QR</Badge>;
     }
     return <Badge variant="outline" className={cn(baseClasses, "text-yellow-700 border-yellow-500")}><ShieldQuestion className="h-3 w-3"/>Unverified Payee/QR</Badge>;
-  }
+  };
 
   const openChat = () => {
     if (scannedUpiData?.isZetPayUser && scannedUpiData.payeeAddress) {
@@ -488,8 +484,8 @@ export default function ScanPage() {
   };
 
   const scanAreaClasses = cn(
-    "relative aspect-video sm:aspect-auto sm:h-80 bg-muted rounded-md overflow-hidden border border-border",
-    isStealthMode && "sm:h-40 aspect-square !border-transparent shadow-xl" // Smaller, square, no border in stealth
+    "relative aspect-square w-full max-w-sm mx-auto sm:aspect-video sm:max-w-md md:max-w-lg bg-muted rounded-md overflow-hidden border border-border",
+    isStealthMode && "sm:h-40 aspect-square !border-transparent shadow-xl"
   );
 
   const cameraOverlayClasses = cn(
@@ -500,7 +496,6 @@ export default function ScanPage() {
       "absolute top-1/2 left-1/2 w-3/5 aspect-square transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-75 rounded-md",
       isStealthMode && "w-4/5 border-primary/70"
   );
-
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -534,32 +529,66 @@ export default function ScanPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isProcessingScan && ( /* ... existing loader ... */ )}
+                {isProcessingScan && (
+                    <div className="flex flex-col items-center justify-center p-6 space-y-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-muted-foreground">Processing QR...</p>
+                    </div>
+                )}
                 {validationResult && scannedUpiData?.isValidUpi && (
-                    <Card className={cn("p-4", /* ... existing validation styles ... */ isStealthMode && "p-3 text-sm")}>
-                        {/* ... existing validation result display ... */}
+                    <Card className={cn("p-4", isStealthMode ? "border-primary/50 bg-background" : "border-border", validationResult.isBlacklisted || validationResult.isReportedPreviously ? "border-destructive bg-destructive/10" : validationResult.isVerifiedMerchant ? "border-green-500 bg-green-50" : "bg-muted/50")}>
+                         <CardTitle className="text-base mb-2 break-all">Pay to: {scannedUpiData.payeeName || validationResult.merchantNameFromDb || scannedUpiData.payeeAddress}</CardTitle>
+                         <CardDescription className="text-xs break-all">UPI ID: {scannedUpiData.payeeAddress}</CardDescription>
+                         {getVerificationBadge()}
+                         {scannedUpiData.note && <p className="text-sm mt-2">Note: {scannedUpiData.note}</p>}
+
                          {isStealthMode && hideAmountInStealth && scannedUpiData.amount && (
-                            <p className="text-xl font-bold">Amount: Hidden (Tap to Pay)</p>
+                            <p className="text-xl font-bold mt-2">Amount: Hidden (Tap to Pay)</p>
                          )}
-                         {!isStealthMode && scannedUpiData.amount && <p className="text-xl font-bold">Amount: ₹{scannedUpiData.amount}</p>}
-                         {/* ... other details ... */}
+                         {!isStealthMode && scannedUpiData.amount && <p className="text-xl font-bold mt-2">Amount: ₹{scannedUpiData.amount}</p>}
+
                         <div className={cn("grid grid-cols-2 gap-2 mt-4", isStealthMode && "grid-cols-1")}>
                              <Button onClick={proceedToPayment} className={cn("flex-1 bg-green-600 hover:bg-green-700", isStealthMode && "h-10 text-sm")} disabled={validationResult.isBlacklisted || validationResult.isReportedPreviously}>
                                 <Wallet className="mr-2 h-4 w-4"/>Pay Now
                             </Button>
                             {!isStealthMode && <Button variant="outline" onClick={resetScanState} className="flex-1"><RefreshCw className="mr-2 h-4 w-4"/>Rescan</Button>}
                         </div>
-                        {!isStealthMode && ( /* ... existing report, chat, save buttons ... */ )}
+                        {!isStealthMode && (
+                             <div className="grid grid-cols-3 gap-2 mt-2">
+                                 <Button variant="link" size="sm" className="text-xs" onClick={() => setShowReportDialog(true)} disabled={!rawScannedText}><Flag className="mr-1 h-3 w-3"/>Report</Button>
+                                 <Button variant="link" size="sm" className="text-xs" onClick={openChat} disabled={!scannedUpiData?.isZetPayUser}><MessageSquare className="mr-1 h-3 w-3"/>Chat</Button>
+                                 <Button variant="link" size="sm" className="text-xs" onClick={handleSaveContact} disabled={!scannedUpiData?.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously}><UserPlus className="mr-1 h-3 w-3"/>Save</Button>
+                             </div>
+                        )}
                     </Card>
                 )}
-                {/* ... existing non-UPI scan result display ... */}
+                 {!scannedUpiData?.isValidUpi && rawScannedText && !isProcessingScan && (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Invalid QR Code</AlertTitle>
+                        <AlertDescription>The scanned QR code is not a valid UPI payment code. Content: "{rawScannedText.substring(0,100)}{rawScannedText.length > 100 ? '...' : ''}"</AlertDescription>
+                         <Button variant="outline" onClick={resetScanState} className="mt-3 w-full">Scan Again</Button>
+                    </Alert>
+                 )}
 
                 {!validationResult && !rawScannedText && !isProcessingScan && (
                   <>
                     <div className={scanAreaClasses}>
                       <video ref={videoRef} className="w-full h-full object-cover" playsInline autoPlay muted />
-                      {hasCameraPermission === false && ( /* ... existing camera permission UI ... */ )}
-                      {hasCameraPermission === null && ( /* ... existing camera init UI ... */ )}
+                      {hasCameraPermission === false && (
+                         <Alert variant="destructive" className="absolute inset-2 sm:inset-4 flex flex-col items-center justify-center text-center bg-background/90">
+                            <CameraOff className="h-10 w-10 mb-2" />
+                            <AlertTitle>Camera Access Denied</AlertTitle>
+                            <AlertDescription>Please enable camera permissions in your browser settings to use QR scan.</AlertDescription>
+                            <Button onClick={getCameraStream} className="mt-3">Retry Camera</Button>
+                         </Alert>
+                      )}
+                      {hasCameraPermission === null && (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                            <p className="text-muted-foreground text-sm">Initializing camera...</p>
+                         </div>
+                      )}
                       {hasCameraPermission === true && (
                            <div className={cameraOverlayClasses}>
                                <div className={cameraGuidelineClasses}></div>
@@ -576,7 +605,7 @@ export default function ScanPage() {
                                     </Button>
                                 )}
                                 {isStealthMode && (
-                                    <div className="absolute top-2 left-2 space-x-1">
+                                    <div className="absolute top-2 left-2 space-x-1 pointer-events-auto z-10">
                                         <Button variant={isStealthSilentMode ? "destructive" : "secondary"} size="icon" className="h-7 w-7 rounded-full opacity-80" onClick={() => setIsStealthSilentMode(!isStealthSilentMode)}>
                                             {isStealthSilentMode ? <VolumeX className="h-4 w-4"/> : <Volume2 className="h-4 w-4"/>}
                                         </Button>
@@ -599,7 +628,6 @@ export default function ScanPage() {
           </TabsContent>
 
           <TabsContent value="myQR">
-            {/* ... existing My QR content ... */}
             <Card className="shadow-md">
               <CardHeader>
                 <CardTitle>Your UPI QR Code</CardTitle>
@@ -628,7 +656,27 @@ export default function ScanPage() {
       </main>
 
        <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-         {/* ... existing report dialog content ... */}
+         <DialogContent>
+           <DialogHeader>
+             <DialogTitle>Report Suspicious QR Code</DialogTitle>
+             <DialogDescription>
+               Please provide a reason for reporting this QR code. This will help us investigate.
+             </DialogDescription>
+           </DialogHeader>
+           <div className="py-4">
+             <Label htmlFor="reportReason" className="sr-only">Reason</Label>
+             <Input
+               id="reportReason"
+               placeholder="e.g., Fake merchant, incorrect details, scam..."
+               value={reportReason}
+               onChange={(e) => setReportReason(e.target.value)}
+             />
+           </div>
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setShowReportDialog(false)}>Cancel</Button>
+             <Button onClick={handleConfirmReport} disabled={!reportReason.trim()}>Submit Report</Button>
+           </DialogFooter>
+         </DialogContent>
        </Dialog>
 
         {chatRecipient && (
