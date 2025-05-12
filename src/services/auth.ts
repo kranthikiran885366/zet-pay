@@ -52,7 +52,7 @@ export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: Rec
     }
 }
 
-interface VerifyOtpResult {
+export interface VerifyOtpResult {
     user: User;
     isNewUser: boolean;
 }
