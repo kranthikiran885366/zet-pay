@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2, Wallet } from 'lucide-react';
+import { ArrowLeft, User, Bell, Lock, ShieldCheck, CreditCard, MessageSquare, Settings as SettingsIcon, LogOut, ChevronRight, QrCode, Info, Loader2, Wallet, Fingerprint } from 'lucide-react'; // Added Fingerprint
 import Link from 'next/link';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getCurrentUserProfile, UserProfile, updateUserProfileSettings } from '@/services/user';
 import { Skeleton } from '@/components/ui/skeleton';
-import { auth } from '@/lib/firebase'; // For checking initial auth state
+import { auth } from '@/lib/firebase'; 
 
 export default function ProfilePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -25,7 +26,7 @@ export default function ProfilePage() {
   const [appLockEnabled, setAppLockEnabled] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [smartWalletBridgeEnabled, setSmartWalletBridgeEnabled] = useState(false);
-  const [isUpdating, setIsUpdating] = useState<Record<string, boolean>>({}); // For multiple switches
+  const [isUpdating, setIsUpdating] = useState<Record<string, boolean>>({}); 
 
   const { toast } = useToast();
   const router = useRouter();
@@ -42,9 +43,8 @@ export default function ProfilePage() {
           setBiometricEnabled(profile.biometricEnabled ?? false);
           setSmartWalletBridgeEnabled(profile.isSmartWalletBridgeEnabled ?? false);
         } else if (auth.currentUser === null) {
-          // Only show error if definitely logged out and profile is null
           toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to view your profile." });
-          router.push('/login'); // Redirect if not logged in
+          router.push('/login'); 
         }
       } catch (error) {
         console.error("Failed to fetch user profile:", error);
@@ -64,24 +64,22 @@ export default function ProfilePage() {
     if (!user) return;
     setIsUpdating(prev => ({ ...prev, [settingKey]: true }));
 
-    const originalValue = user[settingKey]; // Get current value from state to revert on error
+    const originalValue = user[settingKey]; 
 
     // Optimistic UI update
     setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: value } : null);
     if (settingKey === 'notificationsEnabled') setNotificationsEnabled(value);
     if (settingKey === 'appLockEnabled') {
       setAppLockEnabled(value);
-      if (!value) setBiometricEnabled(false); // If app lock off, biometric off
+      if (!value) setBiometricEnabled(false); 
     }
     if (settingKey === 'biometricEnabled') setBiometricEnabled(value);
     if (settingKey === 'isSmartWalletBridgeEnabled') setSmartWalletBridgeEnabled(value);
 
 
     try {
-      // Specific check for Smart Wallet Bridge
       if (settingKey === 'isSmartWalletBridgeEnabled' && value && user.kycStatus !== 'Verified') {
         toast({ variant: "destructive", title: "KYC Required", description: "Please complete KYC verification to enable Smart Wallet Bridge." });
-        // Revert optimistic update
         setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: originalValue } : null);
         setSmartWalletBridgeEnabled(false);
         setIsUpdating(prev => ({ ...prev, [settingKey]: false }));
@@ -92,7 +90,6 @@ export default function ProfilePage() {
       toast({ title: "Settings Updated", description: `${String(settingKey).replace(/([A-Z])/g, ' $1').trim()} ${value ? 'enabled' : 'disabled'}.` });
     } catch (error: any) {
       console.error(`Failed to update ${settingKey}:`, error);
-      // Revert optimistic UI update on error
       setUser(prevUser => prevUser ? { ...prevUser, [settingKey]: originalValue } : null);
       if (settingKey === 'notificationsEnabled') setNotificationsEnabled(originalValue as boolean);
       if (settingKey === 'appLockEnabled') setAppLockEnabled(originalValue as boolean);
@@ -119,10 +116,7 @@ export default function ProfilePage() {
 
   const handleKYCClick = () => {
     if (!user) return;
-    // TODO: Navigate to KYC verification flow or show status details
-    // For now, just a toast
     toast({ title: `KYC Status: ${user.kycStatus || 'Not Verified'}`, description: "Manage your KYC verification here." });
-    // router.push('/profile/kyc'); // Example navigation
   };
 
   const kycStatus = user?.kycStatus || 'Not Verified';
@@ -331,7 +325,7 @@ function SettingsSwitchItem({ icon: Icon, title, description, checked, onChecked
         </div>
       </div>
       <div className="flex items-center">
-        {(isSwitchUpdating || (disabled && !isSwitchUpdating)) && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground" />}
+        {(isSwitchUpdating || (disabled && !isSwitchUpdating && isUpdating[title.toLowerCase().replace(/\s+/g, '')])) && <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground" />}
         <Switch
           id={id}
           checked={checked}
