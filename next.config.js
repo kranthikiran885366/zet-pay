@@ -22,38 +22,32 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'api.qrserver.com', // Add this entry
+        hostname: 'api.qrserver.com', 
         port: '',
         pathname: '/**',
       },
        {
         protocol: 'https',
-        hostname: 'example.com', // Allow example.com if needed for MiniApp icons
+        hostname: 'example.com', 
         port: '',
         pathname: '/**',
       },
     ],
   },
-  // Add webpack configuration
   webpack: (config, { isServer }) => {
-    // Fixes npm packages that depend on Node.js modules
+    // Fixes npm packages that depend on Node.js modules for client-side builds
     if (!isServer) {
       config.resolve.fallback = {
-        ...config.resolve.fallback, // Spread existing fallbacks
-        fs: false, // Prevent bundling 'fs' module on client
-        child_process: false, // Prevent bundling 'child_process' module on client
-        os: false, // Prevent bundling 'os' module on client
-        net: false, // Often needed with 'tls'
-        tls: false, // Often needed with https modules
+        ...config.resolve.fallback, 
+        fs: false,
+        child_process: false,
+        os: false,
+        net: false, 
+        tls: false, 
       };
     }
-
-    // Ensure 'encoding' module is handled if needed by dependencies
-    // config.resolve.fallback = { ...config.resolve.fallback, encoding: false };
-
     return config;
   },
 };
 
 module.exports = nextConfig;
-

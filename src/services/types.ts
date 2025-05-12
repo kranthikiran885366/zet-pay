@@ -292,7 +292,7 @@ export interface BookingSearchResult {
     capacity?: number;
     description?: string;
     amenities?: string[];
-    price?: number;
+    price?: number; // Added for venues base price
     // Car/Bike specific summary fields (can be added to the base or kept in specific types)
     transmission?: string;
     fuelType?: string;
@@ -328,7 +328,7 @@ export interface BikeListing extends BookingSearchResult {
 }
 
 export interface BookingConfirmation {
-    status: Transaction['status'] | 'Pending Approval' | 'Confirmed';
+    status: Transaction['status'] | 'Pending Approval' | 'Confirmed' | 'Completed';
     message?: string;
     transactionId?: string;
     bookingId?: string;
@@ -423,4 +423,30 @@ export interface MicroLoanApplicationResult {
 export interface MicroLoanRepaymentResult {
     success: boolean;
     message?: string;
+}
+
+// --- AI Gifting Assistant Types ---
+export interface GiftSuggestionInput {
+  occasion: string;
+  relationship: string;
+  interests: string[]; // Array of strings
+  budget?: string; // Optional budget as string, can be parsed to number
+  ageRange?: string; // Optional age range as string
+  additionalInfo?: string; // Optional free text
+}
+
+export interface GiftSuggestion {
+  id: string;
+  name: string;
+  category: string;
+  priceRange: string;
+  description: string; // Added description
+  relevance?: number; // Optional relevance score
+  imageUrl: string;
+  dataAiHint?: string; // For image search/generation
+  purchaseLink?: string; // Optional link to buy
+}
+
+export interface GiftSuggestionOutput {
+  suggestions: GiftSuggestion[];
 }
