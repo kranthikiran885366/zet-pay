@@ -200,6 +200,9 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID # Optional
 
+# Google AI API Key (for Genkit client-side calls, if any)
+NEXT_PUBLIC_GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
+
 # Backend API URL (Ensure this points to your running backend)
 NEXT_PUBLIC_API_BASE_URL=http://localhost:9003/api
 
@@ -208,7 +211,7 @@ NEXT_PUBLIC_WSS_URL=ws://localhost:9003
 
 # Other Public Keys (e.g., Mapbox, Google Maps client-side keys)
 # NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=YOUR_MAPBOX_PUBLIC_TOKEN
-# NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_CLIENT_SIDE_KEY
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_CLIENT_SIDE_KEY
 ```
 
 **Backend Directory (`backend/.env`):**
@@ -224,6 +227,7 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/firebaseServiceAccountKey.json
 # FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
 # FIREBASE_CLIENT_EMAIL=your-service-account-email@your-project-id.iam.gserviceaccount.com
 # FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_CONTENT_WITH_NEWLINES\n-----END PRIVATE KEY-----\n"
+FIREBASE_STORAGE_BUCKET=YOUR_FIREBASE_STORAGE_BUCKET_URL # e.g., your-project-id.appspot.com
 
 # Google AI API Key (for Genkit backend flows)
 GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
@@ -231,25 +235,63 @@ GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
 # Payment Service Provider (PSP) Credentials (Examples)
 PSP_API_KEY=YOUR_PSP_API_KEY
 PSP_SECRET_KEY=YOUR_PSP_SECRET_KEY
-PSP_WEBHOOK_SECRET=YOUR_PSP_WEBHOOK_SECRET
+PSP_WEBHOOK_SECRET=YOUR_PSP_WEBHOOK_SECRET # For mandate callbacks etc.
+PSP_WEBHOOK_URL=https://your-backend-url.com/api/webhooks/psp # Your webhook endpoint
 
 # Payment Gateway Credentials (Examples)
+STRIPE_SECRET_KEY=YOUR_STRIPE_SECRET_KEY
 RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID
 RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_SECRET
-# STRIPE_SECRET_KEY=YOUR_STRIPE_SECRET_KEY
+# Add other gateways like Cashfree, Paytm PG as needed
 
 # Blockchain API Endpoint (If using a separate logging service)
 BLOCKCHAIN_API_ENDPOINT=http://localhost:5001/log # Example logging service URL
 
-# JWT Secret (If using custom JWTs alongside Firebase Auth)
-# JWT_SECRET=YOUR_STRONG_JWT_SECRET
+# JWT Secret (If using custom JWTs alongside Firebase Auth, for securing internal comms)
+JWT_SECRET=YOUR_STRONG_JWT_SECRET
+
+# Travel Aggregator APIs
+AMADEUS_API_KEY=YOUR_AMADEUS_API_KEY
+TRAVELPORT_API_ID=YOUR_TRAVELPORT_API_ID
+SABRE_WSSE_TOKEN=YOUR_SABRE_WSSE_TOKEN
+REDBUS_API_KEY=YOUR_REDBUS_API_KEY
+ABHIBUS_ACCOUNT_ID=YOUR_ABHIBUS_ACCOUNT_ID
+ABHIBUS_SECRET=YOUR_ABHIBUS_SECRET
+TRAIN_PARTNER_API_KEY=YOUR_TRAIN_PARTNER_API_KEY # If available through a partner
+AVIS_API_KEY=YOUR_AVIS_API_KEY # Example Car Rental
+CAR_AGGREGATOR_SECRET=YOUR_CAR_AGGREGATOR_SECRET
+APSRTC_API_KEY=YOUR_APSRTC_API_KEY # Bus Tracking
+NTES_API_USERNAME=YOUR_NTES_USERNAME # Train Tracking
+NTES_API_PASSWORD=YOUR_NTES_PASSWORD # Train Tracking
+
+# Movie/Event APIs
+BOOKMYSHOW_API_KEY=YOUR_BMS_API_KEY
+TICKETNEW_AFFILIATE_ID=YOUR_TICKETNEW_AFFILIATE_ID
+EVENTBRITE_API_KEY=YOUR_EVENTBRITE_API_KEY
+CITY_EVENTS_API_URL=YOUR_CITY_EVENTS_API_URL # If exists
+
+# Hyperlocal/Food APIs
+ZOMATO_API_KEY=YOUR_ZOMATO_API_KEY
+# SWIGGY_API_KEY=YOUR_SWIGGY_API_KEY # (Likely custom or scraped)
+
+# KYC Provider API
+KYC_PROVIDER_API_KEY=YOUR_KYC_PROVIDER_KEY
+KYC_PROVIDER_SECRET=YOUR_KYC_PROVIDER_SECRET
+
+# Credit Bureau API (for Credit Score)
+CIBIL_API_KEY=YOUR_CIBIL_API_KEY # Or Equifax, Experian etc.
+CIBIL_API_SECRET=YOUR_CIBIL_API_SECRET
+
+# Cloud Messaging (e.g., FCM for push notifications)
+# FCM_SERVER_KEY=YOUR_FCM_SERVER_KEY (Often handled by Firebase Admin SDK setup)
+
+# Twilio/Communication API (for SMS OTP, Support Chat if not using built-in)
+# TWILIO_ACCOUNT_SID=YOUR_TWILIO_ACCOUNT_SID
+# TWILIO_AUTH_TOKEN=YOUR_TWILIO_AUTH_TOKEN
+# TWILIO_PHONE_NUMBER=YOUR_TWILIO_PHONE_NUMBER
 
 # Other Partner/Aggregator API Keys (Add as needed, prefixed appropriately)
-# E.g., TRAVEL_AGGREGATOR_KEY, MOVIE_API_KEY, FOOD_API_KEY, KYC_PROVIDER_KEY, etc.
-# REDBUS_API_KEY=YOUR_REDBUS_API_KEY
-# BOOKMYSHOW_API_KEY=YOUR_BMS_API_KEY
-# ZOMATO_API_KEY=YOUR_ZOMATO_API_KEY
-# CIBIL_API_KEY=YOUR_CIBIL_API_KEY
+# E.g., TEMPLE_API_KEY_TIRUPATI, HEALTHCARE_PLATFORM_API_KEY, etc.
 ```
 
 ### Installation & Running
@@ -339,3 +381,54 @@ Here's a more detailed breakdown of the features implemented in this full stack 
     *   The backend securely processes donations made to the temple through the application.
     *   It logs the donation details for record-keeping.
 *   **Digital Vouchers:** Users can purchase digital vouchers within the app. The backend manages the processing states of these voucher purchases, ensuring successful transactions and delivery of voucher information.
+*   **Stock Market Investments:** (Conceptual) Users can browse stocks, view details, and simulate buy/sell orders. Backend integration with a brokerage API (e.g., Zerodha Kite, Groww) would be needed for real trading.
+*   **Mobile Postpaid Bill Payments:** Users can select their mobile operator, enter their postpaid number, fetch the bill amount (if supported by the operator via backend integration), and make payments.
+*   **Traffic Challan Payments:** Users can select their state/city, enter their vehicle number or challan number to fetch pending traffic violation fines, and pay them through the app.
+
+---
+
+## 🔐 Security Features Implemented
+
+**Bank-Level Security (Interfaced via Backend):**
+
+*   **PCI DSS Compliance:** Assumed through Payment Gateway partners. Zet Pay backend does not store full card numbers.
+*   **RBI/NPCI Guidelines:** Followed for UPI payments (PSP integration), wallet operations (KYC).
+*   **End-to-End Encryption (E2EE):** For sensitive data like UPI PIN (handled by PSP SDK/NPCI library) and OTPs. Data in transit uses HTTPS.
+*   **Tokenization:**
+    *   Card details are tokenized by the Payment Gateway (e.g., `backend/services/paymentGatewayService.js` for tokenization calls, `backend/services/cards.js` for storing tokens).
+    *   UPI IDs are used directly but managed securely.
+*   **Secure Payment Gateway Integration:** Backend services (`paymentGatewayService.js`) integrate with RBI-approved PGs.
+*   **Banking-Grade KYC Verification:** (Conceptual) User profile includes `kycStatus`. Backend (`userService.js`) would integrate with KYC provider APIs.
+*   **Fraud Detection Systems:** (Conceptual) Backend can integrate with fraud APIs. Logging of suspicious activities (`backend/services/scanService.js`).
+*   **Regular Security Audits:** (Procedural) VAPT by certified auditors would be required.
+
+**App-Level Security (Frontend & Backend):**
+
+*   **Biometric/PIN Authentication:**
+    *   Frontend: `src/app/(auth)/login/page.tsx` handles OTP/password. Biometric login would use device capabilities.
+    *   Backend: `authMiddleware.js` verifies Firebase Auth tokens. UPI PIN is handled by PSP.
+*   **App Device Binding:** (Conceptual) Firebase Auth inherently links to device on first sign-in; stronger binding would require backend logic.
+*   **Session Management:** Firebase Auth handles client-side sessions. Backend uses token verification for stateless sessions.
+*   **App Integrity Check:** (Conceptual) Requires native capabilities or libraries like SafetyNet/App Attest.
+*   **SSL Pinning:** (Conceptual) Requires native configuration or specific libraries.
+*   **Runtime Application Self-Protection (RASP):** (Conceptual) Requires specialized third-party RASP SDKs.
+*   **Data Encryption at Rest and In Transit:**
+    *   At Rest (Firestore): Firebase encrypts data by default. Sensitive user uploads to Firebase Storage are secured by rules. (`src/app/(features)/vault/page.tsx`, `backend/services/vaultService.js`)
+    *   In Transit: All API calls use HTTPS (`src/lib/apiClient.ts`, backend Express server).
+*   **Two-Factor Authentication (2FA):**
+    *   Login: Firebase Phone Auth (OTP) provides 2FA. Email/Password could be augmented with OTP.
+    *   Critical Actions: Backend to enforce additional OTP/PIN for actions like changing bank accounts.
+*   **Secure Local Storage:** Sensitive data (like tokens) is generally not stored long-term client-side by Firebase SDK directly; it manages its own secure storage. If custom tokens are used, they should be stored in HttpOnly cookies or secure storage.
+*   **Real-Time Notification Alerts:** (Conceptual) Backend would use FCM via `firebase-admin` to send alerts for logins, transactions.
+*   **Input Sanitization & Validation:** Backend uses `express-validator` in route files (e.g., `backend/routes/upiRoutes.js`) to validate API inputs.
+*   **Rate Limiting:** Implemented in `backend/server.js` using `express-rate-limit`.
+*   **Helmet:** Used in `backend/server.js` for basic security headers.
+
+**Advanced Security Options (Conceptual/Partially Implemented):**
+
+*   **AI/ML-based Fraud Scoring:** (Conceptual) Backend AI flows can be developed.
+*   **Geo-Fencing:** (Conceptual) Can be implemented on backend by checking IP/location.
+*   **Remote Lock/Logout:** (Partially) Firebase Auth allows revoking refresh tokens. A dedicated UI in profile would call a backend endpoint.
+*   **Custom Risk Engine:** (Conceptual) Backend logic can be built to assess risk.
+
+*This documentation provides a high-level overview. Specific security measures and their depth of implementation can be found within individual code files.*

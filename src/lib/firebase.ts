@@ -52,3 +52,4 @@ async function getIdToken(forceRefresh: boolean = false): Promise<string | null>
 
 
 export { app, auth, db, getIdToken }; // Export getIdToken
+
