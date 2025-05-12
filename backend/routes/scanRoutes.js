@@ -1,9 +1,8 @@
-
 // backend/routes/scanRoutes.js
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const scanController = require('../controllers/scanController');
-const authMiddleware = require('../middleware/authMiddleware'); // All scan routes require auth
+const authMiddleware = require('../middleware/authMiddleware'); 
 const asyncHandler = require('../middleware/asyncHandler');
 const router = express.Router();
 
@@ -22,7 +21,7 @@ const handleValidationErrors = (req, res, next) => {
 router.post('/validate',
     authMiddleware,
     body('qrData').isString().trim().notEmpty().withMessage('qrData string is required.'),
-    // userId is inferred from token by authMiddleware, not needed in body unless specific use case
+    body('signature').optional().isString().trim(), // Optional: For pre-extracted signature
     handleValidationErrors,
     asyncHandler(scanController.validateQr)
 );
@@ -32,7 +31,6 @@ router.post('/report',
     authMiddleware,
     body('qrData').isString().trim().notEmpty().withMessage('qrData string is required.'),
     body('reason').isString().trim().notEmpty().withMessage('Reason for reporting is required.'),
-    // userId inferred from token
     handleValidationErrors,
     asyncHandler(scanController.reportQr)
 );
