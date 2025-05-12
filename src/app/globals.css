@@ -87,3 +87,12 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Added for splash screen progress bar animation */
+@keyframes progress-bar {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+.animate-progress-bar {
+  animation: progress-bar 2.5s ease-out forwards;
+}

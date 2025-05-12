@@ -1,62 +1,52 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { authAdmin } from '@/lib/firebase/firebaseAdmin'; // Updated import path
+import { authAdmin } from '@/lib/firebase/firebaseAdmin'; 
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get('__session')?.value;
 
-  // Paths that don't require authentication
-  const publicPaths = ['/splash', '/login', '/signup', '/forgot-password', '/about', '/documentation']; // Added /splash and /documentation
+  const publicPaths = ['/splash', '/login', '/signup', '/forgot-password', '/about', '/documentation'];
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
 
-  // If trying to access a public path and is logged in (and it's splash, login, or signup), redirect to home.
-  if (isPublicPath && sessionCookie) {
+  if (sessionCookie) {
     try {
       await authAdmin.verifySessionCookie(sessionCookie, true); // Check if cookie is valid
-      if (pathname.startsWith('/splash') || pathname.startsWith('/login') || pathname.startsWith('/signup')) {
+      // User is authenticated
+      if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password')) {
+        // Authenticated users should not access login/signup/forgot-password, redirect to home
+        console.log("Middleware: Authenticated user on auth path, redirecting to /");
         return NextResponse.redirect(new URL('/', request.url));
       }
-    } catch (error) {
-      // Invalid cookie, let them proceed to login/signup/splash
-      console.log("Middleware: Invalid session cookie for public path access. Allowing access.");
-    }
-  }
-
-  // If trying to access a protected path and not logged in, redirect to splash screen
-  if (!isPublicPath && !sessionCookie) {
-    console.log("Middleware: No session cookie, redirecting to splash for path:", pathname);
-    return NextResponse.redirect(new URL('/splash', request.url)); // Redirect to splash
-  }
-
-  // If has session cookie, verify it for protected paths
-  if (!isPublicPath && sessionCookie) {
-    try {
-      await authAdmin.verifySessionCookie(sessionCookie, true);
-      // User is authenticated, allow access
+      // If authenticated user tries to access /splash, let them. 
+      // The /splash page itself will handle redirecting to / after its timer.
+      // This allows the splash screen to be shown even if the user is already logged in.
+      if (pathname.startsWith('/splash')) {
+        return NextResponse.next();
+      }
+      // For all other paths, if authenticated, allow access.
       return NextResponse.next();
     } catch (error) {
-      // Invalid or expired cookie, redirect to splash (which then redirects to login)
-      console.log("Middleware: Invalid/expired session cookie, redirecting to splash for path:", pathname);
+      // Invalid or expired cookie
+      console.log("Middleware: Invalid/expired session cookie, deleting cookie and redirecting to /splash for path:", pathname);
       const response = NextResponse.redirect(new URL('/splash', request.url));
-      response.cookies.delete('__session'); // Clear the invalid cookie
+      response.cookies.delete('__session'); 
       return response;
     }
+  } else {
+    // No session cookie (user not authenticated)
+    if (!isPublicPath) {
+      // If trying to access a protected path, redirect to /splash (which then goes to /login)
+      console.log("Middleware: No session cookie, accessing protected path, redirecting to /splash for path:", pathname);
+      return NextResponse.redirect(new URL('/splash', request.url));
+    }
+    // If accessing a public path and not authenticated, allow access
+    return NextResponse.next();
   }
-
-  return NextResponse.next();
 }
 
-// Matcher configuration
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
