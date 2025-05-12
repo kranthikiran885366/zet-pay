@@ -15,9 +15,19 @@ const userProvidedConfig = {
   measurementId: "G-06L18DPJ3Q"
 };
 
-// Use environment variables if available, otherwise fallback to user-provided config
+// Determine API key source and log it
+let apiKeySource = "fallback";
+let effectiveApiKey = userProvidedConfig.apiKey;
+
+if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+  effectiveApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  apiKeySource = "environment variable (NEXT_PUBLIC_FIREBASE_API_KEY)";
+} else {
+  console.warn("[Firebase Setup] NEXT_PUBLIC_FIREBASE_API_KEY not found, using hardcoded fallback API key.");
+}
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || userProvidedConfig.apiKey,
+  apiKey: effectiveApiKey,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || userProvidedConfig.authDomain,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || userProvidedConfig.projectId,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || userProvidedConfig.storageBucket,
@@ -33,38 +43,45 @@ let db: Firestore;
 let analytics: Analytics | null = null; // Initialize analytics as null
 
 if (typeof window !== 'undefined') { // Ensure Firebase is initialized only on the client-side
+  console.log(`[Firebase Setup] Initializing Firebase with API key from: ${apiKeySource}. Key (masked): ${effectiveApiKey ? effectiveApiKey.substring(0, 4) + "..." + effectiveApiKey.substring(effectiveApiKey.length - 4) : "N/A"}`);
   if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-    console.log("Firebase initialized with effective config:", firebaseConfig);
-  } else {
-    app = getApps()[0];
-    console.log("Firebase app already initialized.");
-  }
-
-  auth = getAuth(app);
-  db = getFirestore(app);
-  
-  // Initialize Analytics only if measurementId is available and valid
-  if (firebaseConfig.measurementId && firebaseConfig.measurementId.startsWith('G-')) {
     try {
-      analytics = getAnalytics(app);
-      console.log("Firebase Analytics initialized");
-    } catch (error) {
-      console.error("Error initializing Firebase Analytics:", error);
+      app = initializeApp(firebaseConfig);
+      console.log("[Firebase Setup] Firebase initialized successfully.");
+    } catch (e: any) {
+      console.error("[Firebase Setup] CRITICAL: Firebase initialization failed:", e.message, "Config used:", firebaseConfig);
+      // Display a more prominent error to the user if initialization fails
+      // For example, by setting a global error state or directly manipulating the DOM
+      // This part depends on how you want to handle critical init failures in your UI.
+      // For now, we'll just log it heavily.
     }
   } else {
-    console.warn("Firebase Analytics not initialized: measurementId is missing or invalid in firebaseConfig. Expected format 'G-XXXXXXXXXX'. Found:", firebaseConfig.measurementId);
+    app = getApps()[0];
+    console.log("[Firebase Setup] Firebase app already initialized.");
+  }
+  // @ts-ignore
+  auth = getAuth(app);
+  // @ts-ignore
+  db = getFirestore(app);
+  
+  if (firebaseConfig.measurementId && firebaseConfig.measurementId.startsWith('G-')) {
+    try {
+        // @ts-ignore
+      analytics = getAnalytics(app);
+      console.log("[Firebase Setup] Firebase Analytics initialized");
+    } catch (error) {
+      console.error("[Firebase Setup] Error initializing Firebase Analytics:", error);
+    }
+  } else {
+    console.warn(`[Firebase Setup] Firebase Analytics not initialized: measurementId is missing or invalid. Expected format 'G-XXXXXXXXXX'. Found: ${firebaseConfig.measurementId}`);
   }
 
 } else {
-  // Handle server-side initialization or placeholder if needed,
-  // though client-side Firebase is primary for this file.
-  // This check prevents errors during server-side rendering or build.
-  // @ts-ignore TODO: fix this
+  // @ts-ignore
   app = null; 
-  // @ts-ignore TODO: fix this
+  // @ts-ignore
   auth = null;
-  // @ts-ignore TODO: fix this
+  // @ts-ignore
   db = null;
 }
 
@@ -75,7 +92,6 @@ if (typeof window !== 'undefined') { // Ensure Firebase is initialized only on t
  * @returns A promise that resolves with the ID token string, or null if no user is logged in.
  */
 async function getIdToken(forceRefresh: boolean = false): Promise<string | null> {
-    // Ensure auth is initialized
     if (!auth || !auth.currentUser) {
         console.warn("[getIdToken] Auth or currentUser is not available. User might be logged out or Firebase not fully initialized on client.");
         return null;
@@ -85,15 +101,10 @@ async function getIdToken(forceRefresh: boolean = false): Promise<string | null>
         const token = await getFirebaseIdToken(user, forceRefresh);
         return token;
     } catch (error) {
-        console.error("Error getting Firebase ID token:", error);
-        // Handle error appropriately, maybe sign the user out
-        // await auth.signOut();
+        console.error("[getIdToken] Error getting Firebase ID token:", error);
         return null;
     }
 }
 
 
-export { app, auth, db, analytics, getIdToken }; // Export getIdToken and analytics
-
-    
-
+export { app, auth, db, analytics, getIdToken };
