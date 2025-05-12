@@ -22,7 +22,7 @@ router.post('/validate',
     authMiddleware,
     body('qrData').isString().trim().notEmpty().withMessage('qrData string is required.'),
     body('signature').optional().isString().trim(), 
-    body('stealthModeInitiated').optional().isBoolean().withMessage('stealthModeInitiated must be a boolean.'), // Added validation
+    body('stealthModeInitiated').optional().isBoolean().withMessage('stealthModeInitiated must be a boolean.'),
     handleValidationErrors,
     asyncHandler(scanController.validateQr)
 );
@@ -35,5 +35,12 @@ router.post('/report',
     handleValidationErrors,
     asyncHandler(scanController.reportQr)
 );
+
+// GET /api/scan/recent - Fetch recently scanned & paid QRs for the user
+router.get('/recent',
+    authMiddleware,
+    asyncHandler(scanController.getRecentScans)
+);
+
 
 module.exports = router;

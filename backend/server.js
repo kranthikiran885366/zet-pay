@@ -53,7 +53,8 @@ const entertainmentRoutes = require('./routes/entertainmentRoutes');
 const shoppingRoutes = require('./routes/shoppingRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const vaultRoutes = require('./routes/vaultRoutes');
-const chatRoutes = require('./routes/chatRoutes'); // Added Chat Routes
+const chatRoutes = require('./routes/chatRoutes');
+const favoritesRoutes = require('./routes/favoritesRoutes'); // Added favorites routes
 
 const app = express();
 const server = http.createServer(app);
@@ -139,11 +140,7 @@ wss.on('connection', (ws, req) => {
                     await sendInitialTransactions(ws, userId, parsedMessage.payload);
                 } else if (parsedMessage.type === 'request_initial_balance') {
                     await sendInitialBalance(ws, userId);
-                } else if (parsedMessage.type === 'chat_message_client') { // Handle client-sent chat messages
-                    // This is a placeholder; actual message persistence should go through API -> service
-                    // For direct WS message relay (not recommended for production persistence):
-                    // const chatService = require('./services/chatService');
-                    // await chatService.createMessage(parsedMessage.payload.chatId, userId, parsedMessage.payload.receiverId, { text: parsedMessage.payload.text, type: 'text' });
+                } else if (parsedMessage.type === 'chat_message_client') { 
                     console.log(`[WS Server] Client message from ${userId}: ${parsedMessage.payload.text} (To be handled by API)`);
                 } else if (parsedMessage.type === 'ping') {
                     ws.send(JSON.stringify({ type: 'pong' }));
@@ -195,7 +192,7 @@ wss.on('close', () => {
 });
 
 async function sendInitialData(ws, userId, filters = {}) {
-    await sendInitialTransactions(ws, userId, (filters as any).transactions);
+    await sendInitialTransactions(ws, userId, (filters).transactions);
     await sendInitialBalance(ws, userId);
 }
 
@@ -208,10 +205,10 @@ async function sendInitialTransactions(ws, userId, clientFilters = {}) {
         const transactionsColRef = firestoreDb.collection('transactions');
         let q = firestoreDb.collection('transactions').where('userId', '==', userId);
         
-        if ((clientFilters as any).type && (clientFilters as any).type !== 'all') q = q.where('type', '==', (clientFilters as any).type);
-        if ((clientFilters as any).status && (clientFilters as any).status !== 'all') q = q.where('status', '==', (clientFilters as any).status);
+        if ((clientFilters).type && (clientFilters).type !== 'all') q = q.where('type', '==', (clientFilters).type);
+        if ((clientFilters).status && (clientFilters).status !== 'all') q = q.where('status', '==', (clientFilters).status);
 
-        const querySnapshot = await q.orderBy('date', 'desc').limit((clientFilters as any).limit || 20).get();
+        const querySnapshot = await q.orderBy('date', 'desc').limit((clientFilters).limit || 20).get();
         transactions = querySnapshot.docs.map(docSnap => {
             const data = docSnap.data();
             return {
@@ -290,7 +287,7 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 // Apply authMiddleware to routes that require authentication
 app.use('/api/live', liveTrackingRoutes);
 app.use('/api/banks', bankStatusRoutes);
-app.use('/api/shopping', shoppingRoutes); // Public for browsing, auth for orders
+app.use('/api/shopping', shoppingRoutes); 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
@@ -298,27 +295,29 @@ app.use('/api/upi', authMiddleware, upiRoutes);
 app.use('/api/recharge', authMiddleware, rechargeRoutes);
 app.use('/api/bills', authMiddleware, billsRoutes);
 app.use('/api/wallet', authMiddleware, walletRoutes);
-app.use('/api/offers', authMiddleware, offerRoutes); // Some offer routes might be public
+app.use('/api/offers', authMiddleware, offerRoutes); 
 app.use('/api/passes', authMiddleware, passesRoutes);
-app.use('/api/temple', authMiddleware, templeRoutes); // Some temple routes might be public
+app.use('/api/temple', authMiddleware, templeRoutes); 
 app.use('/api/contacts', authMiddleware, contactsRoutes);
 app.use('/api/cards', authMiddleware, cardsRoutes);
 app.use('/api/autopay', authMiddleware, autopayRoutes);
-app.use('/api/bookings', authMiddleware, bookingRoutes); // Search might be public
-app.use('/api/hyperlocal', authMiddleware, hyperlocalRoutes); // Search might be public
-app.use('/api/invest', authMiddleware, investmentRoutes); // Search might be public
+app.use('/api/bookings', authMiddleware, bookingRoutes); 
+app.use('/api/hyperlocal', authMiddleware, hyperlocalRoutes); 
+app.use('/api/invest', authMiddleware, investmentRoutes); 
 app.use('/api/payments', authMiddleware, paymentRoutes);
 app.use('/api/blockchain', authMiddleware, blockchainRoutes);
 app.use('/api/loans', authMiddleware, loanRoutes);
 app.use('/api/pocket-money', authMiddleware, pocketMoneyRoutes);
 app.use('/api/cash-withdrawal', authMiddleware, cashWithdrawalRoutes);
 app.use('/api/bnpl', authMiddleware, bnplRoutes);
-app.use('/api/services', authMiddleware, serviceRoutes); // Conceptual "service" management if needed
+app.use('/api/services', authMiddleware, serviceRoutes); 
 app.use('/api/support', authMiddleware, supportRoutes);
-app.use('/api/entertainment', authMiddleware, entertainmentRoutes); // Search might be public
+app.use('/api/entertainment', authMiddleware, entertainmentRoutes); 
 app.use('/api/scan', authMiddleware, scanRoutes);
 app.use('/api/vault', authMiddleware, vaultRoutes);
-app.use('/api/chat', authMiddleware, chatRoutes); // Added Chat Routes
+app.use('/api/chat', authMiddleware, chatRoutes); 
+app.use('/api/favorites', authMiddleware, favoritesRoutes); // Mount favorites routes
+
 
 app.use((req, res, next) => {
     const error = new Error(`Not Found - ${req.originalUrl}`);

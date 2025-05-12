@@ -63,11 +63,15 @@ async function validateScannedQr(userId, qrData, signatureFromQr, stealthModeIni
 
     if (!parsedUpi || !parsedUpi.isValidUpi || !parsedUpi.pa) {
         await logScan(userId, qrData, false, false, false, "Invalid UPI QR format", null, false, false, stealthModeInitiated);
-        return { isVerifiedMerchant, isBlacklisted, isDuplicateRecent: false, merchantNameFromDb: null, message: "Invalid UPI QR format.", upiId: null, hasValidSignature, isReportedPreviously };
+        // This function is called by a controller, so it should return data for the controller to send as response
+        // Throwing an error or returning a specific error structure might be better than returning this directly.
+        // For now, matching the expected structure from controller.
+        return { isVerifiedMerchant, isBlacklisted, merchantNameFromDb: null, message: "Invalid UPI QR format.", upiId: null, hasValidSignature, isReportedPreviously };
     }
 
     const upiId = parsedUpi.pa;
     const qrSignature = signatureFromQr || parsedUpi.sign;
+    const qrHash = simpleHash(qrData);
 
     try {
         const merchantRef = doc(db, VERIFIED_MERCHANTS_COLLECTION, upiId);
@@ -75,9 +79,6 @@ async function validateScannedQr(userId, qrData, signatureFromQr, stealthModeIni
         if (merchantSnap.exists() && merchantSnap.data().isVerified === true) {
             isVerifiedMerchant = true;
             merchantNameFromDb = merchantSnap.data().merchantName || parsedUpi.pn;
-            message = "Verified merchant.";
-        } else {
-             message = "Payee is not a verified merchant. Proceed with caution.";
         }
     } catch (e) { console.error("[Scan Service Backend] Error checking verified merchants:", e); }
 
@@ -100,7 +101,6 @@ async function validateScannedQr(userId, qrData, signatureFromQr, stealthModeIni
     }
 
     try {
-        const qrHash = simpleHash(qrData);
         const reportedQrQuery = query(
             collection(db, REPORTED_QRS_COLLECTION),
             where('qrDataHash', '==', qrHash),
@@ -109,44 +109,52 @@ async function validateScannedQr(userId, qrData, signatureFromQr, stealthModeIni
         const reportedSnap = await getDocs(reportedQrQuery);
         if (!reportedSnap.empty) {
             isReportedPreviously = true;
-            message = `Warning: This QR code has been reported previously. ${message}`;
+            // Append to message if not blacklisted, otherwise blacklist message takes precedence
+            if (!isBlacklisted) {
+                 message = `Warning: This QR code has been reported previously. ${message}`;
+            }
             console.warn(`[Scan Service Backend] QR code ${qrHash} (UPI: ${upiId}) has been reported previously.`);
         }
     } catch(e) { console.error("[Scan Service Backend] Error checking previously reported QRs:", e); }
-
-    if (isBlacklisted) {
-        // Message already set
-    } else if (isReportedPreviously) {
-        // Message already set
-    } else if (isVerifiedMerchant && hasValidSignature) {
-        message = "Verified Merchant &amp; Authentic QR.";
-    } else if (isVerifiedMerchant) {
-        message = "Verified Merchant. QR authenticity not fully confirmed.";
-    } else if (hasValidSignature) {
-        message = "Authentic QR (Signature Valid). Merchant not verified.";
+    
+    // Refine message logic
+    if (!isBlacklisted && !isReportedPreviously) {
+        if (isVerifiedMerchant && hasValidSignature) {
+            message = "Verified Merchant & Authentic QR.";
+        } else if (isVerifiedMerchant) {
+            message = "Verified Merchant.";
+        } else if (hasValidSignature) {
+            message = "Authentic QR. Payee not verified.";
+        } else {
+             message = "Payee is not verified. Proceed with caution.";
+        }
     }
 
-    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, false, message, parsedUpi, hasValidSignature, isReportedPreviously, stealthModeInitiated);
+
+    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, false, message, parsedUpiDetails, hasValidSignature, isReportedPreviously, stealthModeInitiated);
 
     return {
         isVerifiedMerchant,
         isBlacklisted,
-        isDuplicateRecent: false,
-        merchantNameFromDb,
+        merchantNameFromDb, // Will be null if not verified or no specific name in DB
         message,
-        upiId,
+        upiId, // This is parsedUpi.pa
         hasValidSignature,
         isReportedPreviously,
+        // These fields will be populated by the controller after this service call
+        // pastPaymentSuggestions: [], 
+        // isFavorite: false,
+        // customTagName: null
     };
 }
 
 /**
  * Logs a scan attempt to Firestore.
  */
-async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRecent, validationMessage, parsedUpiDetails, hasValidSignature, isReportedPreviously, stealthMode) {
+async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRecent, validationMessage, parsedUpiDetails, hasValidSignature, isReportedPreviously, stealthMode, paymentMade = false, paymentTransactionId = null) {
     try {
         const scanLogColRef = collection(db, SCAN_LOG_COLLECTION);
-        await addDoc(scanLogColRef, {
+        const logData = {
             userId,
             qrData,
             qrDataHash: simpleHash(qrData),
@@ -155,12 +163,19 @@ async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRec
             parsedAmount: parsedUpiDetails?.am ? Number(parsedUpiDetails.am) : null,
             timestamp: FieldValue.serverTimestamp(),
             isVerifiedMerchant: isVerified,
-            isFlaggedBlacklisted: isBlacklisted,
+            isFlaggedBlacklisted: isBlacklisted, // Use specific name
+            isDuplicateRecentScan: isDuplicateRecent, // Use specific name
             validationMessage: validationMessage,
             hasValidSignature,
             isReportedPreviously,
-            stealthMode: stealthMode || false, // Log stealth mode
-        });
+            stealthMode: stealthMode || false,
+            paymentMade, // New field
+            paymentTransactionId // New field
+        };
+        // Remove undefined fields before saving
+        Object.keys(logData).forEach(key => logData[key] === undefined && delete logData[key]);
+        await addDoc(scanLogColRef, logData);
+
     } catch (e) {
         console.error("[Scan Service Backend] Error logging scan:", e);
     }
@@ -193,5 +208,7 @@ async function reportQrCode(userId, qrData, reason) {
 module.exports = {
     validateScannedQr,
     reportQrCode,
-    parseUpiDataFromQr,
+    parseUpiDataFromQr, // Export for use in other services/controllers
+    simpleHash, // Export for use in other services/controllers
+    logScan // Export if needed by other parts, e.g. controller updates scan log after payment
 };

@@ -24,7 +24,22 @@ export interface QrValidationResult {
   upiId?: string;
   hasValidSignature?: boolean;
   isReportedPreviously?: boolean;
+  pastPaymentSuggestions?: number[]; // Added
+  isFavorite?: boolean; // Added
+  customTagName?: string; // Added
 }
+
+// Interface for recent scans returned by API
+export interface RecentScan {
+    qrDataHash: string;
+    qrData: string; // Full QR data for re-scan simulation
+    payeeName?: string;
+    payeeUpi: string;
+    lastAmountPaid?: number;
+    lastPaidDate: string; // ISO Date string
+    paymentTransactionId?: string;
+}
+
 
 /**
  * Validates a scanned QR code via the backend API.
@@ -81,5 +96,23 @@ export async function reportQrCodeApi(
     } catch (error: any) {
         console.error("Report QR API Error:", error);
         throw new Error(error.message || "Could not submit QR report.");
+    }
+}
+
+/**
+ * Fetches recently scanned and paid QRs for the current user from the backend.
+ * @returns A promise resolving to an array of RecentScan objects.
+ */
+export async function getRecentScansApi(): Promise<RecentScan[]> {
+    console.log("[Client Scan Service] Fetching recent scans via API...");
+    try {
+        const recentScans = await apiClient<RecentScan[]>('/scan/recent');
+        return recentScans.map(scan => ({
+            ...scan,
+            lastPaidDate: new Date(scan.lastPaidDate).toISOString() // Ensure it's ISO string if needed
+        }));
+    } catch (error) {
+        console.error("Error fetching recent scans via API:", error);
+        return [];
     }
 }
