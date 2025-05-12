@@ -9,9 +9,7 @@ const SplashScreen = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      // Check if user is logged in, then redirect accordingly
-      // For now, redirecting to login page
-      router.replace('/login');
+      router.replace('/login'); // Redirect to the new phone login page
     }, 3000); // Display splash for 3 seconds
 
     return () => clearTimeout(timer);

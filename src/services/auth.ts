@@ -7,7 +7,10 @@ import {
     createUserWithEmailAndPassword,
     sendPasswordResetEmail,
     onAuthStateChanged, // To observe auth state
-    User // Import User type
+    User, // Import User type
+    signInWithPhoneNumber, // For phone auth
+    RecaptchaVerifier, // For phone auth
+    ConfirmationResult // For phone auth
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase'; // Import initialized Firebase auth instance
 import { apiClient } from '@/lib/apiClient'; // Import API client
@@ -33,25 +36,67 @@ export function subscribeToAuthState(callback: (user: User | null) => void): () 
 // --- Core Auth Actions ---
 
 /**
- * Logs the user in using Firebase Email/Password Authentication.
- * Verifies token with backend after successful Firebase login.
- *
- * @param email User's email.
- * @param password User's password.
- * @returns A promise that resolves to the logged-in User object.
- * @throws Error if login fails.
+ * Sends an OTP to the provided phone number using Firebase Phone Authentication.
+ * @param phoneNumber The user's phone number (including country code).
+ * @param appVerifier An instance of RecaptchaVerifier.
+ * @returns A promise resolving to a ConfirmationResult object.
+ * @throws Error if OTP sending fails.
  */
+export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: RecaptchaVerifier): Promise<ConfirmationResult> {
+    console.log(`[Auth Service] Sending OTP to phone number: ${phoneNumber}`);
+    try {
+        const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+        console.log("[Auth Service] OTP sent successfully. ConfirmationResult received.");
+        return confirmationResult;
+    } catch (error: any) {
+        console.error("[Auth Service] Firebase send OTP error:", error.code, error.message);
+        let errorMessage = "Failed to send OTP. Please try again.";
+        if (error.code === 'auth/invalid-phone-number') {
+            errorMessage = "Invalid phone number format. Please include country code (e.g., +91).";
+        } else if (error.code === 'auth/too-many-requests') {
+            errorMessage = "Too many OTP requests. Please try again later.";
+        }
+        // Add more specific Firebase error codes as needed
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * Verifies the OTP and signs in the user.
+ * @param confirmationResult The ConfirmationResult object received after sending OTP.
+ * @param otpCode The 6-digit OTP code entered by the user.
+ * @returns A promise that resolves to the logged-in User object.
+ * @throws Error if OTP verification or sign-in fails.
+ */
+export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult, otpCode: string): Promise<User> {
+    console.log(`[Auth Service] Verifying OTP: ${otpCode}`);
+    try {
+        const userCredential = await confirmationResult.confirm(otpCode);
+        console.log("[Auth Service] OTP verified, Firebase login successful for:", userCredential.user.uid);
+        return userCredential.user;
+    } catch (error: any) {
+        console.error("[Auth Service] Firebase OTP verification error:", error.code, error.message);
+        let errorMessage = "Login failed. Please check the OTP and try again.";
+        if (error.code === 'auth/invalid-verification-code') {
+            errorMessage = "Invalid OTP. Please try again.";
+        } else if (error.code === 'auth/code-expired') {
+            errorMessage = "The OTP has expired. Please request a new one.";
+        }
+        // Add more specific Firebase error codes
+        throw new Error(errorMessage);
+    }
+}
+
+
+/* // Original email/password login - kept for reference or potential future use
 export async function login(email: string, password: string): Promise<User> {
     console.log(`[Auth Service] Attempting login for email: ${email}`);
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         console.log("[Auth Service] Firebase login successful for:", userCredential.user.uid);
-        // Optionally verify token with backend immediately after login if needed
-        // await apiClient('/auth/verify'); // Backend infers user from token
         return userCredential.user;
     } catch (error: any) {
         console.error("[Auth Service] Firebase login error:", error.code, error.message);
-        // Provide user-friendly error messages
         let errorMessage = "Login failed. Please check your credentials.";
         if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
             errorMessage = "Invalid email or password.";
@@ -63,6 +108,7 @@ export async function login(email: string, password: string): Promise<User> {
         throw new Error(errorMessage);
     }
 }
+*/
 
 /**
  * Signs up a new user with Firebase Email/Password Authentication.
@@ -80,13 +126,6 @@ export async function signup(name: string, email: string, password: string): Pro
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         console.log("[Auth Service] Firebase signup successful for:", user.uid);
-
-        // Backend will typically create the profile on the first authenticated API call
-        // (like fetching profile) or you could explicitly call a backend signup endpoint.
-        // For simplicity, we assume the backend handles profile creation via token verification.
-        // Example explicit call (if backend has POST /api/auth/signup):
-        // await apiClient('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email }) });
-
         return user;
     } catch (error: any) {
         console.error("[Auth Service] Firebase signup error:", error.code, error.message);
@@ -138,11 +177,8 @@ export async function logout(): Promise<void> {
     try {
         await signOut(auth);
         console.log("[Auth Service] Firebase logout successful.");
-        // Additional client-side cleanup (e.g., clearing user state in context/zustand)
-        // should be handled by the component initiating the logout.
     } catch (error) {
         console.error("[Auth Service] Firebase logout error:", error);
-        // Re-throw the error so the calling component can handle it (e.g., show toast)
         throw new Error("Logout failed. Please try again.");
     }
 }
@@ -156,13 +192,9 @@ export async function logout(): Promise<void> {
 export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
     console.log("[Auth Service] Verifying token and fetching profile via API...");
     try {
-        // The '/auth/verify' endpoint expects a valid Firebase ID token in the Authorization header.
-        // apiClient automatically includes the token.
-        // The backend controller verifies the token and returns the user's profile data.
         const result = await apiClient<{ user: UserProfile }>('/auth/verify');
         if (result && result.user) {
             console.log("[Auth Service] Token verified, profile received:", result.user.uid);
-             // Convert dates if needed
             return {
                 ...result.user,
                 createdAt: result.user.createdAt ? new Date(result.user.createdAt) : undefined,
@@ -173,7 +205,6 @@ export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
         }
     } catch (error) {
         console.error("[Auth Service] Error verifying token or fetching profile:", error);
-        // Handle specific errors like token expired (often handled by apiClient's 401 error)
-        return null; // Return null on verification/fetch error
+        return null;
     }
 }

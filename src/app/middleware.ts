@@ -1,47 +1,45 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { auth } from '@/lib/firebase/firebaseAdmin'; // Import server-side admin auth
+import { authAdmin } from '@/lib/firebase/firebaseAdmin'; // Updated import path
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const sessionCookie = request.cookies.get('__session')?.value; // Assuming you set a session cookie
+  const sessionCookie = request.cookies.get('__session')?.value;
 
   // Paths that don't require authentication
-  const publicPaths = ['/login', '/signup', '/splash', '/forgot-password', '/about'];
+  const publicPaths = ['/splash', '/login', '/signup', '/forgot-password', '/about', '/documentation']; // Added /splash and /documentation
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
 
-  // If trying to access a public path and is logged in, redirect to home (optional, based on UX preference)
+  // If trying to access a public path and is logged in (and it's splash, login, or signup), redirect to home.
   if (isPublicPath && sessionCookie) {
     try {
-      await auth.verifySessionCookie(sessionCookie, true); // Check if cookie is valid
-      // User is logged in, trying to access login/signup. Redirect to home.
-      if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/splash')) {
+      await authAdmin.verifySessionCookie(sessionCookie, true); // Check if cookie is valid
+      if (pathname.startsWith('/splash') || pathname.startsWith('/login') || pathname.startsWith('/signup')) {
         return NextResponse.redirect(new URL('/', request.url));
       }
     } catch (error) {
-      // Invalid cookie, let them proceed to login/signup
-      console.log("Middleware: Invalid session cookie for public path access.");
+      // Invalid cookie, let them proceed to login/signup/splash
+      console.log("Middleware: Invalid session cookie for public path access. Allowing access.");
     }
   }
 
-  // If trying to access a protected path and not logged in, redirect to login
+  // If trying to access a protected path and not logged in, redirect to splash screen
   if (!isPublicPath && !sessionCookie) {
-    console.log("Middleware: No session cookie, redirecting to login for path:", pathname);
-    return NextResponse.redirect(new URL('/login', request.url));
+    console.log("Middleware: No session cookie, redirecting to splash for path:", pathname);
+    return NextResponse.redirect(new URL('/splash', request.url)); // Redirect to splash
   }
 
   // If has session cookie, verify it for protected paths
   if (!isPublicPath && sessionCookie) {
     try {
-      await auth.verifySessionCookie(sessionCookie, true);
+      await authAdmin.verifySessionCookie(sessionCookie, true);
       // User is authenticated, allow access
       return NextResponse.next();
     } catch (error) {
-      // Invalid or expired cookie, redirect to login
-      console.log("Middleware: Invalid/expired session cookie, redirecting to login for path:", pathname);
-      const response = NextResponse.redirect(new URL('/login', request.url));
-      // Clear the invalid cookie
-      response.cookies.delete('__session');
+      // Invalid or expired cookie, redirect to splash (which then redirects to login)
+      console.log("Middleware: Invalid/expired session cookie, redirecting to splash for path:", pathname);
+      const response = NextResponse.redirect(new URL('/splash', request.url));
+      response.cookies.delete('__session'); // Clear the invalid cookie
       return response;
     }
   }
