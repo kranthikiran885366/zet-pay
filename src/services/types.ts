@@ -22,6 +22,8 @@ export interface UserProfile {
     isSeniorCitizenMode?: boolean;
     familyGroupIds?: string[];
     upiId?: string;
+    // For Zet Chat
+    isZetChatUser?: boolean; // Indicates if user can participate in Zet Chat
 }
 
 
@@ -33,7 +35,7 @@ export interface Transaction {
   description: string;
   amount: number;
   date: Date | string | Timestamp;
-  status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled' | 'Refunded' | 'Refunded_To_Wallet';
+  status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled' | 'Refunded' | 'Refunded_To_Wallet' | 'FallbackSuccess';
   avatarSeed?: string;
   upiId?: string;
   billerId?: string;
@@ -50,9 +52,9 @@ export interface Transaction {
   withdrawalRequestId?: string;
   createdAt?: Date | string | Timestamp;
   updatedAt?: Date | string | Timestamp;
-  pspTransactionId?: string; // Added for refund service
-  refundTransactionId?: string; // Added for refund service
-  failureReason?: string; // Added for refund service
+  pspTransactionId?: string; 
+  refundTransactionId?: string; 
+  failureReason?: string; 
 }
 
 
@@ -95,13 +97,14 @@ export interface Payee {
   accountNumber?: string;
   ifsc?: string;
   isFavorite?: boolean;
-  isVerified?: boolean; // Added missing field
+  isVerified?: boolean; 
+  isZetChatUser?: boolean; // Added for Zet Chat
   createdAt?: Timestamp | Date | string;
   updatedAt?: Timestamp | Date | string;
 }
 
-export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
-    isVerified?: boolean; // Added missing field
+export interface PayeeClient extends Omit&lt;Payee, 'createdAt' | 'updatedAt'&gt; {
+    isVerified?: boolean; 
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -169,8 +172,8 @@ export interface CardDetails {
 
 export interface CardPaymentResult {
     success: boolean;
-    transactionId?: string;
-    gatewayTransactionId?: string;
+    transactionId?: string; 
+    gatewayTransactionId?: string; 
     message: string;
     usedWalletFallback?: boolean;
     walletTransactionId?: string;
@@ -180,10 +183,10 @@ export interface CardPaymentResult {
 
 // --- Autopay Mandate Types ---
 export interface Mandate {
-    id?: string;
+    id?: string; 
     userId: string;
     merchantName: string;
-    upiId: string;
+    upiId: string; 
     maxAmount: number;
     frequency: 'Monthly' | 'Quarterly' | 'Half Yearly' | 'Yearly' | 'As Presented';
     startDate: Date | string | Timestamp;
@@ -191,8 +194,8 @@ export interface Mandate {
     status: 'Active' | 'Paused' | 'Cancelled' | 'Failed' | 'Pending Approval';
     createdAt?: Date | string | Timestamp;
     updatedAt?: Date | string | Timestamp;
-    mandateUrn?: string;
-    pspReferenceId?: string;
+    mandateUrn?: string; 
+    pspReferenceId?: string; 
 }
 
 // --- BNPL Types ---
@@ -204,7 +207,7 @@ export interface BnplDetails {
     partnerBank?: string;
     activationDate?: Timestamp | Date | string;
     lastUpdated?: Timestamp | Date | string;
-    usedLimit?: number; // Added from bnpl.js service
+    usedLimit?: number; 
 }
 
 export interface BnplStatement {
@@ -219,17 +222,17 @@ export interface BnplStatement {
     isPaid: boolean;
     paidDate?: Timestamp | Date | string;
     transactions?: BnplTransaction[];
-    lastPaymentAmount?: number; // Added from bnpl.js
-    lastPaymentDate?: Timestamp | Date | string; // Added from bnpl.js
-    lastPaymentMethod?: string; // Added from bnpl.js
-    updatedAt?: Timestamp | Date | string; // Added from bnpl.js
+    lastPaymentAmount?: number; 
+    lastPaymentDate?: Timestamp | Date | string; 
+    lastPaymentMethod?: string; 
+    updatedAt?: Timestamp | Date | string; 
 }
 
 export interface BnplTransaction {
     id?: string;
     userId: string;
     statementId: string;
-    originalTransactionId: string; // Renamed from transactionId for clarity
+    originalTransactionId: string; 
     date: Timestamp | Date | string;
     merchantName: string;
     amount: number;
@@ -242,8 +245,8 @@ export interface ZetAgent {
     address: string;
     distanceKm: number;
     operatingHours: string;
-    lat?: number; // Added for map display
-    lon?: number; // Added for map display
+    lat?: number; 
+    lon?: number; 
 }
 export interface WithdrawalDetails {
     id?: string;
@@ -271,7 +274,7 @@ export interface RecoveryTask {
     amount: number;
     originalRecipientUpiId: string;
     recoveryStatus: 'Scheduled' | 'Processing' | 'Completed' | 'Failed';
-    scheduledTime: Timestamp | Date | string;
+    scheduledTime: Timestamp | Date | string; 
     createdAt: Timestamp | Date | string;
     updatedAt: Timestamp | Date | string;
     failureReason?: string;
@@ -283,27 +286,26 @@ export interface RecoveryTask {
 // --- Booking Types ---
 export interface BookingSearchResult {
     id: string;
-    name: string;
-    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage' | 'car' | 'bike'; // Added car and bike
+    name: string; 
+    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage' | 'car' | 'bike'; 
     imageUrl?: string;
-    priceRange?: string;
+    priceRange?: string; 
     rating?: number;
-    location?: string;
-    capacity?: number;
-    description?: string;
-    amenities?: string[];
-    price?: number; // Added for venues base price
-    // Car/Bike specific summary fields (can be added to the base or kept in specific types)
+    location?: string; 
+    capacity?: number; 
+    description?: string; 
+    amenities?: string[]; 
+    price?: number; 
     transmission?: string;
     fuelType?: string;
     seats?: number;
-    pricePerDay?: number; // For cars
-    pricePerHour?: number; // For bikes
+    pricePerDay?: number; 
+    pricePerHour?: number; 
     kmsLimit?: string;
-    isAvailable?: boolean; // For cars
-    availability?: 'Available' | 'In Use' | 'Low Battery'; // For bikes
-    batteryPercent?: number; // For bikes
-    requiresHelmet?: boolean; // For bikes
+    isAvailable?: boolean; 
+    availability?: 'Available' | 'In Use' | 'Low Battery'; 
+    batteryPercent?: number; 
+    requiresHelmet?: boolean; 
 }
 export interface FlightListing extends BookingSearchResult {
     airline: string;
@@ -314,7 +316,6 @@ export interface FlightListing extends BookingSearchResult {
     arrivalTime: string;
     duration: string;
     stops: number;
-    // price is already in BookingSearchResult
     refundable?: boolean;
     baggage: { cabin: string; checkin: string };
 }
@@ -336,10 +337,8 @@ export interface BookingConfirmation {
         pnr?: string;
         seatNumbers?: string;
         providerMessage?: string;
-        flightDetails?: Pick<FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime' | 'departureAirport' | 'arrivalAirport'>;
-        providerConfirmationId?: string; // Added from bookingProviderService
-        // busDetails?: ...
-        // trainDetails?: ...
+        flightDetails?: Pick&lt;FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime' | 'departureAirport' | 'arrivalAirport'&gt;;
+        providerConfirmationId?: string; 
     } | null;
 }
 
@@ -347,25 +346,26 @@ export interface MarriageVenue extends BookingSearchResult {
     city: string;
     requiresApproval?: boolean;
     bookingFee?: number;
-    contact?: string; // Added from bookingProviderService
+    contact?: string; 
 }
 
-export interface MarriageBookingDetails {
+export interface MarriageBookingDetails { 
     venueId: string;
     venueName: string;
     city: string;
-    date: string;
+    date: string; 
     guestCount?: string;
     userName: string;
     userContact: string;
     userEmail: string;
     specialRequests?: string;
-    totalAmount?: number;
-    userId?: string;
-    paymentTransactionId?: string;
-    status?: 'Pending Approval' | 'Confirmed' | 'Cancelled' | 'Completed';
-    createdAt?: Timestamp | Date | string; // Consistent with other types
+    totalAmount?: number; 
+    userId?: string; 
+    paymentTransactionId?: string; 
+    status?: 'Pending Approval' | 'Confirmed' | 'Cancelled' | 'Completed'; 
+    createdAt?: Timestamp | Date | string; 
 }
+
 
 // --- UPI Lite ---
 export interface UpiLiteDetails {
@@ -394,10 +394,10 @@ export interface PocketMoneyConfig {
 }
 export interface PocketMoneyTransaction {
     id: string;
-    userId: string; // Parent's UID
+    userId: string; 
     childId: string;
     description: string;
-    amount: number;
+    amount: number; 
     date: Date | string | Timestamp;
 }
 
@@ -417,7 +417,7 @@ export interface MicroLoanStatus {
 export interface MicroLoanApplicationResult {
     success: boolean;
     loanId?: string;
-    dueDate?: Date; // From backend
+    dueDate?: Date; 
     message?: string;
 }
 export interface MicroLoanRepaymentResult {
@@ -429,10 +429,10 @@ export interface MicroLoanRepaymentResult {
 export interface GiftSuggestionInput {
   occasion: string;
   relationship: string;
-  interests: string[]; // Array of strings
-  budget?: string; // Optional budget as string, can be parsed to number
-  ageRange?: string; // Optional age range as string
-  additionalInfo?: string; // Optional free text
+  interests: string[]; 
+  budget?: string; 
+  ageRange?: string; 
+  additionalInfo?: string; 
 }
 
 export interface GiftSuggestion {
@@ -440,13 +440,39 @@ export interface GiftSuggestion {
   name: string;
   category: string;
   priceRange: string;
-  description: string; // Added description
-  relevance?: number; // Optional relevance score
+  description: string; 
+  relevance?: number; 
   imageUrl: string;
-  dataAiHint?: string; // For image search/generation
-  purchaseLink?: string; // Optional link to buy
+  dataAiHint?: string; 
+  purchaseLink?: string; 
 }
 
 export interface GiftSuggestionOutput {
   suggestions: GiftSuggestion[];
+}
+
+// --- Zet Chat Types ---
+export interface ChatMessage {
+    id: string; // Firestore document ID
+    chatId: string; // ID of the chat session
+    senderId: string; // UserID of the sender
+    senderName?: string; // Display name of sender
+    receiverId: string; // UserID of the receiver
+    text?: string; // Message text content
+    imageUrl?: string; // URL if message is an image
+    invoiceId?: string; // ID if message is an invoice/receipt
+    paymentRequestId?: string; // ID if message is a payment request
+    timestamp: Timestamp | Date | string; // Timestamp of the message
+    isRead?: boolean;
+    type: 'text' | 'image' | 'voice' | 'payment_request' | 'payment_receipt' | 'system'; // Added system type
+}
+
+export interface ChatSession {
+    id: string; // Firestore document ID (e.g., combination of user IDs)
+    participants: string[]; // Array of UserIDs
+    participantNames: { [userId: string]: string }; // Map UserID to display name
+    lastMessage?: ChatMessage; // Snippet of the last message
+    updatedAt: Timestamp | Date | string;
+    unreadCounts?: { [userId: string]: number }; // Unread count for each participant
+    isZetChatVerified?: boolean; // If chat involves a verified merchant
 }
