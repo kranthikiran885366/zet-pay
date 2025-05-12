@@ -37,64 +37,65 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Use alias
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
-    Plane,
-    ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home as HomeIcon, // Used for Rent Payment and Property Tax
-    Car,
-    Bike as Motorbike, // Use alias
-    CalendarCheck,
-    Video,
-    Sparkles,
+  Plane,
+  ShoppingBag,
+  Gift as GiftIcon,
+  Home as HomeIcon,
+  Car,
+  Bike as Motorbike,
+  CalendarCheck,
+  Video,
+  Sparkles,
   ShoppingBasket,
   HeartHandshake,
   Music,
-    Map,
-    Hotel,
-    Users,
-    QrCode,
-    Clock,
-    Briefcase, // For Mutual Funds
-    Database, // For Deposits
-    Gauge, // For Credit Score
-    Coins, // For Gold
-    Building2, // For Zet Bank & Municipal Services
-    Zap, // For EV Charging & Game Zones
-    Siren, // For Emergency Assistance
-    Store, // For Rest Stop (placeholder)
-    HeartPulse, // For Healthcare
-    Wrench, // Electrician/Plumber
-    SprayCan, // Home Cleaning/Pest Control
-    WashingMachine, // Laundry
-    Scissors, // Tailoring
-    Package, // Courier
-    BriefcaseBusiness, // Coworking
-    Dog, // Pet Grooming/Vet
-    ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, // Added MoreHorizontal back
-    FolderLock,
-    GraduationCap,
-    PiggyBank,
-    BellRing,
-    ListChecks,
-    WandSparkles,
-    TrendingUp,
-    Target,
-    BedSingle,
-    Tv2,
-    ThermometerSnowflake,
-    IndianRupee,
-    Search,
-    Flame,
-    HandCoins, // Added HandCoins
-} from "lucide-react"; // Added specific icons
+  Map,
+  Hotel,
+  Users,
+  QrCode,
+  Clock,
+  Briefcase, // For Mutual Funds
+  Database, // For Deposits
+  Gauge, // For Credit Score
+  Coins, // For Gold
+  Building2, // For Zet Bank & Municipal Services
+  Zap, // For EV Charging & Game Zones
+  Siren, // For Emergency Assistance
+  Store, // For Rest Stop (placeholder)
+  HeartPulse, // For Healthcare
+  Wrench, // Electrician/Plumber
+  SprayCan, // Home Cleaning/Pest Control
+  WashingMachine, // Laundry
+  Scissors, // Tailoring
+  Package, // Courier
+  BriefcaseBusiness, // Coworking
+  Dog, // Pet Grooming/Vet
+  ScissorsLineDashed, // Barber/Salon
+  MoreHorizontal,
+  FolderLock,
+  GraduationCap,
+  PiggyBank,
+  BellRing,
+  ListChecks,
+  WandSparkles,
+  TrendingUp,
+  Target,
+  BedSingle,
+  Tv2 as TvIcon, // Alias for Cable TV
+  ThermometerSnowflake,
+  IndianRupee,
+  Search,
+  Flame,
+  HandCoins,
+  Wallet // Added Wallet icon
+} from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react'; // Import useState
-import { Input } from '@/components/ui/input'; // Import Input
+import { useState } from 'react';
+import { Input } from '@/components/ui/input';
 
 interface Service {
     name: string;
@@ -114,7 +115,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: TvIcon, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -142,7 +143,7 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
@@ -174,10 +175,10 @@ const entertainmentGamingServices: Service[] = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming", tags: ["cinema", "tickets", "bookmyshow"] },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] }, // Using Drama icon
-     { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
+     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
+     { name: "OTT Subscriptions", icon: TvIcon, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
-     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] }, // Using Play Store
+     { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
      { name: "AR/VR Events", icon: Sparkles, href: "/entertainment/arvr", category: "Entertainment & Gaming", tags: ["virtual", "augmented", "reality", "metaverse"] },
      { name: "Group Booking", icon: Users, href: "/entertainment/group", category: "Entertainment & Gaming", tags: ["movie", "split", "invite"] },
@@ -255,6 +256,10 @@ const paymentsServicesData: Service[] = [
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
 
+const eventsCelebrationsServices: Service[] = [
+    { name: "Marriage Booking", icon: HeartHandshake, href: "/marriage-booking", category: "Events & Celebrations", tags: ["hall", "venue", "wedding", "reception"] },
+];
+
 const aiAndToolsServices: Service[] = [
      { name: "Ask PayFriend", icon: WandSparkles, href: "/conversation", category: "AI & Tools", tags: ["chat", "voice", "command", "assistant"]},
      { name: "Spending Analysis", icon: TrendingUp, href: "/analysis", category: "AI & Tools", tags: ["budget", "insight", "track", "expense"]},
@@ -262,10 +267,6 @@ const aiAndToolsServices: Service[] = [
      { name: "AI Plan Recommender", icon: Star, href: "/recharge/mobile", category: "AI & Tools", tags: ["recharge", "mobile", "suggestion"]},
      { name: "AI Deal Finder", icon: BadgePercent, href: "/offers", category: "AI & Tools", tags: ["coupon", "discount", "auto apply"]},
      { name: "Smart Schedule", icon: CalendarClock, href: "/smart-schedule", category: "AI & Tools", tags: ["travel", "plan", "itinerary", "food"]},
-];
-
-const eventsCelebrationsServices: Service[] = [
-    { name: "Marriage Booking", icon: HeartHandshake, href: "/marriage-booking", category: "Events & Celebrations", tags: ["hall", "venue", "wedding", "reception"] },
 ];
 
 const allServices: Service[] = [
