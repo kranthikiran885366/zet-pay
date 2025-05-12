@@ -83,19 +83,20 @@ interface QrValidationResult {
 
 const RECENT_SCANS_KEY = 'payfriend_recent_scans';
 const RECENT_SCANS_MAX = 5;
-const RECENT_SCAN_COOLDOWN_MS = 15000;
+const RECENT_SCAN_COOLDOWN_MS = 15000; // 15 seconds cooldown for same QR
 
 interface RecentScanEntry {
     qrDataHash: string;
     timestamp: number;
 }
 
+// Simple hash function (non-cryptographic, for client-side uniqueness check)
 const simpleHash = (str: string): string => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash |= 0;
+        hash |= 0; // Convert to 32bit integer
     }
     return hash.toString();
 };
@@ -122,9 +123,11 @@ export default function ScanPage() {
   const [userUpiId, setUserUpiId] = useState<string>("defaultuser@payfriend");
   const [userQRCodeUrl, setUserQRCodeUrl] = useState<string>('');
   const [isQrLoading, setIsQrLoading] = useState(true);
-  const [isScanningActive, setIsScanningActive] = useState(false);
+  const [isScanningActive, setIsScanningActive] = useState(false); // Manage scanner activity
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportReason, setReportReason] = useState("");
+
+  // Ambient light detection attempt (conceptual)
   const [ambientLight, setAmbientLight] = useState<'bright' | 'dim' | 'unknown'>('unknown');
 
   useEffect(() => {
@@ -132,17 +135,18 @@ export default function ScanPage() {
       setIsQrLoading(true);
       const currentUser = auth.currentUser;
       let nameToUse = "Your Name";
-      let upiIdToUse = "defaultuser@payfriend";
+      let upiIdToUse = "defaultuser@payfriend"; // Fallback UPI ID
 
       if (currentUser) {
         try {
-          const profile = await getCurrentUserProfile();
+          const profile = await getCurrentUserProfile(); // Fetch profile from your service
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
-          // Assuming profile might have a primary UPI ID
-          upiIdToUse = (profile as any)?.primaryUpiId || `${currentUser.uid.substring(0, 5)}@payfriend`;
+          // Assuming profile might have a primary UPI ID, or construct one
+          upiIdToUse = (profile as any)?.primaryUpiId || `${currentUser.uid.substring(0,5)}@payfriend`;
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
-          if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0, 5)}@payfriend`;
+          // Fallback if profile fetch fails but user is logged in
+          if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`;
         }
       }
       setUserName(nameToUse);
@@ -154,31 +158,35 @@ export default function ScanPage() {
     if (activeTab === 'myQR') {
       fetchUserDataForQR();
     } else {
-      setIsQrLoading(false);
+      setIsQrLoading(false); // Ensure loading is false if not on My QR tab
     }
   }, [activeTab]);
 
-  const stopCameraStream = useCallback(async (turnOffTorch = true) => {
-    setIsScanningActive(false);
+
+  const stopCameraStream = useCallback(async (turnOffTorchIfOn = true) => {
+    setIsScanningActive(false); // Mark scanning as inactive
     if (streamRef.current) {
       const tracks = streamRef.current.getTracks();
       for (const track of tracks) {
-        if (turnOffTorch && torchOn && track.kind === 'video' && 'applyConstraints' in track && (track as any).getCapabilities?.().torch) {
+        if (turnOffTorchIfOn && torchOn && track.kind === 'video' && 'applyConstraints' in track && (track as any).getCapabilities?.().torch) {
             try { await (track as any).applyConstraints({ advanced: [{ torch: false }] }); } catch (e) { console.warn("Error turning off torch:", e); }
         }
         track.stop();
       }
       streamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
-      if (turnOffTorch) setTorchOn(false);
+      if (turnOffTorchIfOn) setTorchOn(false); // Reset torch state only if explicitly told
       console.log("[Client Scan] Camera stream stopped.");
     }
-  }, [torchOn]);
+  }, [torchOn]); // Include torchOn
 
+  // Function to handle scanned data from camera or upload
   const handleScannedData = useCallback(async (data: string) => {
-    stopCameraStream(false); // Keep torch state if it was on
+    // Stop camera if it was active from live scanning, but keep torch state if it was on
+    await stopCameraStream(false);
     setIsProcessingScan(true);
     setRawScannedText(data);
+    toast({ title: "QR Code Scanned", description: "Validating details..." });
 
     const parsedData = parseUpiUrl(data);
     setScannedUpiData(parsedData);
@@ -190,22 +198,30 @@ export default function ScanPage() {
         return;
     }
 
+    // Duplicate scan check
     const qrHash = simpleHash(data);
     const recentScans: RecentScanEntry[] = JSON.parse(localStorage.getItem(RECENT_SCANS_KEY) || '[]');
     const isRecentlyScanned = recentScans.some(scan => scan.qrDataHash === qrHash && (Date.now() - scan.timestamp) < RECENT_SCAN_COOLDOWN_MS);
 
+    if (isRecentlyScanned) {
+        toast({ variant: "default", title: "Duplicate Scan", description: "This QR code was scanned recently. Proceed if intended.", duration: 5000 });
+    }
     const updatedRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...recentScans].slice(0, RECENT_SCANS_MAX);
     localStorage.setItem(RECENT_SCANS_KEY, JSON.stringify(updatedRecentScans));
 
+
     try {
+      // Call backend for validation
       const validation: QrValidationResult = await apiClient('/scan/validate', {
         method: 'POST',
-        body: JSON.stringify({ qrData: data, userId: auth.currentUser?.uid, signature: parsedData.signature }), // Send signature
+        body: JSON.stringify({ qrData: data, userId: auth.currentUser?.uid, signature: parsedData.signature }), // Include signature
       });
-      setValidationResult({...validation, isDuplicateRecent: isRecentlyScanned, upiId: parsedData.payeeAddress });
+      setValidationResult({...validation, isDuplicateRecent: isRecentlyScanned, upiId: parsedData.payeeAddress }); // Store full result
+      // Update payee name if backend provides a verified one
       if (validation.merchantNameFromDb && parsedData.payeeName !== validation.merchantNameFromDb) {
           setScannedUpiData(prev => prev ? ({...prev, payeeName: validation.merchantNameFromDb}) : null);
       }
+      // Show specific warnings based on backend validation
       if (validation.isBlacklisted) {
         toast({ variant: "destructive", title: "Warning: Suspicious QR", description: validation.message || "This QR code is flagged as suspicious.", duration: 7000 });
       } else if (validation.isReportedPreviously) {
@@ -215,10 +231,13 @@ export default function ScanPage() {
       } else if (!validation.isVerifiedMerchant && !isRecentlyScanned){
         toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant. Proceed with caution.", duration: 5000 });
       }
+       else {
+        toast({ title: "QR Validated", description: "Details fetched successfully." });
+      }
     } catch (error: any) {
       console.error("QR Validation Error:", error);
       toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
-      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isRecentlyScanned, hasValidSignature: false, isReportedPreviously: false});
+      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isRecentlyScanned, hasValidSignature: false, isReportedPreviously: false}); // Default on error
     } finally {
       setIsProcessingScan(false);
     }
@@ -226,10 +245,12 @@ export default function ScanPage() {
 
 
   const getCameraStream = useCallback(async () => {
-    setHasCameraPermission(null);
-    setTorchSupported(false);
-    // setTorchOn(false); // Don't turn off torch if already on and trying to restart
-    if (streamRef.current) await stopCameraStream(false); // Don't turn off torch when restarting stream
+    setHasCameraPermission(null); // Reset permission state for each attempt
+    setTorchSupported(false); // Reset torch support
+    // setTorchOn(false); // Keep torch state as is, don't turn off if user had it on
+    
+    // Ensure any existing stream is stopped WITHOUT turning off torch if it's on
+    if (streamRef.current) await stopCameraStream(false);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -244,63 +265,63 @@ export default function ScanPage() {
       if (videoTrack && 'getCapabilities' in videoTrack) {
         const capabilities = (videoTrack as any).getCapabilities();
         setTorchSupported(!!capabilities?.torch);
-        // Attempt to read ambient light if supported
-        if ('torch' in capabilities && 'PhotoCapabilities' in window && 'fillLightMode' in (window as any).PhotoCapabilities.prototype) {
-          // This is a very simplified check, real ambient light detection is complex
-          // For now, let's assume it's initially 'unknown' and then might get set to 'dim'
-          // No standard browser API provides direct lux values easily.
-          // We can simulate auto-torch activation based on a timeout or user action later if needed.
-          // For now, manual torch is primary.
-        }
+        // Ambient light detection simulation based on time of day (conceptual)
+        const hour = new Date().getHours();
+        if (hour < 7 || hour > 19) setAmbientLight('dim'); else setAmbientLight('bright');
       }
-      setIsScanningActive(true);
+      setIsScanningActive(true); // Start scanning
       
-      // Simulate QR code detection (replace with actual library like html5-qrcode or Zxing)
+      // QR Code Detection (Simulation - replace with actual library)
       const scanInterval = setInterval(() => {
-        if (isScanningActive && streamRef.current) { 
-            if (Math.random() < 0.05) { 
+        // Check isScanningActive before attempting to "detect"
+        if (isScanningActive && streamRef.current) { // Added streamRef.current check
+            // Simulate detection randomly
+            if (Math.random() < 0.05) { // Adjust probability for testing
                  const mockQrData = "upi://pay?pa=simulatedlive@okaxis&pn=Live%20Scan%20Demo&am=75&tn=LiveScanTest&sign=MOCK_SIGNATURE_LIVE";
                  console.log("[Client Scan] Simulated Live QR detected:", mockQrData);
-                 handleScannedData(mockQrData);
-                 clearInterval(scanInterval); 
+                 handleScannedData(mockQrData); // Process the data
+                 clearInterval(scanInterval); // Stop interval once detected
             }
         } else {
-            clearInterval(scanInterval); 
+            clearInterval(scanInterval); // Stop if scanning is no longer active or stream is gone
         }
-      }, 2000); 
+      }, 2000); // Check every 2 seconds
 
-      return () => clearInterval(scanInterval);
+      return () => clearInterval(scanInterval); // Cleanup interval
 
     } catch (error: any) {
       console.error('[Client Scan] Error accessing camera:', error.name, error.message);
       setHasCameraPermission(false);
-      streamRef.current = null;
+      streamRef.current = null; // Ensure streamRef is null on error
       toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please check permissions.'});
     }
-  }, [toast, stopCameraStream, isScanningActive, handleScannedData]);
+  }, [toast, stopCameraStream, isScanningActive, handleScannedData]); // Added isScanningActive and handleScannedData
 
   // Auto torch logic (conceptual)
   useEffect(() => {
     if (activeTab === 'scan' && isScanningActive && ambientLight === 'dim' && torchSupported && !torchOn) {
       // console.log("Low light detected, attempting to turn on torch.");
-      // toggleTorch(); // This could be called here, but might be aggressive.
-      // For a better UX, maybe show a "Low light, tap to turn on torch?" prompt.
+      // toggleTorch(); // Auto-on could be aggressive. Consider a prompt or initial manual toggle.
+      // For now, this logs intent. User can manually toggle.
+      toast({ description: "Low light detected. Use the torch icon if needed.", duration: 3000 });
     }
-  }, [ambientLight, activeTab, isScanningActive, torchSupported, torchOn]);
+  }, [ambientLight, activeTab, isScanningActive, torchSupported, torchOn, toast]);
 
 
+  // Manage camera stream based on active tab and scan results
   useEffect(() => {
     let cleanupScanInterval: (() => void) | undefined;
-    if (activeTab === 'scan' && !scannedUpiData) {
+    if (activeTab === 'scan' && !scannedUpiData) { // Only start if no data is being shown
         getCameraStream().then(cleanup => { cleanupScanInterval = cleanup; });
     } else {
-        stopCameraStream();
+        stopCameraStream(); // Stop camera if not on scan tab or if data is shown
     }
+    // Cleanup function to stop camera when component unmounts or dependencies change
     return () => {
         stopCameraStream();
         if (cleanupScanInterval) cleanupScanInterval();
     };
-  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData]);
+  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData]); // Reactivate on these changes
 
 
   const toggleTorch = useCallback(async () => {
@@ -313,10 +334,11 @@ export default function ScanPage() {
     try {
       await (videoTrack as any).applyConstraints({ advanced: [{ torch: newTorchState }] });
       setTorchOn(newTorchState);
+      toast({ description: `Torch ${newTorchState ? 'ON' : 'OFF'}` });
     } catch (err) {
       console.error('[Client Scan] Error controlling torch:', err);
       toast({ variant: "destructive", title: "Could not control torch"});
-      setTorchOn(false);
+      setTorchOn(false); // Reset state on error
     }
   }, [torchOn, torchSupported, toast]);
 
@@ -325,14 +347,15 @@ export default function ScanPage() {
     const file = event.target.files?.[0];
     if (file) {
       setIsProcessingUpload(true);
-      setScannedUpiData(null);
+      setScannedUpiData(null); // Clear previous scan/validation data
       setValidationResult(null);
       setRawScannedText(null);
-      await stopCameraStream();
+      await stopCameraStream(); // Stop live camera before processing file
+      toast({ title: "Processing Image...", description: "Attempting to decode QR code." });
       try {
-        const decodedData = await decodeQrCodeFromImage(file);
+        const decodedData = await decodeQrCodeFromImage(file); // Use the mock decoder
         if (decodedData) {
-          await handleScannedData(decodedData);
+          await handleScannedData(decodedData); // Process the decoded data
         } else {
           toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a QR code in the image." });
         }
@@ -341,23 +364,26 @@ export default function ScanPage() {
         toast({ variant: "destructive", title: "Processing Error", description: "Failed to process the image." });
       } finally {
          setIsProcessingUpload(false);
+         // Reset file input to allow uploading the same file again if needed
          if (event.target) event.target.value = '';
+         // Restart camera only if on scan tab and no data is currently shown
          if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) getCameraStream(); 
       }
     }
-  }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData, scannedUpiData]);
+  }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData, scannedUpiData]); // Ensure all dependencies are listed
 
   const proceedToPayment = () => {
-    if (!scannedUpiData || !scannedUpiData.isValidUpi || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted) {
-        toast({variant: "destructive", title: "Cannot Proceed", description: validationResult?.isBlacklisted ? "Payment blocked for suspicious QR." : "Invalid payment details."});
+    if (!scannedUpiData || !scannedUpiData.isValidUpi || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
+        toast({variant: "destructive", title: "Cannot Proceed", description: validationResult?.isBlacklisted || validationResult?.isReportedPreviously ? "Payment blocked for suspicious or reported QR." : "Invalid payment details."});
         return;
     }
+    // Construct query params for payment page
     const query = new URLSearchParams();
     query.set('pa', scannedUpiData.payeeAddress);
     if (scannedUpiData.payeeName) query.set('pn', scannedUpiData.payeeName);
     if (scannedUpiData.amount) query.set('am', scannedUpiData.amount);
     if (scannedUpiData.note) query.set('tn', scannedUpiData.note);
-    query.set('qrData', scannedUpiData.originalData);
+    query.set('qrData', scannedUpiData.originalData); // Pass raw QR data for reference
     router.push(`/pay?${query.toString()}`);
   };
 
@@ -373,32 +399,37 @@ export default function ScanPage() {
             body: JSON.stringify({ qrData: rawScannedText, userId: auth.currentUser?.uid, reason: reportReason }),
         });
         toast({ title: "QR Reported", description: "Thank you for helping keep PayFriend safe." });
-        setReportReason("");
+        setReportReason(""); // Clear reason after submit
     } catch (error: any) {
         toast({ variant: "destructive", title: "Report Failed", description: error.message || "Could not submit report." });
     }
   };
 
   const handleSaveContact = () => {
-    if (!scannedUpiData || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted) {
-        toast({variant: "destructive", title: "Cannot Save", description: validationResult?.isBlacklisted ? "Cannot save suspicious contact." : "Invalid contact details."});
+    if (!scannedUpiData || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
+        toast({variant: "destructive", title: "Cannot Save", description: validationResult?.isBlacklisted || validationResult?.isReportedPreviously ? "Cannot save suspicious contact." : "Invalid contact details."});
         return;
     }
+    // Navigate to add contact page with pre-filled details
     router.push(`/contacts/add?upiId=${encodeURIComponent(scannedUpiData.payeeAddress)}&name=${encodeURIComponent(scannedUpiData.payeeName || validationResult?.merchantNameFromDb || '')}`);
   }
 
+  // Reset function for scan state
   const resetScanState = () => {
     setScannedUpiData(null);
     setRawScannedText(null);
     setValidationResult(null);
-    setIsProcessingScan(false);
-    if (activeTab === 'scan' && !streamRef.current) {
+    setIsProcessingScan(false); // Ensure this is reset
+    // Restart camera only if on scan tab
+    if (activeTab === 'scan' && !streamRef.current) { // Check if stream isn't already active
         getCameraStream();
     }
   };
 
+  // Function to get appropriate badge based on validation result
   const getVerificationBadge = () => {
     if (!validationResult) return null;
+
     if (validationResult.isBlacklisted) {
         return <Badge variant="destructive" className="mt-2 text-xs flex items-center gap-1"><ShieldAlert className="h-3 w-3"/>Blacklisted: {validationResult.message}</Badge>;
     }
@@ -420,6 +451,7 @@ export default function ScanPage() {
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
+      {/* Header */}
       <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
         <Link href="/" passHref>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -430,6 +462,7 @@ export default function ScanPage() {
         <h1 className="text-lg font-semibold">Scan &amp; Pay / My QR</h1>
       </header>
 
+      {/* Main Content */}
       <main className="flex-grow p-4">
         <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); resetScanState(); }} className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -437,12 +470,14 @@ export default function ScanPage() {
             <TabsTrigger value="myQR">My QR Code</TabsTrigger>
           </TabsList>
 
+          {/* Scan QR Tab */}
           <TabsContent value="scan">
             <Card className="shadow-md">
               <CardHeader>
                 <CardTitle>Scan UPI QR Code</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Processing Scan Indicator */}
                 {isProcessingScan && (
                     <div className="flex flex-col items-center justify-center p-4 text-center">
                         <Loader2 className="h-8 w-8 animate-spin text-primary mb-2"/>
@@ -450,11 +485,12 @@ export default function ScanPage() {
                     </div>
                 )}
 
+                {/* Validated Scan Result Display */}
                 {validationResult && scannedUpiData?.isValidUpi && (
                     <Card className={cn("p-4", 
                         validationResult.isBlacklisted ? "border-destructive bg-destructive/10" : 
                         validationResult.isReportedPreviously ? "border-destructive bg-destructive/10" :
-                        !validationResult.isVerifiedMerchant && !validationResult.hasValidSignature ? "border-yellow-500 bg-yellow-50" :
+                        !validationResult.isVerifiedMerchant && !validationResult.hasValidSignature ? "border-yellow-500 bg-yellow-50" : // Unverified and no valid signature
                         "border-green-500 bg-green-50")}>
                         <div className="flex items-center gap-2 mb-2">
                             {getVerificationBadge()}
@@ -482,6 +518,7 @@ export default function ScanPage() {
                     </Card>
                 )}
 
+                {/* Invalid/Non-UPI QR Display */}
                 {rawScannedText && !scannedUpiData?.isValidUpi && !isProcessingScan && (
                     <Alert variant="default" className="mt-4">
                         <AlertTriangle className="h-4 w-4 text-yellow-500"/>
@@ -493,6 +530,7 @@ export default function ScanPage() {
                     </Alert>
                 )}
 
+                {/* Camera View and Upload Button (only if no result is shown and not processing scan) */}
                 {!validationResult && !rawScannedText && !isProcessingScan && (
                   <>
                     <div className="relative aspect-video sm:aspect-auto sm:h-80 bg-muted rounded-md overflow-hidden border border-border">
@@ -505,14 +543,15 @@ export default function ScanPage() {
                              <Button variant="secondary" size="sm" className="mt-4" onClick={getCameraStream}>Retry Permissions</Button>
                           </div>
                       )}
-                       {hasCameraPermission === null && (
+                       {hasCameraPermission === null && ( // Initializing camera state
                           <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
                              <Loader2 className="h-6 w-6 animate-spin mr-2" /> Initializing Camera...
                           </div>
                        )}
-                       {hasCameraPermission === true && (
+                       {hasCameraPermission === true && ( // Camera is active
                            <div className="absolute inset-0 border-[10vw] sm:border-[5vw] border-black/30 pointer-events-none">
                                <div className="absolute top-1/2 left-1/2 w-3/5 aspect-square transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-75 rounded-md"></div>
+                                 {/* Torch Button */}
                                  {torchSupported && (
                                     <Button
                                         variant={torchOn ? "default" : "secondary"}
@@ -528,6 +567,7 @@ export default function ScanPage() {
                            </div>
                        )}
                     </div>
+                    {/* Upload QR Button */}
                     <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={isProcessingUpload}>
                         {isProcessingUpload ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                         {isProcessingUpload ? 'Processing...' : 'Upload QR from Gallery'}
@@ -539,6 +579,7 @@ export default function ScanPage() {
             </Card>
           </TabsContent>
 
+          {/* My QR Tab */}
           <TabsContent value="myQR">
             <Card className="shadow-md">
               <CardHeader>
@@ -594,3 +635,4 @@ export default function ScanPage() {
     </div>
   );
 }
+

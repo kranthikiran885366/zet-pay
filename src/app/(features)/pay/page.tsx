@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageCircle, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, UserPlus, RefreshCw, Search as SearchIcon, ShieldQuestion, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
@@ -70,6 +70,7 @@ export default function PaymentConfirmationPage() {
     const [userId, setUserId] = useState<string | null>(null);
     const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
     const [showRetryOptions, setShowRetryOptions] = useState(false);
+    const [currentSourceBalance, setCurrentSourceBalance] = useState<number | null>(null);
 
     useEffect(() => {
         const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -91,13 +92,13 @@ export default function PaymentConfirmationPage() {
      const fetchInitialData = useCallback(async (currentUserId: string) => {
          setIsLoading(true);
          try {
-             const [userAccounts, currentWalletBalance] = await Promise.all([
+             const [userAccounts, currentWalletBalanceValue] = await Promise.all([
                  getLinkedAccounts(),
                  getWalletBalance()
              ]);
 
              setAccounts(userAccounts);
-             setWalletBalance(currentWalletBalance);
+             setWalletBalance(currentWalletBalanceValue);
 
              if (userAccounts.length > 0) {
                  const defaultAccount = userAccounts.find(acc => acc.isDefault);
@@ -105,8 +106,11 @@ export default function PaymentConfirmationPage() {
                  setSelectedAccountUpiId(initialAccountUpiId);
                  fetchBankStatuses(userAccounts);
                  setSelectedPaymentSource('upi');
-             } else if (currentWalletBalance > 0) {
+                 // For now, bank balance display before PIN is complex. We will show wallet balance.
+                 // setCurrentSourceBalance(null); // Or try to fetch if a PIN-less way exists (unlikely for UPI)
+             } else if (currentWalletBalanceValue > 0) {
                   setSelectedPaymentSource('wallet');
+                  setCurrentSourceBalance(currentWalletBalanceValue);
              } else {
                   setError("No linked bank accounts or wallet balance found. Please link an account or add funds.");
              }
@@ -162,7 +166,7 @@ export default function PaymentConfirmationPage() {
             setIsVerifying(true);
             setError(null);
             try {
-                 const validationResult = await verifyUpiId(address);
+                 const validationResult = await verifyUpiIdService(address);
                  if (validationResult.isBlacklisted) {
                      setPayeeName(`Suspicious Payee`);
                      setError(`Payment Blocked: ${validationResult.reason || 'Recipient is flagged as suspicious.'}`);
@@ -185,6 +189,20 @@ export default function PaymentConfirmationPage() {
 
     }, [searchParams, userId, toast, router]);
 
+    // Update currentSourceBalance when payment source or accounts change
+    useEffect(() => {
+        if (selectedPaymentSource === 'wallet') {
+            setCurrentSourceBalance(walletBalance);
+        } else if (selectedPaymentSource === 'upi' && selectedAccountUpiId) {
+            // Cannot securely get bank balance without PIN for display.
+            // Set to null or "Available" or fetch non-PIN balance if API supports (unlikely).
+            setCurrentSourceBalance(null); // Indicates bank balance, actual value unknown without PIN
+        } else {
+            setCurrentSourceBalance(null);
+        }
+    }, [selectedPaymentSource, selectedAccountUpiId, walletBalance, accounts]);
+
+
     const promptForPin = (): Promise<string | null> => {
         return new Promise((resolve) => {
             setUpiPin('');
@@ -194,13 +212,14 @@ export default function PaymentConfirmationPage() {
     };
 
     const handlePinSubmit = () => {
-        const expectedLength = accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength;
+        const expectedLength = selectedPaymentSource === 'upi' ? accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength : 4; // Assume 4 for Zet Wallet PIN
         if (expectedLength && upiPin.length === expectedLength && pinPromiseResolverRef.current) {
             pinPromiseResolverRef.current.resolve(upiPin);
-        } else if (!expectedLength && (upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) {
+        } else if (!expectedLength && (upiPin.length === 4 || upiPin.length === 6) && pinPromiseResolverRef.current) { // Fallback for bank PIN if length unknown
             pinPromiseResolverRef.current.resolve(upiPin);
         } else {
-            toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
+            const pinType = selectedPaymentSource === 'wallet' ? "Zet Wallet PIN" : "UPI PIN";
+            toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || (selectedPaymentSource === 'wallet' ? '4' : '4 or 6')} digit ${pinType}.` });
             pinPromiseResolverRef.current?.resolve(null);
         }
         pinPromiseResolverRef.current = null;
@@ -261,18 +280,19 @@ export default function PaymentConfirmationPage() {
         let upiPaymentResult: UpiTransactionResult | null = null;
 
         try {
-             if (sourceToUse === 'upi') {
-                 const enteredPin = await promptForPin();
-                 if (enteredPin === null) {
-                     toast({ title: "Payment Cancelled", description: "PIN entry was cancelled." });
-                     setIsLoading(false);
-                     return;
-                 }
+             // Prompt for PIN for both UPI and Wallet (Zet Wallet PIN)
+             const enteredPin = await promptForPin();
+             if (enteredPin === null) {
+                 toast({ title: "Payment Cancelled", description: "PIN entry was cancelled." });
+                 setIsLoading(false);
+                 return;
+             }
 
+             if (sourceToUse === 'upi') {
                  upiPaymentResult = await processUpiPayment(
                      payeeAddress,
                      currentAmount,
-                     enteredPin,
+                     enteredPin, // Use entered PIN
                      note || `Payment to ${payeeName}`,
                      accountToUse
                  );
@@ -283,24 +303,29 @@ export default function PaymentConfirmationPage() {
 
                  if (upiPaymentResult.usedWalletFallback) {
                      descriptionSuffix = ' (Paid via Wallet)';
-                     getWalletBalance().then(setWalletBalance);
+                     getWalletBalance().then(setWalletBalance); // Refresh wallet balance
                  }
+                  toast({ title: paymentSuccess ? "Payment Successful" : `Payment ${finalStatus}`, description: resultMessage, duration: 3000 });
+
 
              } else { // Wallet payment
+                 // TODO: Backend `payViaWallet` needs to accept and verify the 'Zet Wallet PIN' (enteredPin)
                  const result = await payViaWallet(
-                    userId, // Send userId for wallet payment
+                    userId, 
                     payeeAddress,
                     currentAmount,
                     note || `Payment to ${payeeName}`
+                    // Potentially pass enteredPin to backend if wallet payments are PIN protected
                  );
                  finalTransactionId = result.transactionId;
-                 paymentSuccess = result.success ?? false; // Handle undefined success
+                 paymentSuccess = result.success ?? false;
                  finalStatus = paymentSuccess ? 'Completed' : 'Failed';
                  resultMessage = result.message || (paymentSuccess ? "Transaction Successful" : "Payment Failed");
                  descriptionSuffix = ' (Paid via Wallet)';
                  if(paymentSuccess) {
                     setWalletBalance(prev => prev - currentAmount);
                  }
+                 toast({ title: paymentSuccess ? "Payment Successful" : `Payment ${finalStatus}`, description: resultMessage, duration: 3000 });
              }
 
              if (finalTransactionId) {
@@ -317,30 +342,22 @@ export default function PaymentConfirmationPage() {
                     paymentMethodUsed: sourceToUse === 'upi' ? 'UPI' : 'Wallet',
                     ticketId: upiPaymentResult?.ticketId,
                     refundEta: upiPaymentResult?.refundEta,
-                    usedWalletFallback: upiPaymentResult?.usedWalletFallback || (sourceToUse === 'wallet' && paymentSuccess) // Mark true if wallet was used
+                    usedWalletFallback: upiPaymentResult?.usedWalletFallback || (sourceToUse === 'wallet' && paymentSuccess)
                  });
 
-             } else {
-                 throw new Error("Backend did not return transaction details.");
+             } else if (!paymentSuccess) { // If no transaction ID but payment failed
+                 throw new Error(resultMessage || "Payment failed and no transaction ID was returned.");
              }
 
+
             if (paymentSuccess) {
-                 toast({
-                     title: "Payment Successful!",
-                     description: resultMessage,
-                     duration: 5000
-                 });
+                // Toast already shown above
             } else {
                  setError(`Payment ${finalStatus}. ${resultMessage}`);
                  if (finalStatus === 'Failed' && sourceToUse === 'upi' && !(upiPaymentResult?.usedWalletFallback)) {
-                    setShowRetryOptions(true); // Show retry only if UPI fails and fallback didn't happen/isn't wallet
+                    setShowRetryOptions(true);
                  }
-                 toast({
-                    variant: finalStatus === 'Failed' ? "destructive" : "default",
-                    title: `Payment ${finalStatus}`,
-                    description: `${resultMessage} ${upiPaymentResult?.ticketId ? `(Ticket: ${upiPaymentResult.ticketId})` : ''}`,
-                    duration: 7000
-                 });
+                 // Toast already shown above
             }
         } catch (err: any) {
              console.error("Payment processing error:", err);
@@ -366,12 +383,7 @@ export default function PaymentConfirmationPage() {
                  refundEta: upiPaymentResult?.refundEta,
                  usedWalletFallback: upiPaymentResult?.usedWalletFallback
              });
-
-              toast({
-                 variant: "destructive",
-                 title: "Payment Failed",
-                 description: `${message} ${upiPaymentResult?.ticketId ? `(Ticket: ${upiPaymentResult.ticketId})` : ''}`
-             });
+             toast({ variant: "destructive", title: "Payment Failed", description: `${message} ${upiPaymentResult?.ticketId ? `(Ticket: ${upiPaymentResult.ticketId})` : ''}` });
         } finally {
             setIsLoading(false);
             setUpiPin('');
@@ -427,6 +439,7 @@ export default function PaymentConfirmationPage() {
                          <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
                             <p><strong>Amount:</strong> {amountText}</p>
                             <p><strong>To:</strong> {paymentResult.name} ({paymentResult.upiId})</p>
+                            <p><strong>Source:</strong> {paymentResult.paymentMethodUsed === 'UPI' ? selectedAccountUpiId : 'Zet Pay Wallet'}</p>
                             <p><strong>Date:</strong> {format(new Date(paymentResult.date), 'PPp')}</p>
                              {paymentResult.usedWalletFallback && (
                                 <p className="font-medium text-blue-600 flex items-center justify-center gap-1"><Wallet className="h-3 w-3"/> Paid via Wallet (Recovery Scheduled)</p>
@@ -515,19 +528,9 @@ export default function PaymentConfirmationPage() {
                                 />
                             </div>
 
-                             {selectedPaymentSource === 'upi' && selectedAccountUpiId && bankStatuses[selectedAccountUpiId] && bankStatuses[selectedAccountUpiId] !== 'Active' && (
-                                <Alert variant={bankStatuses[selectedAccountUpiId] === 'Down' ? "destructive" : "default"} className={`${bankStatuses[selectedAccountUpiId] === 'Slow' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
-                                     <AlertTitle className="flex items-center gap-1 text-sm">
-                                         {bankStatuses[selectedAccountUpiId] === 'Down' ? <WifiOff className="h-4 w-4"/> : <Clock className="h-4 w-4"/>}
-                                         Bank Server Status
-                                     </AlertTitle>
-                                    <AlertDescription className="text-xs">
-                                        {accounts.find(a => a.upiId === selectedAccountUpiId)?.bankName} server is currently {bankStatuses[selectedAccountUpiId]}. Payments may be delayed or fail.
-                                    </AlertDescription>
-                                </Alert>
-                             )}
+                            <Separator />
 
-                             <div className="space-y-2">
+                            <div className="space-y-2">
                                 <Label htmlFor="paymentSource">Pay Using</Label>
                                 <Select value={selectedAccountUpiId || (selectedPaymentSource === 'wallet' ? 'wallet' : '')} onValueChange={(value) => {
                                     if (value === 'wallet') {
@@ -567,8 +570,29 @@ export default function PaymentConfirmationPage() {
                                          )}
                                      </SelectContent>
                                  </Select>
-                             {accounts.length === 0 && selectedPaymentSource === 'upi' && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
+                             {selectedPaymentSource === 'upi' && selectedAccountUpiId && bankStatuses[selectedAccountUpiId] === 'Down' && (
+                                 <p className="text-xs text-destructive pt-1">Selected bank server is down. Please choose another method.</p>
+                             )}
+                              {selectedPaymentSource === 'upi' && selectedAccountUpiId && bankStatuses[selectedAccountUpiId] === 'Slow' && (
+                                 <p className="text-xs text-yellow-600 pt-1">Selected bank server is slow. Payment might take longer.</p>
+                             )}
+                              {accounts.length === 0 && selectedPaymentSource === 'upi' && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
                             </div>
+
+                            <Separator/>
+                             <div className="text-sm space-y-1">
+                                <div className="flex justify-between"><span>Amount:</span> <span>₹{Number(amount || 0).toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>Charges:</span> <span>₹0.00</span></div>
+                                 <div className="flex justify-between font-bold text-base"><span>Total:</span> <span>₹{Number(amount || 0).toFixed(2)}</span></div>
+                                 {currentSourceBalance !== null && (
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Balance after payment:</span>
+                                        <span>
+                                            {selectedPaymentSource === 'wallet' ? `₹${(currentSourceBalance - Number(amount || 0)).toFixed(2)}` : 'Available'}
+                                        </span>
+                                    </div>
+                                 )}
+                             </div>
 
 
                              {error && !(payeeName === 'Verification Failed' || payeeName === 'Suspicious Payee') && (
@@ -596,7 +620,7 @@ export default function PaymentConfirmationPage() {
                                 </Card>
                               )}
 
-                            <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isPayDisabled}>
+                            <Button type="button" onClick={() => handlePayment()} className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isPayDisabled}>
                                 {isLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
@@ -605,13 +629,9 @@ export default function PaymentConfirmationPage() {
                                  <>
                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying Payee...
                                  </>
-                                ) : selectedPaymentSource === 'upi' ? (
-                                <>
-                                    <Lock className="mr-2 h-4 w-4" /> Proceed to Pay (UPI)
-                                </>
                                 ) : (
                                 <>
-                                     <Wallet className="mr-2 h-4 w-4" /> Pay via Wallet
+                                    <Lock className="mr-2 h-4 w-4" /> Proceed to Pay
                                 </>
                                 )}
                             </Button>
@@ -621,6 +641,14 @@ export default function PaymentConfirmationPage() {
              );
          }
     };
+
+    const pinDialogTitle = selectedPaymentSource === 'wallet' ? "Enter Zet Wallet PIN" : "Enter UPI PIN";
+    const pinDialogDescription = selectedPaymentSource === 'wallet'
+        ? `Enter your 4-digit Zet Wallet PIN to authorize this payment of ₹${Number(amount).toFixed(2)} to ${payeeName}.`
+        : `Enter your ${accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for ${accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹${Number(amount).toFixed(2)} to ${payeeName}.`;
+    const pinMaxLength = selectedPaymentSource === 'wallet' ? 4 : (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6);
+    const pinPlaceholder = selectedPaymentSource === 'wallet' ? "****" : (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******");
+
 
     return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -647,22 +675,20 @@ export default function PaymentConfirmationPage() {
         <AlertDialog open={isPinDialogOpen} onOpenChange={(open) => { if (!open) handlePinCancel(); }}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
-                     <AlertDialogDescription>
-                         Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize this payment of ₹{Number(amount).toFixed(2)} to {payeeName}.
-                     </AlertDialogDescription>
+                    <AlertDialogTitle>{pinDialogTitle}</AlertDialogTitle>
+                    <AlertDialogDescription>{pinDialogDescription}</AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4">
-                    <Label htmlFor="pin-input-dialog" className="sr-only">UPI PIN</Label>
+                    <Label htmlFor="pin-input-dialog" className="sr-only">PIN</Label>
                     <Input
                         id="pin-input-dialog"
                         type="password"
                         inputMode="numeric"
-                        maxLength={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6}
+                        maxLength={pinMaxLength}
                         value={upiPin}
-                        onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, '').slice(0, pinMaxLength))}
                         className="text-center text-xl tracking-[0.3em]"
-                        placeholder={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******"}
+                        placeholder={pinPlaceholder}
                         autoFocus
                     />
                 </div>
@@ -670,11 +696,7 @@ export default function PaymentConfirmationPage() {
                     <AlertDialogCancel onClick={handlePinCancel}>Cancel</AlertDialogCancel>
                      <AlertDialogAction
                         onClick={handlePinSubmit}
-                        disabled={!(
-                            (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 && upiPin.length === 4) ||
-                            (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 6 && upiPin.length === 6) ||
-                            (!accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength && (upiPin.length === 4 || upiPin.length === 6))
-                        )}
+                        disabled={upiPin.length !== pinMaxLength}
                     >
                         <Lock className="mr-2 h-4 w-4" /> Confirm Payment
                     </AlertDialogAction>
@@ -686,4 +708,3 @@ export default function PaymentConfirmationPage() {
     );
 }
 
-```
