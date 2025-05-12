@@ -7,14 +7,16 @@ import {
     onAuthStateChanged,
     User,
     signInWithPhoneNumber,
-    RecaptchaVerifier,
+    RecaptchaVerifier as FirebaseRecaptchaVerifierType, // Import the actual type from firebase/auth
     ConfirmationResult,
-    updateProfile as updateFirebaseProfile 
+    updateProfile as updateFirebaseProfile
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { apiClient } from '@/lib/apiClient';
 import type { UserProfile } from './types';
-import { upsertUserProfile } from './user'; 
+import { upsertUserProfile } from './user';
+import { RecaptchaVerifier } from 'firebase/auth'; // Ensure RecaptchaVerifier is imported for instantiation
+
 
 // --- Auth State Observation ---
 
@@ -29,7 +31,7 @@ export function subscribeToAuthState(callback: (user: User | null) => void): () 
 
 // --- Core Auth Actions ---
 
-export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: RecaptchaVerifier): Promise<ConfirmationResult> {
+export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: FirebaseRecaptchaVerifierType): Promise<ConfirmationResult> {
     console.log(`[Auth Service] Sending OTP to phone number: ${phoneNumber}`);
     try {
         const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
@@ -42,7 +44,7 @@ export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: Rec
             errorMessage = "Invalid phone number format. Please include country code (e.g., +91).";
         } else if (error.code === 'auth/too-many-requests') {
             errorMessage = "Too many OTP requests. Please try again later.";
-        } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') { // Specific to your log
+        } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
             errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration in src/lib/firebase.ts.";
         } else if (error.code === 'auth/operation-not-allowed') {
             errorMessage = "Phone number sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication -> Sign-in method).";
@@ -63,14 +65,21 @@ export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult,
         const user = userCredential.user;
         console.log("[Auth Service] OTP verified, Firebase login successful for:", user.uid);
 
-        const creationTime = new Date(user.metadata.creationTime!).getTime();
-        const lastSignInTime = new Date(user.metadata.lastSignInTime!).getTime();
-        const isNewUser = Math.abs(lastSignInTime - creationTime) < 5000; // 5s tolerance
-        console.log(`[Auth Service] User metadata: creationTime=${creationTime}, lastSignInTime=${lastSignInTime}. Is new user: ${isNewUser}`);
-        
-        // Ensure backend profile is created/synced even if user is not "new" from Firebase perspective
-        // This is important if the DB profile creation failed previously.
-        await verifyTokenAndGetProfile();
+        const creationTime = user.metadata.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
+        const lastSignInTime = user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).getTime() : 0;
+
+        // Determine if new user based on a small time difference between creation and last sign-in
+        const isNewUser = Math.abs(lastSignInTime - creationTime) < 10000; // 10 seconds tolerance
+        console.log(`[Auth Service] User metadata: creationTime=${user.metadata.creationTime}, lastSignInTime=${user.metadata.lastSignInTime}. Is new user: ${isNewUser}`);
+
+        if (isNewUser) {
+            console.log("[Auth Service] New user detected, profile setup might be needed.");
+            // Profile setup is handled in LoginPage after this function returns
+        } else {
+            console.log("[Auth Service] Existing user logged in.");
+            // For existing users, ensure backend profile is synced/verified
+            await verifyTokenAndGetProfile();
+        }
 
         return { user, isNewUser };
     } catch (error: any) {
@@ -88,8 +97,11 @@ export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult,
 export async function updateNewUserProfile(user: User, name: string, email?: string): Promise<void> {
     console.log(`[Auth Service] Updating profile for new user ${user.uid}: Name=${name}, Email=${email}`);
     try {
+        // Update Firebase Auth profile (client-side)
         await updateFirebaseProfile(user, { displayName: name });
-        console.log("[Auth Service] Firebase Auth profile (displayName) updated.");
+        console.log("[Auth Service] Firebase Auth profile (displayName) updated for new user.");
+
+        // Upsert profile in Firestore via backend service
         await upsertUserProfile({ name, email: email || undefined, phone: user.phoneNumber || undefined });
         console.log("[Auth Service] Firestore profile upserted via user service for new user.");
     } catch (error: any) {
@@ -150,35 +162,36 @@ export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
     }
 }
 
-// Kept for reference if email/password sign-up is re-enabled
-export async function signup(name: string, email: string, password?: string): Promise<User> {
-    console.log(`[Auth Service] Attempting signup for email: ${email}`);
-    if (!password) throw new Error("Password is required for email signup."); // Add check
-    try {
-        const { createUserWithEmailAndPassword } = await import('firebase/auth'); // Dynamic import
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        console.log("[Auth Service] Firebase signup successful for:", user.uid);
-        
-        await updateFirebaseProfile(user, { displayName: name });
-        console.log("[Auth Service] Firebase Auth profile (displayName) updated.");
 
-        await upsertUserProfile({ name, email, phone: user.phoneNumber || undefined });
-        console.log("[Auth Service] Firestore profile upserted via user service for new signup.");
-        
-        return user;
-    } catch (error: any) {
-        console.error("[Auth Service] Firebase signup error:", error.code, error.message);
-        let errorMessage = "Signup failed. Please try again.";
-        if (error.code === 'auth/email-already-in-use') {
-            errorMessage = "This email address is already registered.";
-        } else if (error.code === 'auth/invalid-email') {
-            errorMessage = "Invalid email format.";
-        } else if (error.code === 'auth/weak-password') {
-            errorMessage = "Password is too weak. Please use at least 6 characters.";
-        } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
-            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration.";
-        }
-        throw new Error(errorMessage);
-    }
-}
+// Kept for reference if email/password sign-up is re-enabled
+// export async function signup(name: string, email: string, password?: string): Promise<User> {
+//     console.log(`[Auth Service] Attempting signup for email: ${email}`);
+//     if (!password) throw new Error("Password is required for email signup.");
+//     try {
+//         const { createUserWithEmailAndPassword } = await import('firebase/auth');
+//         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+//         const user = userCredential.user;
+//         console.log("[Auth Service] Firebase signup successful for:", user.uid);
+
+//         await updateFirebaseProfile(user, { displayName: name });
+//         console.log("[Auth Service] Firebase Auth profile (displayName) updated.");
+
+//         await upsertUserProfile({ name, email, phone: user.phoneNumber || undefined });
+//         console.log("[Auth Service] Firestore profile upserted via user service for new signup.");
+
+//         return user;
+//     } catch (error: any) {
+//         console.error("[Auth Service] Firebase signup error:", error.code, error.message);
+//         let errorMessage = "Signup failed. Please try again.";
+//         if (error.code === 'auth/email-already-in-use') {
+//             errorMessage = "This email address is already registered.";
+//         } else if (error.code === 'auth/invalid-email') {
+//             errorMessage = "Invalid email format.";
+//         } else if (error.code === 'auth/weak-password') {
+//             errorMessage = "Password is too weak. Please use at least 6 characters.";
+//         } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
+//             errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration.";
+//         }
+//         throw new Error(errorMessage);
+//     }
+// }
