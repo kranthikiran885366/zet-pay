@@ -6,47 +6,52 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get('__session')?.value;
 
-  const publicPaths = ['/splash', '/login', '/signup', '/forgot-password', '/about', '/documentation'];
+  // Define public paths that do not require authentication
+  const publicPaths = ['/splash', '/login', '/signup', '/forgot-password', '/onboarding', '/about', '/documentation'];
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+
+  console.log(`[Middleware] Path: ${pathname}, Is Public: ${isPublicPath}, Session Cookie Present: ${!!sessionCookie}`);
 
   if (sessionCookie) {
     try {
-      await authAdmin.verifySessionCookie(sessionCookie, true); // Check if cookie is valid
+      await authAdmin.verifySessionCookie(sessionCookie, true);
+      console.log("[Middleware] Session cookie verified.");
       // User is authenticated
-      if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password')) {
-        // Authenticated users should not access login/signup/forgot-password, redirect to home
-        console.log("Middleware: Authenticated user on auth path, redirecting to /");
+      if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password') || pathname.startsWith('/onboarding')) {
+        // Authenticated users trying to access auth/onboarding pages (except /splash) should be redirected to home
+        console.log("[Middleware] Authenticated user on auth/onboarding path, redirecting to /");
         return NextResponse.redirect(new URL('/', request.url));
       }
-      // If authenticated user tries to access /splash, let them. 
-      // The /splash page itself will handle redirecting to / after its timer.
-      // This allows the splash screen to be shown even if the user is already logged in.
+      // If accessing /splash while authenticated, let it proceed. Splash page handles its own logic.
       if (pathname.startsWith('/splash')) {
         return NextResponse.next();
       }
-      // For all other paths, if authenticated, allow access.
+      // For other protected paths, allow access
       return NextResponse.next();
     } catch (error) {
       // Invalid or expired cookie
-      console.log("Middleware: Invalid/expired session cookie, deleting cookie and redirecting to /splash for path:", pathname);
-      const response = NextResponse.redirect(new URL('/splash', request.url));
+      console.log("[Middleware] Invalid/expired session cookie. Deleting cookie.");
+      const response = NextResponse.redirect(new URL('/splash', request.url)); // Redirect to splash on bad cookie
       response.cookies.delete('__session'); 
       return response;
     }
   } else {
     // No session cookie (user not authenticated)
-    if (!isPublicPath) {
-      // If trying to access a protected path, redirect to /splash (which then goes to /login)
-      console.log("Middleware: No session cookie, accessing protected path, redirecting to /splash for path:", pathname);
+    if (isPublicPath) {
+      // Allow access to public paths even if not authenticated
+      console.log(`[Middleware] No session cookie, accessing public path ${pathname}, allowing.`);
+      return NextResponse.next();
+    } else {
+      // If trying to access a protected path and no session cookie, redirect to /splash
+      console.log(`[Middleware] No session cookie, accessing protected path ${pathname}, redirecting to /splash.`);
       return NextResponse.redirect(new URL('/splash', request.url));
     }
-    // If accessing a public path and not authenticated, allow access
-    return NextResponse.next();
   }
 }
 
 export const config = {
   matcher: [
+    // Match all paths except for API routes, static files, and image optimization
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };

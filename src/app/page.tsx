@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import SplashScreenDisplay from '@/components/SplashScreenDisplay'; // New splash component
+import SplashScreenDisplay from '@/components/SplashScreenDisplay'; 
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Loader2, QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet as WalletIcon, Mic, HelpCircle, RefreshCw, Home as HomeIcon } from 'lucide-react';
@@ -45,9 +45,10 @@ const quickLinks = [
 
 
 export default function Home() {
-  const [showAppSplash, setShowAppSplash] = useState(true);
+  const [showAppSplash, setShowAppSplash] = useState(true); 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(false);
+  const [isLoadingPage, setIsLoadingPage] = useState(true); // New state for page loading after splash/auth
 
   const router = useRouter();
   const { toast } = useToast();
@@ -57,30 +58,46 @@ export default function Home() {
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands();
 
   useEffect(() => {
-    console.log("Homepage: Initial splash screen timer started.");
-    const timer = setTimeout(() => {
-      console.log("Homepage: Splash screen timer finished. Hiding splash.");
-      setShowAppSplash(false);
-    }, 3000); 
+    // This effect now mainly handles the initial splash screen visibility timer
+    // The redirection logic is primarily handled by the /splash page and middleware.
+    const splashTimer = setTimeout(() => {
+      console.log("Homepage: Minimum splash screen display time finished.");
+      setShowAppSplash(false); 
+      // Auth check will run after this, or might have already run in middleware
+      // If initialAuthCheckDone is still false, it means middleware didn't run yet or we're still waiting
+      // for the client-side auth state.
+      if (!initialAuthCheckDone) {
+          console.log("Homepage: Initial auth check not yet done, client-side listener will handle it.");
+      }
+    }, 1000); // Shortened splash display on home, as /splash handles longer one
 
-    return () => clearTimeout(timer);
-  }, []);
+    return () => clearTimeout(splashTimer);
+  }, [initialAuthCheckDone]);
 
   useEffect(() => {
-    if (showAppSplash) return; 
+    // This effect now only runs if splash screen is hidden
+    // and focuses on client-side auth state for UI rendering
+    if (showAppSplash) return;
 
-    console.log("Homepage: Auth check initiated after splash.");
+    console.log("Homepage: Auth check initiated (or re-confirmed client-side).");
     const unsubscribe = auth.onAuthStateChanged(user => {
-      console.log(`Homepage: Auth state changed. User ${user ? 'found' : 'not found'}.`);
+      console.log(`Homepage: Client auth state changed. User ${user ? 'found' : 'not found'}.`);
       setIsLoggedIn(!!user);
       setInitialAuthCheckDone(true); 
+      setIsLoadingPage(false); // Page content can now be shown
+
       if (!user) {
-        console.log("Homepage: No user, redirecting to login.");
-        router.replace('/login');
+        // Middleware should have already redirected to /splash -> /login.
+        // This is a fallback or for cases where client-side state changes post-middleware.
+        console.log("Homepage: No user (client-side check), ensuring redirect to login if not already there.");
+        if (router.pathname !== '/login' && router.pathname !== '/splash' && router.pathname !== '/onboarding') { // Avoid redirect loops
+          router.replace('/login');
+        }
       }
     });
     return () => unsubscribe();
   }, [showAppSplash, router]);
+
 
   useEffect(() => {
     if (transcript) {
@@ -105,25 +122,18 @@ export default function Home() {
     }
   };
 
-  if (showAppSplash) {
+  if (showAppSplash || isLoadingPage || isLoggedIn === null ) { 
     return <SplashScreenDisplay />;
   }
-
-  if (!initialAuthCheckDone) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-secondary">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Loading User Session...</p>
-      </div>
-    );
-  }
-
+  
   if (!isLoggedIn) {
-    // This state should be brief as the redirect in useEffect handles it.
+    // This state implies user is logged out and splash/auth checks are done.
+    // Middleware or the useEffect above should ideally handle the redirect to /login.
+    // This can be a fallback loading state or a brief message before redirect.
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-secondary">
             <Loader2 className="h-12 w-12 animate-spin text-primary"/>
-            <p className="mt-4 text-muted-foreground">Redirecting to login...</p>
+            <p className="mt-4 text-muted-foreground">Session expired. Redirecting...</p>
         </div>
     );
   }
