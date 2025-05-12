@@ -3,8 +3,8 @@ import type {Metadata} from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
-// Potentially wrap with a VoiceCommandProvider if using context
-// import { VoiceCommandProvider } from '@/context/VoiceCommandContext'; // Example
+// Potentially wrap with a AuthProvider if using client-side context for auth state
+// import { AuthProvider } from '@/context/AuthContext'; // Example
 
 const inter = Inter({
   variable: '--font-inter',
@@ -24,10 +24,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
-        {/* <VoiceCommandProvider> Example Provider wrapping */}
+        {/* <AuthProvider> Example Provider wrapping */}
           {children}
           <Toaster />
-        {/* </VoiceCommandProvider> */}
+        {/* </AuthProvider> */}
       </body>
     </html>
   );
