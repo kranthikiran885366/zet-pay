@@ -9,18 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, HardDrive, Loader2, Search, Wallet } from 'lucide-react';
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, processRecharge } from '@/services/recharge'; // Reuse recharge service
+import { getBillers, Biller, RechargePlan, processRecharge } from '@/services/recharge';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
-
-// Mock Data Card Plans (adjust as needed)
-const mockDataCardPlans: RechargePlan[] = [
-    { planId: 'dc1', description: '10GB High-Speed Data', price: 199, validity: '28 Days', data: '10GB', category: 'Monthly' },
-    { planId: 'dc2', description: '25GB High-Speed Data', price: 349, validity: '28 Days', data: '25GB', category: 'Monthly', isOffer: true },
-    { planId: 'dc3', description: '5GB Data Add-on', price: 99, validity: 'Existing Plan', data: '5GB', category: 'Add-On' },
-    { planId: 'dc4', description: 'Work From Home Pack - 70GB', price: 499, validity: '56 Days', data: '70GB', category: 'Work From Home' },
-];
+import { Badge } from '@/components/ui/badge'; // Added Badge
+import { mockBillersData, mockDataCardPlansData } from '@/mock-data'; // Import centralized mock data
 
 export default function DataCardRechargePage() {
     const [operators, setOperators] = useState<Biller[]>([]);
@@ -36,28 +30,17 @@ export default function DataCardRechargePage() {
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
 
-    // Fetch Data Card Operators
     useEffect(() => {
         const fetchOperators = async () => {
             setIsLoadingOperators(true);
             try {
-                // Assuming 'Datacard' is the type expected by getBillers
                 const fetchedOperators = await getBillers('Datacard');
-                setOperators(fetchedOperators.length > 0 ? fetchedOperators : [ // Add mock if API returns empty
-                    { billerId: 'jio-datacard', billerName: 'JioFi', billerType: 'Datacard', logoUrl: '/logos/jio.png' },
-                    { billerId: 'airtel-datacard', billerName: 'Airtel Data Card', billerType: 'Datacard', logoUrl: '/logos/airtel.png' },
-                    { billerId: 'vi-datacard', billerName: 'Vi Data Card', billerType: 'Datacard', logoUrl: '/logos/vi.png' },
-                ]);
+                setOperators(fetchedOperators.length > 0 ? fetchedOperators : (mockBillersData['Datacard'] || []));
             } catch (err) {
                 console.error("Failed to load data card operators:", err);
                 setError('Failed to load operators.');
                 toast({ variant: "destructive", title: "Error Loading Operators" });
-                 // Fallback mock data on error
-                setOperators([
-                    { billerId: 'jio-datacard', billerName: 'JioFi', billerType: 'Datacard', logoUrl: '/logos/jio.png' },
-                    { billerId: 'airtel-datacard', billerName: 'Airtel Data Card', billerType: 'Datacard', logoUrl: '/logos/airtel.png' },
-                    { billerId: 'vi-datacard', billerName: 'Vi Data Card', billerType: 'Datacard', logoUrl: '/logos/vi.png' },
-                ]);
+                 setOperators(mockBillersData['Datacard'] || []);
             } finally {
                 setIsLoadingOperators(false);
             }
@@ -65,7 +48,6 @@ export default function DataCardRechargePage() {
         fetchOperators();
     }, [toast]);
 
-    // Fetch Plans when operator changes
     useEffect(() => {
         if (selectedOperator) {
             const operator = operators.find(op => op.billerId === selectedOperator);
@@ -82,10 +64,8 @@ export default function DataCardRechargePage() {
     const fetchPlans = async (operatorId: string) => {
         setIsLoadingPlans(true);
         try {
-            // Simulate fetching plans (replace with actual API call if available)
-            // const fetchedPlans = await getRechargePlans(operatorId, 'datacard');
             await new Promise(resolve => setTimeout(resolve, 500));
-            setPlans(mockDataCardPlans); // Use mock plans
+            setPlans(mockDataCardPlansData);
         } catch (err) {
             console.error(`Failed to load plans for ${operatorId}:`, err);
             toast({ variant: "destructive", title: "Could not load plans" });
@@ -113,7 +93,6 @@ export default function DataCardRechargePage() {
             const result = await processRecharge('datacard', dataCardNumber, Number(amount), selectedOperator, selectedPlan?.planId);
             if (result.status === 'Completed') {
                 toast({ title: "Recharge Successful!", description: `Data Card ${dataCardNumber} recharged with ₹${amount}.` });
-                // Reset form
                 setDataCardNumber('');
                 setAmount('');
                 setSelectedPlan(null);
@@ -151,7 +130,6 @@ export default function DataCardRechargePage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleRecharge} className="space-y-4">
-                            {/* Operator Selection */}
                             <div className="space-y-1">
                                 <Label htmlFor="operator">Operator</Label>
                                 <Select value={selectedOperator} onValueChange={setSelectedOperator} required disabled={isLoadingOperators}>
@@ -170,7 +148,6 @@ export default function DataCardRechargePage() {
                                 {error && !isLoadingOperators && <p className="text-xs text-destructive mt-1">{error}</p>}
                             </div>
 
-                            {/* Data Card Number Input */}
                             <div className="space-y-1">
                                 <Label htmlFor="dataCardNumber">Data Card Number / Registered Mobile</Label>
                                 <Input
@@ -183,7 +160,6 @@ export default function DataCardRechargePage() {
                                 />
                             </div>
 
-                             {/* Plans Section */}
                              {selectedOperator && (
                                 <div className="space-y-2 pt-2">
                                     <Label>Select Plan</Label>
@@ -208,7 +184,6 @@ export default function DataCardRechargePage() {
                                 </div>
                              )}
 
-                            {/* Amount Input */}
                             <div className="space-y-1">
                                 <Label htmlFor="amount">Recharge Amount (₹)</Label>
                                 <div className="relative">
@@ -220,7 +195,7 @@ export default function DataCardRechargePage() {
                                         value={amount}
                                         onChange={(e) => { setAmount(e.target.value); setSelectedPlan(null); }}
                                         required
-                                        min="10" // Example min amount
+                                        min="10"
                                         step="1"
                                         className="pl-7"
                                     />
@@ -229,7 +204,6 @@ export default function DataCardRechargePage() {
 
                             {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
-                             {/* Payment Button */}
                             <div className="pt-4">
                                 <Separator className="mb-4"/>
                                 <Button

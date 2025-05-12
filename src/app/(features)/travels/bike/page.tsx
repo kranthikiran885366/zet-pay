@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -6,43 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Bike as Motorbike, MapPin, Filter, Loader2, Wallet, Search, Clock } from 'lucide-react'; // Use alias if needed
+import { ArrowLeft, Bike as Motorbike, MapPin, Filter, Loader2, Wallet, Search, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-
-// Mock Data
-interface BikeListing {
-    id: string;
-    name: string; // e.g., "Honda Activa", "Royal Enfield Classic 350"
-    type: 'Scooter' | 'Motorcycle' | 'Electric';
-    imageUrl: string;
-    pricePerHour: number;
-    pricePerDay: number;
-    location: string; // Pickup zone/station
-    availability: 'Available' | 'In Use' | 'Low Battery';
-    batteryPercent?: number; // For electric bikes
-    requiresHelmet?: boolean;
-}
-
-const mockBikes: BikeListing[] = [
-    { id: 'b1', name: 'Honda Activa 6G', type: 'Scooter', imageUrl: 'https://picsum.photos/seed/activa/300/200', pricePerHour: 30, pricePerDay: 300, location: 'Koramangala Hub', availability: 'Available', requiresHelmet: true },
-    { id: 'b2', name: 'Bounce Infinity E1', type: 'Electric', imageUrl: 'https://picsum.photos/seed/bounce/300/200', pricePerHour: 25, pricePerDay: 250, location: 'Indiranagar Metro', availability: 'Available', batteryPercent: 85, requiresHelmet: true },
-    { id: 'b3', name: 'Royal Enfield Classic 350', type: 'Motorcycle', imageUrl: 'https://picsum.photos/seed/reclassic/300/200', pricePerHour: 70, pricePerDay: 800, location: 'MG Road Station', availability: 'In Use' },
-    { id: 'b4', name: 'Yulu Miracle', type: 'Electric', imageUrl: 'https://picsum.photos/seed/yulu/300/200', pricePerHour: 20, pricePerDay: 200, location: 'HSR Layout Zone', availability: 'Low Battery', batteryPercent: 15, requiresHelmet: false },
-    { id: 'b5', name: 'TVS Jupiter', type: 'Scooter', imageUrl: 'https://picsum.photos/seed/jupiter/300/200', pricePerHour: 28, pricePerDay: 280, location: 'Majestic Hub', availability: 'Available', requiresHelmet: true },
-];
+import { mockBikesData } from '@/mock-data'; // Import centralized mock data
+import type { BikeListing } from '@/services/booking'; // Ensure type consistency
 
 export default function BikeRentalPage() {
-    const [locationQuery, setLocationQuery] = useState(''); // Search by location
+    const [locationQuery, setLocationQuery] = useState('');
     const [searchResults, setSearchResults] = useState<BikeListing[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [showResults, setShowResults] = useState(false);
-    const [selectedBike, setSelectedBike] = useState<BikeListing | null>(null); // To show details/book
-    const [rentalDuration, setRentalDuration] = useState<'hour' | 'day'>('hour'); // Hour or Day
+    const [selectedBike, setSelectedBike] = useState<BikeListing | null>(null);
+    const [rentalDuration, setRentalDuration] = useState<'hour' | 'day'>('hour');
     const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
 
@@ -54,10 +35,8 @@ export default function BikeRentalPage() {
         setSelectedBike(null);
         console.log("Searching Bikes near:", locationQuery || "Current Location");
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
-            // Filter mock data (in real app, API does this based on location)
-            const results = mockBikes.filter(bike => bike.availability === 'Available' && Math.random() > 0.1); // Simulate availability
+            const results = mockBikesData.filter(bike => bike.availability === 'Available' && Math.random() > 0.1);
             setSearchResults(results);
             setShowResults(true);
             if (results.length === 0) {
@@ -73,8 +52,6 @@ export default function BikeRentalPage() {
 
     const handleSelectBike = (bike: BikeListing) => {
         setSelectedBike(bike);
-        // Show booking confirmation / details section
-        // For simplicity, we'll trigger the final booking simulation here
         handleConfirmBooking(bike);
     };
 
@@ -83,14 +60,10 @@ export default function BikeRentalPage() {
         const cost = rentalDuration === 'hour' ? bike.pricePerHour : bike.pricePerDay;
         console.log(`Booking Bike: ${bike.name}, Duration: ${rentalDuration}, Cost: ${cost}`);
         try {
-             // Simulate Booking API Call (reserve bike, process payment)
              await new Promise(resolve => setTimeout(resolve, 1500));
               toast({ title: "Booking Successful!", description: `Booked ${bike.name} for 1 ${rentalDuration}. Cost: ₹${cost}. Unlock using the app.` });
-              // TODO: Navigate to map/unlock screen
-             // Reset state
              setSelectedBike(null);
              setShowResults(false);
-             // setLocationQuery(''); // Optionally clear search
         } catch (error) {
              console.error("Bike booking failed:", error);
              toast({ variant: "destructive", title: "Booking Failed", description: "Could not confirm your bike booking." });
@@ -131,8 +104,6 @@ export default function BikeRentalPage() {
                                         onChange={(e) => setLocationQuery(e.target.value)}
                                     />
                                 </div>
-                                {/* Add filters for bike type, duration etc. if needed */}
-
                                 <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isLoading}>
                                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
                                     {isLoading ? 'Searching...' : 'Find Bikes'}
@@ -141,14 +112,13 @@ export default function BikeRentalPage() {
                         </CardContent>
                     </Card>
                  ) : (
-                     /* Search Results */
                      <div className="space-y-4">
                          <Button variant="outline" onClick={() => setShowResults(false)} className="mb-4">
                              <ArrowLeft className="mr-2 h-4 w-4"/> Modify Search
                          </Button>
                           <div className="flex justify-between items-center mb-2">
                              <h2 className="text-lg font-semibold">{searchResults.length} Bikes Found</h2>
-                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button> {/* Add Filter functionality */}
+                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button>
                          </div>
                          {searchResults.map(bike => (
                             <Card key={bike.id} className="shadow-sm hover:shadow-md transition-shadow">

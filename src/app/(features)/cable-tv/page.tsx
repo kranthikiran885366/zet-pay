@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,19 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Tv2, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
-import { getBillers, Biller } from '@/services/recharge'; // Reuse recharge service
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
-import { processBillPayment } from '@/services/bills'; // Use bill payment service
-
-// Mock Data
-const mockCableProviders: Biller[] = [
-    { billerId: 'hathway-cable', billerName: 'Hathway Cable TV', billerType: 'Cable TV', logoUrl: '/logos/hathway.png' },
-    { billerId: 'den-cable', billerName: 'DEN Networks', billerType: 'Cable TV', logoUrl: '/logos/den.png' },
-    { billerId: 'gtpl-cable', billerName: 'GTPL Hathway', billerType: 'Cable TV', logoUrl: '/logos/gtpl.png' },
-    { billerId: 'siti-cable', billerName: 'SITI Cable', billerType: 'Cable TV', logoUrl: '/logos/siti.png' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockCableProvidersData } from '@/mock-data'; // Import centralized mock data
+import type { Biller } from '@/services/recharge'; // For Biller type consistency
 
 export default function CableTvPage() {
     const [providers, setProviders] = useState<Biller[]>([]);
@@ -35,14 +29,12 @@ export default function CableTvPage() {
         const fetchProviders = async () => {
             setIsLoadingProviders(true);
             try {
-                // Replace with actual API call if available
-                // const fetchedProviders = await getBillers('Cable TV');
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
-                setProviders(mockCableProviders);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                setProviders(mockCableProvidersData);
             } catch (err) {
                 console.error("Failed to load cable providers:", err);
                 toast({ variant: "destructive", title: "Error Loading Providers" });
-                setProviders(mockCableProviders); // Fallback
+                setProviders(mockCableProvidersData);
             } finally {
                 setIsLoadingProviders(false);
             }

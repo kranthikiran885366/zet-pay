@@ -12,54 +12,21 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-
-// Mock Data (Replace with actual API calls/data)
-interface GamingPlatform {
-    id: string;
-    name: string;
-    logoUrl?: string;
-}
-const mockPlatforms: GamingPlatform[] = [
-    { id: 'google-play', name: 'Google Play Recharge Code', logoUrl: '/logos/googleplay.png' },
-    { id: 'freefire', name: 'Garena Free Fire Diamonds', logoUrl: '/logos/freefire.png' },
-    { id: 'pubg-uc', name: 'PUBG Mobile UC (Unknown Cash)', logoUrl: '/logos/pubg.png' },
-    { id: 'steam-wallet', name: 'Steam Wallet Code', logoUrl: '/logos/steam.png' },
-];
-
-interface GamingVoucher {
-    id: string;
-    value: number; // INR value
-    description?: string; // e.g., "100 Diamonds", "$10 Steam Credit"
-}
-const mockVouchers: { [platformId: string]: GamingVoucher[] } = {
-    'google-play': [
-        { id: 'gp-100', value: 100 }, { id: 'gp-300', value: 300 }, { id: 'gp-500', value: 500 }, { id: 'gp-1000', value: 1000 },
-    ],
-    'freefire': [
-        { id: 'ff-100d', value: 80, description: '100 Diamonds' }, { id: 'ff-310d', value: 240, description: '310 Diamonds' }, { id: 'ff-520d', value: 400, description: '520 Diamonds' },
-    ],
-    'pubg-uc': [
-        { id: 'pubg-60uc', value: 75, description: '60 UC' }, { id: 'pubg-325uc', value: 380, description: '300 + 25 UC' }, { id: 'pubg-660uc', value: 750, description: '600 + 60 UC' },
-    ],
-    'steam-wallet': [
-        { id: 'steam-250', value: 250 }, { id: 'steam-500', value: 500 }, { id: 'steam-1000', value: 1000 },
-    ],
-};
+import { mockGamingPlatformsData, mockGamingVouchersData, GamingPlatform, GamingVoucher } from '@/mock-data'; // Import centralized mock data
 
 export default function GamingVoucherPage() {
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
     const [selectedVoucher, setSelectedVoucher] = useState<GamingVoucher | null>(null);
-    const [playerId, setPlayerId] = useState(''); // Optional, needed for some games like Free Fire
+    const [playerId, setPlayerId] = useState('');
     const [amount, setAmount] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
-    const vouchers = mockVouchers[selectedPlatform] || [];
-    const requiresPlayerId = ['freefire', 'pubg-uc'].includes(selectedPlatform); // Example check
+    const vouchers = mockGamingVouchersData[selectedPlatform] || [];
+    const requiresPlayerId = ['freefire', 'pubg-uc'].includes(selectedPlatform);
 
     useEffect(() => {
-        // Reset selection when platform changes
         setSelectedVoucher(null);
         setAmount('');
         setPlayerId('');
@@ -82,16 +49,14 @@ export default function GamingVoucherPage() {
         }
 
         setIsProcessing(true);
-        const platformName = mockPlatforms.find(p => p.id === selectedPlatform)?.name || 'Gaming';
+        const platformName = mockGamingPlatformsData.find(p => p.id === selectedPlatform)?.name || 'Gaming';
         console.log("Purchasing Gaming Voucher:", { platform: platformName, playerId, voucher: selectedVoucher?.description || `₹${amount}` });
         try {
-            // Simulate API call (replace with actual)
             await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Purchase Successful!", description: `${selectedVoucher?.description || `₹${amount} voucher`} for ${platformName} purchased. Code sent via SMS/Email.` });
             setPlayerId('');
             setAmount('');
             setSelectedVoucher(null);
-            // Maybe navigate to a "My Vouchers" page
         } catch (err) {
             console.error("Gaming voucher purchase failed:", err);
             toast({ variant: "destructive", title: "Purchase Failed" });
@@ -122,7 +87,6 @@ export default function GamingVoucherPage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handlePurchase} className="space-y-4">
-                            {/* Platform Selection */}
                             <div className="space-y-1">
                                 <Label htmlFor="platform">Game / Platform</Label>
                                 <Select value={selectedPlatform} onValueChange={setSelectedPlatform} required>
@@ -130,7 +94,7 @@ export default function GamingVoucherPage() {
                                         <SelectValue placeholder="Select Game or Platform" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {mockPlatforms.map((p) => (
+                                        {mockGamingPlatformsData.map((p) => (
                                             <SelectItem key={p.id} value={p.id}>
                                                 {p.logoUrl && <Image src={p.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
                                                 {p.name}
@@ -140,7 +104,6 @@ export default function GamingVoucherPage() {
                                 </Select>
                             </div>
 
-                            {/* Player ID Input (Conditional) */}
                             {requiresPlayerId && (
                                 <div className="space-y-1">
                                     <Label htmlFor="playerId">Player ID / In-Game Name</Label>
@@ -155,7 +118,6 @@ export default function GamingVoucherPage() {
                                 </div>
                             )}
 
-                            {/* Voucher Selection */}
                             {selectedPlatform && vouchers.length > 0 && (
                                 <div className="space-y-2 pt-2">
                                     <Label>Select Voucher</Label>
@@ -174,7 +136,6 @@ export default function GamingVoucherPage() {
                                 </div>
                             )}
 
-                            {/* Amount Display (read-only from voucher) */}
                             {selectedVoucher && (
                                 <div className="space-y-1">
                                     <Label htmlFor="amount">Amount (₹)</Label>
@@ -190,7 +151,6 @@ export default function GamingVoucherPage() {
                                     </div>
                                 </div>
                             )}
-                             {/* Allow custom amount for some types like Google Play */}
                              {selectedPlatform === 'google-play' && !selectedVoucher && (
                                  <div className="space-y-1">
                                      <Label htmlFor="amount-custom">Recharge Amount (₹)</Label>
@@ -203,7 +163,7 @@ export default function GamingVoucherPage() {
                                              value={amount}
                                              onChange={(e) => setAmount(e.target.value)}
                                              required
-                                             min="10" // Min recharge for GP
+                                             min="10"
                                              step="1"
                                              className="pl-7"
                                          />
@@ -211,8 +171,6 @@ export default function GamingVoucherPage() {
                                  </div>
                              )}
 
-
-                            {/* Purchase Button */}
                             <div className="pt-4">
                                 <Separator className="mb-4"/>
                                 <Button

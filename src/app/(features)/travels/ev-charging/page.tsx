@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -9,37 +10,19 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-
-interface ChargingStation {
-    id: string;
-    name: string;
-    address: string;
-    distance: string;
-    connectors: { type: string; power: string; status: 'Available' | 'In Use' | 'Offline' }[];
-    price?: string; // e.g., "₹15/kWh"
-    amenities?: string[]; // e.g., "Cafe", "Restroom"
-    imageUrl?: string;
-}
-
-const mockStations: ChargingStation[] = [
-    { id: 'stn1', name: 'ChargeGrid Hub - Koramangala', address: '123, 1st Main, Koramangala', distance: '1.2 km', connectors: [{type: 'CCS2', power: '50kW', status: 'Available'}, {type: 'CHAdeMO', power: '40kW', status: 'In Use'}], price: '₹18/kWh', amenities: ['Cafe', 'Wi-Fi'], imageUrl: 'https://picsum.photos/seed/ev_station1/400/200' },
-    { id: 'stn2', name: 'Tata Power EV - Indiranagar', address: '45, 100ft Road, Indiranagar', distance: '2.5 km', connectors: [{type: 'Type2 AC', power: '22kW', status: 'Available'}, {type: 'CCS2', power: '60kW', status: 'Available'}], price: '₹20/kWh', amenities: ['Restroom'], imageUrl: 'https://picsum.photos/seed/ev_station2/400/200' },
-    { id: 'stn3', name: 'Ather Grid - HSR Layout', address: '78, Outer Ring Road, HSR Layout', distance: '3.1 km', connectors: [{type: 'Ather Proprietary', power: '3.3kW', status: 'Offline'}], imageUrl: 'https://picsum.photos/seed/ev_station3/400/200' },
-];
-
+import { mockEVStations, EVStation } from '@/mock-data'; // Import centralized mock data
 
 export default function EvChargingPage() {
     const [searchTerm, setSearchTerm] = useState('');
-    const [stations, setStations] = useState<ChargingStation[]>(mockStations); // Use mock data for now
+    const [stations, setStations] = useState<EVStation[]>(mockEVStations);
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
 
     const handleSearch = async (e?: React.FormEvent) => {
         e?.preventDefault();
         setIsLoading(true);
-        // Simulate API search
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const filtered = mockStations.filter(s =>
+        const filtered = mockEVStations.filter(s =>
             s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             s.address.toLowerCase().includes(searchTerm.toLowerCase())
         );
@@ -75,7 +58,6 @@ export default function EvChargingPage() {
              <Button variant="outline" size="icon" disabled><Filter className="h-4 w-4"/></Button>
         </form>
 
-        {/* Placeholder Map Area */}
         <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground border mb-4">
             <MapPin className="h-8 w-8 mr-2" /> Map View (Coming Soon)
         </div>

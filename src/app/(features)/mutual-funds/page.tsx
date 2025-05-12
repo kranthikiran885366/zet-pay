@@ -1,74 +1,18 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Briefcase, TrendingUp, PlusCircle, Search, Loader2, Info, MinusCircle } from 'lucide-react'; // Added MinusCircle for Sell/Redeem
+import { ArrowLeft, Briefcase, TrendingUp, PlusCircle, Search, Loader2, Info, MinusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-// TODO: Import actual investment services
-// import { searchMutualFunds, getFundDetails, investInMutualFund, getMfPortfolio } from '@/services/investment';
-
-// Mock Data (Replace with API calls)
-interface Fund {
-    fundId: string;
-    name: string;
-    category: string;
-    risk: string;
-    rating: number;
-}
-interface FundDetails extends Fund {
-    nav: number;
-    returns: { '1Y': number; '3Y': number; '5Y': number };
-    expenseRatio: number;
-    minInvestment: number;
-    minSip: number;
-}
-interface PortfolioSummary {
-    totalInvestment: number;
-    currentValue: number;
-    profitLoss: number;
-    profitLossPercentage: number;
-}
-interface Holding {
-    fundId: string;
-    fundName: string;
-    units: number;
-    avgBuyPrice: number;
-    investedAmount: number;
-    currentValue: number;
-    profitLoss: number;
-}
-
-
-const mockFunds: Fund[] = [
-    { fundId: 'INF174K01LS2', name: 'Axis Bluechip Fund Direct Plan-Growth', category: 'Large Cap', risk: 'High', rating: 5 },
-    { fundId: 'INF846K01EW2', name: 'Parag Parikh Flexi Cap Fund Direct-Growth', category: 'Flexi Cap', risk: 'Very High', rating: 5 },
-    { fundId: 'INF209K01OP8', name: 'SBI Small Cap Fund Direct-Growth', category: 'Small Cap', risk: 'Very High', rating: 4 },
-];
-
-const mockFundDetails: { [key: string]: Omit<FundDetails, 'fundId' | 'name' | 'category' | 'risk' | 'rating'> } = {
-    'INF174K01LS2': { nav: 58.75, returns: { '1Y': 15.5, '3Y': 12.1, '5Y': 14.8 }, expenseRatio: 0.75, minInvestment: 1000, minSip: 500 },
-    'INF846K01EW2': { nav: 75.12, returns: { '1Y': 25.2, '3Y': 18.5, '5Y': 20.1 }, expenseRatio: 0.65, minInvestment: 1000, minSip: 1000 },
-    'INF209K01OP8': { nav: 150.40, returns: { '1Y': 35.8, '3Y': 28.2, '5Y': 25.5 }, expenseRatio: 0.90, minInvestment: 5000, minSip: 1000 },
-};
-
-const mockPortfolio: Holding[] = [
-     { fundId: 'INF174K01LS2', fundName: 'Axis Bluechip Fund Direct Plan-Growth', units: 170.22, avgBuyPrice: 50.00, investedAmount: 8511.00, currentValue: 10000.00, profitLoss: 1489.00 },
-     { fundId: 'INF846K01EW2', fundName: 'Parag Parikh Flexi Cap Fund Direct-Growth', units: 66.56, avgBuyPrice: 65.00, investedAmount: 4326.40, currentValue: 5000.00, profitLoss: 673.60 },
-];
-const mockPortfolioSummary: PortfolioSummary = {
-    totalInvestment: 12837.40,
-    currentValue: 15000.00,
-    profitLoss: 2162.60,
-    profitLossPercentage: 16.85,
-};
-
+import { mockFundsData, mockFundDetailsData, mockPortfolioData, mockPortfolioSummaryData, Fund, FundDetails, PortfolioSummary, Holding } from '@/mock-data'; // Import centralized mock data
 
 export default function MutualFundsPage() {
     const [searchQuery, setSearchQuery] = useState('');
@@ -77,7 +21,7 @@ export default function MutualFundsPage() {
     const [investmentType, setInvestmentType] = useState<'Lumpsum' | 'SIP'>('Lumpsum');
     const [amount, setAmount] = useState('');
     const [sipFrequency, setSipFrequency] = useState<'Monthly' | 'Quarterly'>('Monthly');
-    const [sipDate, setSipDate] = useState<number>(5); // Day of the month
+    const [sipDate, setSipDate] = useState<number>(5);
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showFundDetails, setShowFundDetails] = useState(false);
@@ -87,15 +31,13 @@ export default function MutualFundsPage() {
 
     const { toast } = useToast();
 
-     // Fetch portfolio data on mount
     useEffect(() => {
         const fetchPortfolio = async () => {
             setIsLoadingPortfolio(true);
             try {
-                 // TODO: Replace with actual API call: await getMfPortfolio();
-                 await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate delay
-                 setPortfolioSummary(mockPortfolioSummary);
-                 setHoldings(mockPortfolio);
+                 await new Promise(resolve => setTimeout(resolve, 1200));
+                 setPortfolioSummary(mockPortfolioSummaryData);
+                 setHoldings(mockPortfolioData);
             } catch (error) {
                  console.error("Failed to fetch portfolio:", error);
                  toast({ variant: "destructive", title: "Error fetching portfolio" });
@@ -106,13 +48,11 @@ export default function MutualFundsPage() {
         fetchPortfolio();
     }, [toast]);
 
-    // Simulate searching funds
     useEffect(() => {
         if (searchQuery.length > 2) {
             setIsLoading(true);
-            // Simulate API call
             setTimeout(() => {
-                setSearchResults(mockFunds.filter(fund => fund.name.toLowerCase().includes(searchQuery.toLowerCase())));
+                setSearchResults(mockFundsData.filter(fund => fund.name.toLowerCase().includes(searchQuery.toLowerCase())));
                 setIsLoading(false);
             }, 500);
         } else {
@@ -120,19 +60,18 @@ export default function MutualFundsPage() {
         }
     }, [searchQuery]);
 
-    // Simulate fetching fund details
     const handleSelectFund = async (fund: Fund) => {
         setIsLoading(true);
-        setShowFundDetails(true); // Show the details/investment section
-        setSelectedFund(null); // Clear previous details first
+        setShowFundDetails(true);
+        setSelectedFund(null);
         try {
             await new Promise(resolve => setTimeout(resolve, 800));
-            const details = mockFundDetails[fund.fundId];
+            const details = mockFundDetailsData[fund.fundId];
             if (details) {
                 setSelectedFund({ ...fund, ...details });
             } else {
                 toast({ variant: "destructive", title: "Could not load fund details" });
-                 setShowFundDetails(false); // Hide section if details fail
+                 setShowFundDetails(false);
             }
         } catch (error) {
             console.error("Failed to fetch fund details:", error);
@@ -140,12 +79,11 @@ export default function MutualFundsPage() {
              setShowFundDetails(false);
         } finally {
             setIsLoading(false);
-             setSearchResults([]); // Clear search results after selection
-             setSearchQuery(fund.name); // Show selected fund name in search bar
+             setSearchResults([]);
+             setSearchQuery(fund.name);
         }
     };
 
-    // Simulate investment
     const handleInvest = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedFund || !amount || Number(amount) <= 0) {
@@ -168,23 +106,19 @@ export default function MutualFundsPage() {
             investmentType,
             sipFrequency: investmentType === 'SIP' ? sipFrequency : undefined,
             sipDate: investmentType === 'SIP' ? sipDate : undefined,
-            paymentMethod: 'wallet' // Example payment method
+            paymentMethod: 'wallet'
         };
         console.log("Submitting Investment:", investmentData);
         try {
-            // TODO: Replace with actual API call: await investInMutualFund(investmentData);
             await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Investment Successful!", description: `${investmentType} order placed for ₹${amount} in ${selectedFund.name}.` });
-            // Reset form
             setAmount('');
             setSelectedFund(null);
             setShowFundDetails(false);
             setSearchQuery('');
-             // Refresh portfolio data after successful investment
              setIsLoadingPortfolio(true);
-             setTimeout(() => { // Simulate refresh delay
+             setTimeout(() => {
                 setPortfolioSummary(prev => prev ? ({ ...prev, totalInvestment: prev.totalInvestment + Number(amount)}) : null);
-                // Add a mock holding update here if desired
                 setIsLoadingPortfolio(false);
             }, 1000);
         } catch (error: any) {
@@ -195,12 +129,10 @@ export default function MutualFundsPage() {
         }
     };
 
-     // Format currency
     const formatCurrency = (value: number | undefined): string => {
         if (value === undefined || value === null) return '₹ -';
         return `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    // Format percentage
     const formatPercentage = (value: number | undefined): string => {
         if (value === undefined || value === null) return '- %';
         const sign = value > 0 ? '+' : '';
@@ -226,7 +158,6 @@ export default function MutualFundsPage() {
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
 
-                 {/* Portfolio Summary */}
                 <Card className="shadow-md">
                      <CardHeader>
                          <CardTitle className="text-base">Portfolio Summary</CardTitle>
@@ -261,8 +192,6 @@ export default function MutualFundsPage() {
                      </CardContent>
                  </Card>
 
-
-                {/* Search / Invest Section */}
                 <Card className="shadow-md">
                     <CardHeader>
                         <CardTitle>Explore & Invest</CardTitle>
@@ -275,12 +204,11 @@ export default function MutualFundsPage() {
                                 type="search"
                                 placeholder="Search mutual funds (e.g., Axis Bluechip, Small Cap)"
                                 value={searchQuery}
-                                onChange={(e) => {setSearchQuery(e.target.value); setShowFundDetails(false);}} // Hide details when searching again
+                                onChange={(e) => {setSearchQuery(e.target.value); setShowFundDetails(false);}}
                                 className="pl-8"
                             />
                         </div>
 
-                         {/* Search Results */}
                         {isLoading && searchQuery && <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-primary"/></div>}
                         {searchResults.length > 0 && !showFundDetails && (
                             <div className="space-y-2 max-h-60 overflow-y-auto border rounded-md p-2">
@@ -296,7 +224,6 @@ export default function MutualFundsPage() {
                             </div>
                         )}
 
-                         {/* Selected Fund & Investment Form */}
                          {showFundDetails && (
                              isLoading ? (
                                 <div className="mt-4 space-y-3">
@@ -321,13 +248,11 @@ export default function MutualFundsPage() {
                                          <Button type="button" variant={investmentType === 'SIP' ? 'default' : 'outline'} onClick={() => setInvestmentType('SIP')} className="flex-1">SIP</Button>
                                      </div>
 
-                                     {/* Investment Amount */}
                                      <div className="space-y-1">
                                          <Label htmlFor="amount">Amount (₹)</Label>
                                           <Input id="amount" type="number" placeholder={`Min ₹${investmentType === 'SIP' ? selectedFund.minSip : selectedFund.minInvestment}`} value={amount} onChange={e => setAmount(e.target.value)} required min={investmentType === 'SIP' ? selectedFund.minSip : selectedFund.minInvestment} />
                                      </div>
 
-                                     {/* SIP Specific Inputs */}
                                      {investmentType === 'SIP' && (
                                          <div className="grid grid-cols-2 gap-4">
                                              <div className="space-y-1">
@@ -363,7 +288,6 @@ export default function MutualFundsPage() {
                     </CardContent>
                 </Card>
 
-                 {/* Existing Holdings Display */}
                  <Card className="shadow-md">
                      <CardHeader>
                          <CardTitle className="text-base">Your Investments</CardTitle>
@@ -403,7 +327,3 @@ export default function MutualFundsPage() {
         </div>
     );
 }
-
-// Added destructiveOutline variant style to globals.css if needed
-// .btn-destructive-outline { ... }
-

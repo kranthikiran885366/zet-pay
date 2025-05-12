@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,32 +15,15 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
+import { mockTemplesData, mockPoojasData } from '@/mock-data'; // Import centralized mock data
 
-// Mock Data (Replace with actual API calls)
-const mockTemples = [ // Reuse from darshan page or fetch centrally
-    { id: 'tirupati', name: 'Tirumala Tirupati Devasthanams (TTD)' },
-    { id: 'shirdi', name: 'Shirdi Saibaba Sansthan Trust' },
-    { id: 'vaishno-devi', name: 'Vaishno Devi Shrine Board' },
-];
-
-interface PoojaDetails {
+export interface PoojaDetails { // Export for mock data file
     id: string;
     name: string;
     description: string;
     price: number;
-    duration: string; // e.g., "30 mins"
+    duration: string;
 }
-
-const mockPoojas: { [templeId: string]: PoojaDetails[] } = {
-    'tirupati': [
-        { id: 'ttd-archana', name: 'Archana Seva (Virtual)', description: 'Recitation of Lord\'s names.', price: 500, duration: '15 mins' },
-        { id: 'ttd-kalyanam', name: 'Kalyanotsavam (Virtual)', description: 'Celestial wedding ceremony participation.', price: 1000, duration: '45 mins' },
-    ],
-    'shirdi': [
-        { id: 'shirdi-abhishek', name: 'Abhishek Pooja (Virtual)', description: 'Sacred bathing ritual participation.', price: 750, duration: '30 mins' },
-        { id: 'shirdi-satyanarayan', name: 'Satyanarayan Pooja (Virtual)', description: 'Story and worship of Lord Satyanarayan.', price: 1100, duration: '60 mins' },
-    ]
-};
 
 export default function VirtualPoojaPage() {
     const [selectedTemple, setSelectedTemple] = useState<string>('');
@@ -47,26 +31,23 @@ export default function VirtualPoojaPage() {
     const [selectedPooja, setSelectedPooja] = useState<PoojaDetails | null>(null);
     const [poojaDate, setPoojaDate] = useState<Date | undefined>(new Date());
     const [devoteeName, setDevoteeName] = useState<string>('');
-    const [gotra, setGotra] = useState<string>(''); // Optional Gotra
+    const [gotra, setGotra] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
 
-    // Fetch poojas when temple changes
-    useState(() => {
+    useEffect(() => { // Changed useState to useEffect
         if (selectedTemple) {
             setIsLoading(true);
-            setSelectedPooja(null); // Reset selection
-            // Simulate fetching
+            setSelectedPooja(null);
             setTimeout(() => {
-                setAvailablePoojas(mockPoojas[selectedTemple] || []);
+                setAvailablePoojas(mockPoojasData[selectedTemple] || []);
                 setIsLoading(false);
             }, 500);
         } else {
             setAvailablePoojas([]);
             setSelectedPooja(null);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedTemple]);
 
 
@@ -91,14 +72,11 @@ export default function VirtualPoojaPage() {
             amount: selectedPooja.price
         });
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 2000));
             toast({ title: "Pooja Booked Successfully!", description: `${selectedPooja.name} booked for ${devoteeName} on ${format(poojaDate, 'PPP')}.` });
-            // Reset form
             setSelectedPooja(null);
             setDevoteeName('');
             setGotra('');
-            // Optionally reset temple/date
         } catch (error) {
             console.error("Pooja booking failed:", error);
             toast({ variant: "destructive", title: "Booking Failed" });
@@ -129,18 +107,16 @@ export default function VirtualPoojaPage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleConfirmBooking} className="space-y-4">
-                             {/* Temple Selection */}
                              <div className="space-y-1">
                                 <Label htmlFor="temple">Select Temple</Label>
                                 <Select value={selectedTemple} onValueChange={setSelectedTemple} required>
                                     <SelectTrigger id="temple"><SelectValue placeholder="Select Temple" /></SelectTrigger>
                                     <SelectContent>
-                                        {mockTemples.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
+                                        {mockTemplesData.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                             {/* Pooja Selection */}
                              {selectedTemple && (
                                 <div className="space-y-1">
                                     <Label htmlFor="pooja">Select Pooja Service</Label>
@@ -158,8 +134,6 @@ export default function VirtualPoojaPage() {
                             )}
                              {selectedPooja && <p className="text-xs text-muted-foreground pl-1">{selectedPooja.description}</p>}
 
-
-                            {/* Date Selection */}
                             {selectedPooja && (
                                 <div className="space-y-1">
                                     <Label htmlFor="poojaDate">Select Date</Label>
@@ -171,13 +145,12 @@ export default function VirtualPoojaPage() {
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
-                                            <Calendar mode="single" selected={poojaDate} onSelect={setPoojaDate} initialFocus disabled={(date) => date &lt; new Date(new Date().setHours(0,0,0,0))}/>
+                                            <Calendar mode="single" selected={poojaDate} onSelect={setPoojaDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}/>
                                         </PopoverContent>
                                     </Popover>
                                 </div>
                             )}
 
-                             {/* Devotee Details */}
                             {selectedPooja && poojaDate && (
                                 <>
                                     <Separator/>

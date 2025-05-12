@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,30 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
-
-// Mock Data (Replace with actual API calls/data)
-interface GiftCardBrand {
-    id: string;
-    name: string;
-    logoUrl?: string;
-    categories: string[];
-    denominations: number[]; // Available fixed amounts
-    allowCustomAmount: boolean;
-    minCustomAmount?: number;
-    maxCustomAmount?: number;
-}
-const mockBrands: GiftCardBrand[] = [
-    { id: 'amazon', name: 'Amazon Pay Gift Card', logoUrl: '/logos/amazon.png', categories: ['Shopping', 'Popular'], denominations: [100, 250, 500, 1000, 2000], allowCustomAmount: true, minCustomAmount: 50, maxCustomAmount: 10000 },
-    { id: 'flipkart', name: 'Flipkart Gift Card', logoUrl: '/logos/flipkart.png', categories: ['Shopping', 'Popular'], denominations: [250, 500, 1000, 2500, 5000], allowCustomAmount: false },
-    { id: 'myntra', name: 'Myntra Gift Card', logoUrl: '/logos/myntra.png', categories: ['Fashion'], denominations: [500, 1000, 2000, 5000], allowCustomAmount: true, minCustomAmount: 100 },
-    { id: 'bookmyshow', name: 'BookMyShow Gift Card', logoUrl: '/logos/bookmyshow.png', categories: ['Entertainment'], denominations: [250, 500, 1000], allowCustomAmount: true, minCustomAmount: 100 },
-];
-
-const mockCategories = ['All', 'Popular', 'Shopping', 'Fashion', 'Entertainment', 'Grocery', 'Travel'];
+import { mockGiftCardBrandsData, mockGiftCardCategoriesData, GiftCardBrand } from '@/mock-data'; // Import centralized mock data
 
 export default function GiftCardPurchasePage() {
-    const [brands] = useState<GiftCardBrand[]>(mockBrands);
-    const [filteredBrands, setFilteredBrands] = useState<GiftCardBrand[]>(mockBrands);
+    const [brands] = useState<GiftCardBrand[]>(mockGiftCardBrandsData);
+    const [filteredBrands, setFilteredBrands] = useState<GiftCardBrand[]>(mockGiftCardBrandsData);
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedBrand, setSelectedBrand] = useState<GiftCardBrand | null>(null);
@@ -96,15 +78,13 @@ export default function GiftCardPurchasePage() {
             toast({ variant: "destructive", title: "Missing Information", description: "Please select brand, amount, and enter recipient details." });
             return;
         }
-        // Add more validation logic if needed based on brand rules
-        // ...
 
         setIsProcessing(true);
         console.log("Purchasing Gift Card:", { brand: selectedBrand.name, amount: finalAmount, recipientName, recipientEmail, senderName, message });
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Gift Card Purchased!", description: `₹${finalAmount} ${selectedBrand.name} gift card sent to ${recipientEmail}.` });
-            setSelectedBrand(null); // Go back to brand selection
+            setSelectedBrand(null);
         } catch (err) {
             console.error("Gift card purchase failed:", err);
             toast({ variant: "destructive", title: "Purchase Failed" });
@@ -132,7 +112,7 @@ export default function GiftCardPurchasePage() {
                             <CardTitle>Select a Brand</CardTitle>
                             <Input type="search" placeholder="Search brands (e.g., Amazon, Myntra)" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="mt-2" />
                             <div className="flex flex-wrap gap-2 pt-3">
-                                {mockCategories.map(cat => (
+                                {mockGiftCardCategoriesData.map(cat => (
                                     <Button key={cat} variant={selectedCategory === cat ? "default" : "outline"} size="sm" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
                                 ))}
                             </div>

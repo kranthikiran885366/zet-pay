@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -9,68 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-
-// Mock Data Interface
-interface PurchasedPass {
-    passId: string;
-    purchaseId: string;
-    operatorName: string;
-    operatorLogo?: string;
-    passName: string;
-    passengerName: string;
-    passengerPhotoUrl?: string; // Optional URL to uploaded photo
-    validFrom: Date;
-    validUntil: Date;
-    status: 'Active' | 'Expired' | 'Pending Verification' | 'Rejected';
-    qrCodeData?: string; // Data for generating QR code
-    downloadUrl?: string; // URL to download pass PDF/image
-}
-
-// Mock Data (Replace with actual API calls)
-const mockPurchasedPasses: PurchasedPass[] = [
-    {
-        passId: 'bmtc-monthly-nonac',
-        purchaseId: 'pur123',
-        operatorName: 'BMTC',
-        operatorLogo: '/logos/bmtc.png', // Assuming you have logos
-        passName: 'Monthly Pass (Non-AC)',
-        passengerName: 'Chandra Sekhar',
-        passengerPhotoUrl: 'https://picsum.photos/seed/user/100/100',
-        validFrom: new Date(2024, 6, 1),
-        validUntil: new Date(2024, 6, 31),
-        status: 'Active',
-        qrCodeData: 'BMTC_PASS_1234567890_ACTIVE',
-        downloadUrl: '/api/download/pass/pur123' // Example download link
-    },
-    {
-        passId: 'best-student-quarterly',
-        purchaseId: 'pur456',
-        operatorName: 'BEST',
-        operatorLogo: '/logos/best.png',
-        passName: 'Student Quarterly Pass',
-        passengerName: 'Test Student',
-        passengerPhotoUrl: 'https://picsum.photos/seed/student/100/100',
-        validFrom: new Date(2024, 5, 15),
-        validUntil: new Date(2024, 8, 14),
-        status: 'Pending Verification',
-        qrCodeData: undefined, // No QR until verified
-        downloadUrl: undefined
-    },
-     {
-        passId: 'bmtc-daily',
-        purchaseId: 'pur789',
-        operatorName: 'BMTC',
-         operatorLogo: '/logos/bmtc.png',
-        passName: 'Daily Pass',
-        passengerName: 'Chandra Sekhar',
-         passengerPhotoUrl: 'https://picsum.photos/seed/user/100/100',
-        validFrom: new Date(2024, 5, 20),
-        validUntil: new Date(2024, 5, 20, 23, 59, 59),
-        status: 'Expired',
-        qrCodeData: 'BMTC_PASS_9876543210_EXPIRED',
-        downloadUrl: undefined
-    },
-];
+import { mockPurchasedPassesData, PurchasedPass } from '@/mock-data'; // Import centralized mock data
 
 export default function MyBusPassesPage() {
     const [passes, setPasses] = useState<PurchasedPass[]>([]);
@@ -80,15 +20,13 @@ export default function MyBusPassesPage() {
     const fetchPasses = async () => {
         setIsLoading(true);
         try {
-            // TODO: Replace with actual API call to fetch user's purchased passes
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-            // Filter passes (e.g., show active/pending first) - simple sort for now
-            const sortedPasses = mockPurchasedPasses.sort((a, b) => {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const sortedPasses = mockPurchasedPassesData.sort((a, b) => {
                 const statusOrder = { 'Active': 1, 'Pending Verification': 2, 'Rejected': 3, 'Expired': 4 };
                 if (statusOrder[a.status] !== statusOrder[b.status]) {
                     return statusOrder[a.status] - statusOrder[b.status];
                 }
-                return b.validUntil.getTime() - a.validUntil.getTime(); // Show newest expiry first within same status
+                return new Date(b.validUntil).getTime() - new Date(a.validUntil).getTime();
             });
             setPasses(sortedPasses);
         } catch (error) {
@@ -109,7 +47,6 @@ export default function MyBusPassesPage() {
             toast({ variant: "destructive", title: "Download Not Available" });
             return;
         }
-         // Simulate download - in real app, would open the URL
         window.open(pass.downloadUrl, '_blank');
         toast({ title: "Downloading Pass...", description: `${pass.passName} for ${pass.passengerName}` });
     };
@@ -138,7 +75,7 @@ export default function MyBusPassesPage() {
         <div className="min-h-screen bg-secondary flex flex-col">
             {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-                <Link href="/passes/bus" passHref> {/* Link back to the application page */}
+                <Link href="/passes/bus" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
@@ -192,11 +129,11 @@ export default function MyBusPassesPage() {
                         <CardContent className="p-4 space-y-3">
                              <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Valid From:</span>
-                                <span className="font-medium">{format(pass.validFrom, 'PPP')}</span>
+                                <span className="font-medium">{format(new Date(pass.validFrom), 'PPP')}</span>
                             </div>
                              <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Valid Until:</span>
-                                <span className="font-medium">{format(pass.validUntil, 'PPP')}</span>
+                                <span className="font-medium">{format(new Date(pass.validUntil), 'PPP')}</span>
                             </div>
                              {pass.status === 'Pending Verification' && (
                                 <div className="text-xs text-yellow-700 flex items-center gap-1"><Info className="h-3 w-3"/>Verification may take 1-2 working days.</div>
@@ -210,8 +147,8 @@ export default function MyBusPassesPage() {
                                     variant="outline"
                                     size="sm"
                                     className="flex-1"
-                                    disabled={pass.status !== 'Active' || !pass.qrCodeData} // Only show QR for active passes
-                                    onClick={() => alert(`Showing QR Code for pass ${pass.purchaseId}`)} // TODO: Implement QR display modal
+                                    disabled={pass.status !== 'Active' || !pass.qrCodeData}
+                                    onClick={() => alert(`Showing QR Code for pass ${pass.purchaseId}`)}
                                 >
                                     Show QR Code
                                 </Button>
@@ -219,7 +156,7 @@ export default function MyBusPassesPage() {
                                     variant="secondary"
                                     size="sm"
                                     className="flex-1"
-                                    disabled={!pass.downloadUrl || pass.status === 'Pending Verification'} // Disable if no URL or pending
+                                    disabled={!pass.downloadUrl || pass.status === 'Pending Verification'}
                                     onClick={() => handleDownloadPass(pass)}
                                 >
                                     <Download className="mr-2 h-4 w-4" /> Download Pass

@@ -1,34 +1,25 @@
+
 'use client';
 
-import { useParams, useRouter } from 'next/navigation'; // Added useRouter
+import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, Tag, Gift, Sparkles, Info, CalendarDays, Check, Loader2, Building } from 'lucide-react'; // Added Building
+import { ArrowLeft, Tag, Gift, Sparkles, Info, CalendarDays, Check, Loader2, Building } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { getOfferDetails, Offer } from '@/services/offers'; // Use actual service
+import { getOfferDetails } from '@/services/offers'; // Use actual service
+import type { DisplayOffer } from '@/mock-data'; // Import DisplayOffer from centralized mock data
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { format } from 'date-fns'; // To format dates
-
-// Extend Offer interface for details page
-interface OfferDetails extends Offer {
-  terms: string;
-  validity: string; // Keep as string for display, maybe store Date object too
-  category?: 'Cashback' | 'Coupon' | 'Partner'; // Use category from list page
-  claimed?: boolean;
-}
-
-// Keep using mock data source from service
-// const mockOfferDetails = (id: string): OfferDetails | null => { ... };
+import { format } from 'date-fns';
 
 export default function OfferDetailsPage() {
   const params = useParams();
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
   const offerId = typeof params.id === 'string' ? params.id : '';
-  const [offer, setOffer] = useState<OfferDetails | null>(null);
+  const [offer, setOffer] = useState<DisplayOffer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isClaiming, setIsClaiming] = useState(false);
   const { toast } = useToast();
@@ -42,26 +33,24 @@ export default function OfferDetailsPage() {
       };
       setIsLoading(true);
       try {
-        // Replace with actual API call
         const fetchedOffer = await getOfferDetails(offerId);
         if (!fetchedOffer) {
              throw new Error("Offer not found");
         }
-        // Map the fetched data to OfferDetails interface
-        const details: OfferDetails = {
+        const details: DisplayOffer = {
             ...fetchedOffer,
-            terms: fetchedOffer.terms || "1. Standard T&Cs apply.\n2. Offer valid once per user.\n3. Cannot be clubbed with other offers.", // Default T&Cs
-            validity: fetchedOffer.validUntil ? `Valid until ${format(new Date(fetchedOffer.validUntil), 'PPP')}` : "Validity not specified", // Format date
+            terms: fetchedOffer.terms || "1. Standard T&Cs apply.\n2. Offer valid once per user.\n3. Cannot be clubbed with other offers.",
+            validity: fetchedOffer.validUntil ? `Valid until ${format(new Date(fetchedOffer.validUntil), 'PPP')}` : "Validity not specified",
             category: fetchedOffer.offerType === 'Cashback' ? 'Cashback' :
                       fetchedOffer.offerType === 'Coupon' ? 'Coupon' :
-                      'Partner', // Assign category
-            claimed: false // Check actual claimed status from user data
+                      'Partner',
+            claimed: false // This should be fetched from user-specific data
         };
         setOffer(details);
       } catch (error: any) {
         console.error("Failed to fetch offer details:", error);
         toast({ variant: "destructive", title: "Could not load offer details", description: error.message });
-         setOffer(null); // Ensure offer is null on error
+         setOffer(null);
       } finally {
         setIsLoading(false);
       }
@@ -74,13 +63,10 @@ export default function OfferDetailsPage() {
 
      setIsClaiming(true);
      try {
-        // TODO: Call actual API to claim the offer
         console.log(`Claiming offer ${offer.offerId}`);
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 1500));
         setOffer(prev => prev ? {...prev, claimed: true} : null);
         toast({title: "Offer Claimed Successfully!"});
-        // Optionally redirect or update UI further
-        // router.push('/profile/rewards');
      } catch (error) {
         console.error("Failed to claim offer:", error);
         toast({variant: "destructive", title: "Failed to claim offer"});
@@ -92,10 +78,10 @@ export default function OfferDetailsPage() {
   const Icon = offer?.category === 'Cashback' ? Sparkles : offer?.category === 'Coupon' ? Tag : Building;
   const accentColor = offer?.category === 'Cashback' ? 'text-yellow-700' :
                       offer?.category === 'Coupon' ? 'text-blue-700' :
-                      'text-purple-700'; // Example color for Partner
+                      'text-purple-700';
   const accentBgColor = offer?.category === 'Cashback' ? 'bg-yellow-100' :
                         offer?.category === 'Coupon' ? 'bg-blue-100' :
-                        'bg-purple-100'; // Example bg color
+                        'bg-purple-100';
 
 
   return (

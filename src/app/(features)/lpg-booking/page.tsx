@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -11,36 +12,19 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { processBillPayment } from '@/services/bills'; // Use bill payment service
-
-// Mock Data
-interface LpgProvider {
-    id: string;
-    name: string;
-    logoUrl?: string;
-    identifierLabel: string; // e.g., Consumer No, Registered Mobile
-    identifierPlaceholder: string;
-}
-const mockLpgProviders: LpgProvider[] = [
-    { id: 'indane', name: 'Indane Gas (IndianOil)', logoUrl: '/logos/indane.png', identifierLabel: 'LPG ID / Registered Mobile', identifierPlaceholder: 'Enter LPG ID or Mobile No.' },
-    { id: 'hp-gas', name: 'HP Gas', logoUrl: '/logos/hp_gas.png', identifierLabel: 'Consumer Number / Mobile No.', identifierPlaceholder: 'Enter Consumer No. or Mobile No.' },
-    { id: 'bharat-gas', name: 'Bharat Gas (BPCL)', logoUrl: '/logos/bharat_gas.png', identifierLabel: 'Consumer Number / Mobile No.', identifierPlaceholder: 'Enter Consumer No. or Mobile No.' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockLpgProvidersData, LpgProvider } from '@/mock-data'; // Import centralized mock data
 
 export default function LpgBookingPage() {
-    const [providers, setProviders] = useState<LpgProvider[]>(mockLpgProviders);
+    const [providers, setProviders] = useState<LpgProvider[]>(mockLpgProvidersData);
     const [selectedProvider, setSelectedProvider] = useState<string>('');
     const [identifier, setIdentifier] = useState('');
-    const [amount, setAmount] = useState<string>(''); // Amount might be fetched or fixed
+    const [amount, setAmount] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
     const providerDetails = providers.find(p => p.id === selectedProvider);
-
-    // useEffect(() => {
-    //     // Fetch actual LPG providers if API exists
-    // }, []);
 
     const handleBookCylinder = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -48,27 +32,24 @@ export default function LpgBookingPage() {
             toast({ variant: "destructive", title: "Missing Information" });
             return;
         }
-        // Amount might be fetched/fixed by the provider, or user might enter it depending on the flow
-        const bookingAmount = Number(amount) || 1000; // Example: Assume a fixed price or fetch it
+        const bookingAmount = Number(amount) || 1000;
 
         setIsProcessing(true);
         const providerName = providerDetails?.name || 'LPG Booking';
         try {
-            // Use processBillPayment or a dedicated booking API
             const paymentDetails = {
                 billerId: selectedProvider,
                 identifier: identifier,
                 amount: bookingAmount,
-                billerType: 'LPG', // Define a specific type
+                billerType: 'LPG',
                 billerName: `Booking for ${providerName}`,
             };
-            // We assume booking implicitly includes payment here
             const transactionResult = await processBillPayment(paymentDetails);
 
             if (transactionResult.status === 'Completed') {
                 toast({ title: "Booking Successful!", description: `LPG cylinder booked for ${identifier} with ${providerName}. Refill expected soon.` });
                 setIdentifier('');
-                setAmount(''); // Reset amount if it was entered
+                setAmount('');
             } else {
                 throw new Error(`Booking ${transactionResult.status}`);
             }
@@ -131,15 +112,8 @@ export default function LpgBookingPage() {
                                 </div>
                             )}
 
-                            {/* Optional Amount Input - Often price is fixed/fetched */}
-                            {/* <div className="space-y-1">
-                                <Label htmlFor="amount">Amount (₹)</Label>
-                                <Input id="amount" type="number" placeholder="Amount (usually fetched)" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-                            </div> */}
-
                             <div className="pt-4">
                                 <Separator className="mb-4"/>
-                                {/* Display Fetched/Fixed Price Here if applicable */}
                                 <p className='text-center text-muted-foreground text-sm mb-3'>Refill Amount: ₹1000.00 (Example)</p>
                                 <Button
                                     type="submit"

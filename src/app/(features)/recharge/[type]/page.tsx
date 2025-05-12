@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban, HardDrive, Ticket, TramFront, Train, Play } from 'lucide-react';
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2 as TvIcon, Lock, AlarmClockOff, Ban, HardDrive, Ticket, TramFront, Train, Play } from 'lucide-react';
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge';
 import { getContacts, Payee } from '@/services/contacts';
@@ -16,7 +17,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, addDays, isBefore, differenceInMinutes } from "date-fns";
@@ -28,22 +29,23 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
 import { getWalletBalance } from '@/services/wallet';
-import { getBankStatus, BankAccount } from '@/services/upi';
+import { getBankStatus } from '@/services/upi'; // Removed BankAccount since it's not directly used
 import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions';
 import { auth } from '@/lib/firebase';
+import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData } from '@/mock-data'; // Import from centralized mock data
 
 // Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
 // Map types to icons and titles
-const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string; identifierLabel: string; searchPlaceholder: string; recentLabel: string } } = {
-  mobile: { icon: Smartphone, title: "Mobile Recharge", identifierLabel: "Mobile Number", searchPlaceholder: "Enter mobile number or name", recentLabel: "Recents & Contacts"},
-  dth: { icon: Tv, title: "DTH Recharge", identifierLabel: "DTH Subscriber ID", searchPlaceholder: "Enter Customer ID or Mobile No.", recentLabel: "Recent DTH Providers"},
-  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers" },
-  fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers"},
-  datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers" },
-  buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes" },
-  metro: { icon: TramFront, title: "Metro Recharge", identifierLabel: "Metro Card Number", searchPlaceholder: "Enter Card Number", recentLabel: "Recent Metros"},
+const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string; identifierLabel: string; searchPlaceholder: string; recentLabel: string, billerTypeForAPI: string } } = {
+  mobile: { icon: Smartphone, title: "Mobile Recharge", identifierLabel: "Mobile Number", searchPlaceholder: "Enter mobile number or name", recentLabel: "Recents & Contacts", billerTypeForAPI: "Mobile"},
+  dth: { icon: Tv, title: "DTH Recharge", identifierLabel: "DTH Subscriber ID", searchPlaceholder: "Enter Customer ID or Mobile No.", recentLabel: "Recent DTH Providers", billerTypeForAPI: "Dth"},
+  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers", billerTypeForAPI: "Electricity" }, // Used for prepaid
+  fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers", billerTypeForAPI: "Fastag"},
+  datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers", billerTypeForAPI: "Datacard" },
+  buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes", billerTypeForAPI: "Buspass"},
+  metro: { icon: TramFront, title: "Metro Recharge", identifierLabel: "Metro Card Number", searchPlaceholder: "Enter Card Number", recentLabel: "Recent Metros", billerTypeForAPI: "Metro"},
 };
 
 
@@ -64,12 +66,8 @@ const mockSavedNumbers: Payee[] = [
   { id: 'friend2', name: 'Bob', identifier: '9112233440', type: 'mobile', avatarSeed: 'bob'},
    { id: 'self', name: 'Self', identifier: '9876501234', type: 'mobile', avatarSeed: 'self'},
 ];
-const mockRecentDthProviders: Biller[] = [
-    { billerId: 'tata-play', billerName: 'Tata Play', billerType: 'DTH', logoUrl: '/logos/tataplay.png' },
-    { billerId: 'airtel-dth', billerName: 'Airtel Digital TV', billerType: 'DTH', logoUrl: '/logos/airtel.png' },
-    { billerId: 'dish-tv', billerName: 'Dish TV', billerType: 'DTH', logoUrl: '/logos/dishtv.png' },
-    { billerId: 'd2h', billerName: 'd2h', billerType: 'DTH', logoUrl: '/logos/d2h.png' },
-];
+const mockRecentDthProviders: Biller[] = mockBillersData.Dth || [];
+
 
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
     let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -88,10 +86,10 @@ export default function RechargePage() {
   const router = useRouter();
   
   let rechargePageType = 'mobile';
-  if (typeof params.type === 'string') {
+  if (typeof params.type === 'string' && rechargeTypeDetails[params.type]) {
     rechargePageType = params.type;
-  } else if (Array.isArray(params.type)) {
-    rechargePageType = params.type.join('/'); // Or handle as error, or take first element
+  } else if (Array.isArray(params.type) && rechargeTypeDetails[params.type[0]]) {
+    rechargePageType = params.type[0]; 
   }
 
 
@@ -103,7 +101,8 @@ export default function RechargePage() {
   const [detectedOperator, setDetectedOperator] = useState<Biller | null>(null);
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false); // General loading for payment processing
+  const [isLoadingBillers, setIsLoadingBillers] = useState<boolean>(false); // Specific for biller loading
   const [error, setError] = useState<string | null>(null);
   const [isManualOperatorSelect, setIsManualOperatorSelect] = useState(false);
   const [rechargePlans, setRechargePlans] = useState<RechargePlan[]>([]);
@@ -137,13 +136,14 @@ export default function RechargePage() {
       try {
          const userId = auth.currentUser?.uid;
          if (userId) {
-            const balance = await getWalletBalance();
+            const balance = await getWalletBalance(); // No need to pass userId if service infers
             setAccountBalance(balance);
          } else {
-            setAccountBalance(0);
+            setAccountBalance(0); // Or null if prefer to show 'Login to see balance'
          }
       } catch (err) {
         console.error("Failed to fetch wallet balance:", err);
+        setAccountBalance(0); // Fallback on error
       } finally {
         setIsBalanceLoading(false);
       }
@@ -154,22 +154,23 @@ export default function RechargePage() {
 
   useEffect(() => {
     async function fetchBillersData() {
-      if (!['mobile', 'dth', 'fastag', 'electricity', 'datacard', 'buspass', 'metro'].includes(rechargePageType)) return;
-      setIsLoading(true);
+      if (!details.billerTypeForAPI) return;
+      setIsLoadingBillers(true);
       setError(null);
       try {
-        const fetchedBillers = await getBillers(capitalize(rechargePageType));
-        setBillers(fetchedBillers);
+        const fetchedBillers = await getBillers(details.billerTypeForAPI);
+        setBillers(fetchedBillers.length > 0 ? fetchedBillers : (mockBillersData[details.billerTypeForAPI] || []));
       } catch (err) {
         setError('Failed to load operators. Please try again.');
         console.error(err);
         toast({ variant: "destructive", title: "Could not load operators" });
+        setBillers(mockBillersData[details.billerTypeForAPI] || []); // Fallback to mock
       } finally {
-        setIsLoading(false);
+        setIsLoadingBillers(false);
       }
     }
     fetchBillersData();
-  }, [rechargePageType, toast]);
+  }, [details.billerTypeForAPI, toast]);
 
    useEffect(() => {
      let shouldFetch = false;
@@ -200,9 +201,9 @@ export default function RechargePage() {
         detectFastagOperator();
      }
 
-     const isMobileInvalid = rechargePageType === 'mobile' && !identifier.match(/^[6-9]\d{9}$/);
-     const isDthInvalid = rechargePageType === 'dth' && identifier.length <= 5;
-     const isFastagInvalid = rechargePageType === 'fastag' && identifier.length <= 10;
+     const isMobileInvalid = rechargePageType === 'mobile' && identifier && !identifier.match(/^[6-9]\d{9}$/);
+     const isDthInvalid = rechargePageType === 'dth' && identifier && identifier.length <= 5;
+     const isFastagInvalid = rechargePageType === 'fastag' && identifier && identifier.length <= 10;
 
      if (isMobileInvalid || isDthInvalid || isFastagInvalid || !identifier) {
         setDetectedOperator(null);
@@ -211,7 +212,7 @@ export default function RechargePage() {
         setRechargePlans([]);
      }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [identifier, rechargePageType, isManualOperatorSelect]);
+   }, [identifier, rechargePageType, isManualOperatorSelect]); // Removed detectMobileOperator from deps to avoid loop
 
   useEffect(() => {
     if (selectedBiller) {
@@ -222,7 +223,7 @@ export default function RechargePage() {
       } else {
         setRechargePlans([]);
       }
-       fetchBankStatus(selectedBiller);
+       fetchBankStatusForBiller(selectedBiller); // Fetch bank status for selected biller
     } else {
       setRechargePlans([]);
       setSelectedBillerName('');
@@ -231,14 +232,16 @@ export default function RechargePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBiller, rechargePageType]);
 
-    const fetchBankStatus = async (billerId: string) => {
-      const bankIdentifier = 'mockBank';
+    const fetchBankStatusForBiller = async (billerId: string) => {
+      // This is a placeholder. In a real app, you'd map billerId to a bank identifier
+      // or the PSP API would provide this status.
+      const mockBankIdentifierForBiller = billerId.includes('airtel') ? 'airtelbank' : billerId.includes('jio') ? 'jiopaymentsbank' : 'genericupi';
       try {
-        const status = await getBankStatus(bankIdentifier);
+        const status = await getBankStatus(mockBankIdentifierForBiller);
         setBankStatus(status);
       } catch (error) {
-        console.error("Failed to fetch bank status:", error);
-        setBankStatus(null);
+        console.error("Failed to fetch bank status for biller:", error);
+        setBankStatus(null); // Or 'Active' as default
       }
     };
 
@@ -254,8 +257,8 @@ export default function RechargePage() {
 
   const handleRecharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((rechargePageType === 'mobile' || rechargePageType === 'dth' || rechargePageType === 'fastag' || rechargePageType === 'datacard' || rechargePageType === 'buspass') && !selectedBiller) {
-      setError("Please select an operator/provider.");
+    if (!selectedBiller && !detectedOperator) {
+      setError("Please select an operator/provider or let it auto-detect.");
       toast({ variant: "destructive", title: "Operator Missing" });
       return;
     }
@@ -270,26 +273,39 @@ export default function RechargePage() {
       return;
     }
      if (accountBalance !== null && Number(amount) > accountBalance) {
-        setError(`Insufficient wallet balance (₹${accountBalance.toFixed(2)}). Please add funds.`);
+        setError(`Insufficient wallet balance (Available: ₹${accountBalance.toFixed(2)}). Please add funds or choose another payment method.`);
         toast({ variant: "destructive", title: "Insufficient Balance" });
         return;
     }
+    if (bankStatus === 'Down') {
+        setError(`The operator's payment system seems to be down. Please try again later or contact support.`);
+        toast({ variant: "destructive", title: "Operator Server Down" });
+        return;
+    }
+
 
     setError(null);
     setIsLoading(true);
-    console.log("Processing recharge:", { type: rechargePageType, selectedBiller, identifier, amount, couponCode });
+    const finalBillerId = selectedBiller || detectedOperator?.billerId;
+    console.log("Processing recharge:", { type: rechargePageType, billerId: finalBillerId, identifier, amount, couponCode });
 
     try {
-        const result = await processRecharge(rechargePageType, identifier, Number(amount), selectedBiller, selectedPlan?.planId, couponCode);
-        toast({ title: `Recharge ${result.status}`, description: `Recharge for ${identifier} of ₹${amount} is ${result.status.toLowerCase()}.` });
+        // Ensure finalBillerId is defined before calling processRecharge
+        if (!finalBillerId) {
+            throw new Error("Operator/Biller ID is undefined. Cannot proceed.");
+        }
+        const result = await processRecharge(rechargePageType, identifier, Number(amount), finalBillerId, selectedPlan?.planId, couponCode);
+        toast({ title: `Recharge ${result.status}`, description: `Recharge for ${identifier} of ₹${amount} is ${result.status.toLowerCase()}. Txn ID: ${result.id}` });
         if (result.status === 'Completed' || result.status === 'Processing Activation') {
              setAmount('');
              setSelectedPlan(null);
              setCouponCode('');
              fetchHistory(identifier);
-             if(result.status === 'Processing Activation') {
+             if(result.status === 'Processing Activation' && result.id) {
                 pollActivationStatus(result.id);
              }
+        } else {
+             throw new Error(`Recharge ${result.status || 'Failed'}`);
         }
     } catch (err: any) {
          console.error("Recharge failed:", err);
@@ -303,47 +319,68 @@ export default function RechargePage() {
   const pollActivationStatus = async (txnId: string) => {
     setCheckingActivationTxnId(txnId);
     let attempts = 0;
-    const maxAttempts = 5;
-    const intervalTime = 5000;
+    const maxAttempts = 5; // Poll 5 times
+    const intervalTime = 5000; // 5 seconds interval
 
     const check = async () => {
       attempts++;
       try {
         const status = await checkActivationStatus(txnId);
+        toast({ description: `Activation status for ${txnId}: ${status}` });
         if (status === 'Completed') {
           toast({ title: "Activation Complete", description: `Recharge ${txnId} is now active.` });
           setCheckingActivationTxnId(null);
-          fetchHistory(identifier);
+          fetchHistory(identifier); // Refresh history to show updated status
         } else if (status === 'Failed') {
           toast({ variant: "destructive", title: "Activation Failed", description: `Recharge ${txnId} failed to activate.` });
           setCheckingActivationTxnId(null);
           fetchHistory(identifier);
         } else if (attempts < maxAttempts) {
+          // Still pending or processing, schedule next check
           setTimeout(check, intervalTime);
         } else {
-          toast({ title: "Activation Pending", description: `Activation for ${txnId} is still processing. Please check history later.` });
+          // Max attempts reached, still not completed
+          toast({ title: "Activation Pending", description: `Activation for ${txnId} is still processing. Please check history later for final status.` });
           setCheckingActivationTxnId(null);
         }
       } catch (error) {
         console.error("Error checking activation status:", error);
+        toast({ variant: "destructive", title: "Status Check Error", description: "Could not verify activation status." });
         setCheckingActivationTxnId(null);
       }
     };
+    // Start the first check
     setTimeout(check, intervalTime);
   };
 
 
   const fetchRechargePlans = async () => {
-    if (!selectedBiller) return;
+    const billerToFetch = selectedBiller || detectedOperator?.billerId;
+    if (!billerToFetch) return;
+
     setIsPlanLoading(true);
-    setRechargePlans([]);
+    setRechargePlans([]); // Clear previous plans
     try {
-      console.log(`Fetching plans for ${selectedBillerName} (${selectedBiller}) - Type: ${rechargePageType}`);
-      const fetchedPlans = await getRechargePlans(selectedBiller, rechargePageType, identifier);
-      setRechargePlans(fetchedPlans);
+      console.log(`Fetching plans for ${selectedBillerName || detectedOperator?.billerName} (${billerToFetch}) - Type: ${rechargePageType}`);
+      const fetchedPlans = await getRechargePlans(billerToFetch, rechargePageType, identifier);
+      if (fetchedPlans && fetchedPlans.length > 0) {
+        setRechargePlans(fetchedPlans);
+      } else {
+         // Use mock data if API returns empty for specific types
+         if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
+         else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
+         else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
+         else setRechargePlans([]); // No plans for other types or empty API response
+         if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
+      }
     } catch (error) {
       console.error("Failed to fetch recharge plans:", error);
       toast({ variant: "destructive", title: "Could not load recharge plans" });
+      // Fallback to mock if API fails
+      if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
+      else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
+      else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
+      else setRechargePlans([]);
     } finally {
       setIsPlanLoading(false);
     }
@@ -365,35 +402,55 @@ export default function RechargePage() {
          (typeof plan.channels === 'number' && plan.channels.toString().includes(lowerSearch))
        );
      }
+     // Define base categories based on recharge type
      const baseCategories = rechargePageType === 'mobile'
          ? ['Popular', 'Data', 'Unlimited', 'Talktime', 'SMS', 'Roaming', 'Annual', 'Top-up']
          : rechargePageType === 'dth'
          ? ['Recommended', 'Basic Packs', 'HD Packs', 'Premium Packs', 'Add-Ons', 'Top-Up Packs']
-         : [];
+         : rechargePageType === 'datacard' // Added datacard categories
+         ? ['Monthly', 'Work From Home', 'Add-On', 'Annual']
+         : []; // Add more types as needed
 
      let dynamicCategories = [...baseCategories];
 
+     // Group plans by category
      const grouped = plans.reduce((acc, plan) => {
-         let category = plan.category || 'Other';
+         let category = plan.category || 'Other'; // Default to 'Other' if no category
+          // Special handling for mobile offers
           if (rechargePageType === 'mobile') {
-            if (plan.isOffer) category = 'Offers';
+            if (plan.isOffer) category = 'Offers'; // Prioritize 'Offers' category
           }
          if (!acc[category]) acc[category] = [];
          acc[category].push(plan);
          return acc;
      }, {} as Record<string, RechargePlan[]>);
 
+      // Add 'Offers' to the beginning if it exists and is for mobile
       if (rechargePageType === 'mobile') {
-         if (grouped['Offers']) dynamicCategories.unshift('Offers');
+         if (grouped['Offers'] && !dynamicCategories.includes('Offers')) {
+            dynamicCategories.unshift('Offers');
+         }
       }
 
+     // Filter out categories that don't have any plans after search filtering
      let finalCategories = dynamicCategories.filter(cat => grouped[cat]?.length > 0);
-     if (grouped['Other']?.length > 0 && !finalCategories.includes('Other')) finalCategories.push('Other');
+     // Add 'Other' category if it has plans and isn't already included
+     if (grouped['Other']?.length > 0 && !finalCategories.includes('Other')) {
+        finalCategories.push('Other');
+     }
 
+     // If search term yields results, show them under a "Search Results" pseudo-category
      if(planSearchTerm && plans.length > 0) {
          return { filteredPlansByCategory: { "Search Results": plans } , planCategories: ["Search Results"] };
      }
-     if (Object.keys(grouped).length === 0 && !isPlanLoading) {
+     // If no plans match after grouping (and no search term active)
+     if (finalCategories.length === 0 && Object.keys(grouped).length > 0 && !planSearchTerm) {
+        // Show all plans under a generic "All Plans" category if base/dynamic categories didn't match
+         finalCategories = ["All Plans"];
+         grouped["All Plans"] = rechargePlans;
+     }
+
+     if (Object.keys(grouped).length === 0 && !isPlanLoading && !planSearchTerm) { // Ensure not loading and no search
          return { filteredPlansByCategory: {}, planCategories: [] };
      }
 
@@ -401,52 +458,64 @@ export default function RechargePage() {
    }, [rechargePlans, planSearchTerm, isPlanLoading, rechargePageType]);
 
   const detectMobileOperator = useCallback(async () => {
+     if (!identifier || !identifier.match(/^[6-9]\d{9}$/)) return; // Only run for valid mobile numbers
      setIsDetecting(true);
      setDetectedOperator(null);
      setDetectedRegion(null);
-     setIsManualOperatorSelect(false);
+     setIsManualOperatorSelect(false); // Reset manual override
      try {
-       await new Promise(resolve => setTimeout(resolve, 1000));
-       let mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio')) || billers[0];
-        if (!mockOperator && billers.length > 0) mockOperator = billers[0];
-       const mockRegion = "Karnataka";
+       // Simulate API call to detect operator
+       // In a real app, this would call a backend or third-party API
+       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
+       // Mock result - replace with actual API response
+       // Example: Based on first few digits (very basic, not reliable for MNP)
+       let mockOperator: Biller | undefined;
+       if (identifier.startsWith('98') || identifier.startsWith('99')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('airtel'));
+       else if (identifier.startsWith('70') || identifier.startsWith('80')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio'));
+       else if (identifier.startsWith('91') || identifier.startsWith('92')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('vi'));
+       else mockOperator = billers[0]; // Fallback
+
+       const mockRegion = "Karnataka"; // Mock region
 
        if (mockOperator) {
          setDetectedOperator(mockOperator);
          setDetectedRegion(mockRegion);
-         setSelectedBiller(mockOperator.billerId);
+         setSelectedBiller(mockOperator.billerId); // Auto-select the detected operator
          toast({ title: "Operator & Region Detected", description: `${mockOperator.billerName} - ${mockRegion}` });
        } else {
-         throw new Error("Could not determine operator from mock data.");
+         // If billers array is empty or no match, trigger manual selection
+         throw new Error("Could not determine operator from current biller list.");
        }
      } catch (error) {
        console.error("Failed to detect mobile operator/region:", error);
        toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect operator/region. Please select manually." });
-       setIsManualOperatorSelect(true);
+       setIsManualOperatorSelect(true); // Allow manual selection on failure
      } finally {
        setIsDetecting(false);
      }
-   }, [identifier, billers, toast]);
+   }, [identifier, billers, toast]); // Added billers to dependencies
 
   const detectDthOperator = useCallback(async () => {
+     if (!identifier || identifier.length <= 5) return;
      setIsDetecting(true);
      setDetectedOperator(null);
-     setDetectedRegion(null);
+     setDetectedRegion(null); // Region not applicable for DTH usually
      setIsManualOperatorSelect(false);
      try {
        await new Promise(resolve => setTimeout(resolve, 800));
        let mockOperator: Biller | undefined;
+       // Basic mock logic (replace with actual prefix mapping or API call)
        if (identifier.startsWith('1')) mockOperator = billers.find(b => b.billerId === 'tata-play');
        else if (identifier.startsWith('2')) mockOperator = billers.find(b => b.billerId === 'dish-tv');
        else if (identifier.startsWith('3')) mockOperator = billers.find(b => b.billerId === 'airtel-dth');
-       else mockOperator = billers.find(b => b.billerId === 'd2h');
+       else mockOperator = billers.find(b => b.billerId === 'd2h'); // Fallback
 
        if (mockOperator) {
          setDetectedOperator(mockOperator);
          setSelectedBiller(mockOperator.billerId);
          toast({ title: "DTH Operator Detected", description: `${mockOperator.billerName}` });
        } else {
-         throw new Error("Could not determine DTH operator from mock data.");
+         throw new Error("Could not determine DTH operator from current biller list.");
        }
      } catch (error) {
        console.error("Failed to detect DTH operator:", error);
@@ -458,24 +527,29 @@ export default function RechargePage() {
    }, [identifier, billers, toast]);
 
    const detectFastagOperator = useCallback(async () => {
+      if (!identifier || identifier.length <= 10) return;
       setIsDetecting(true);
       setDetectedOperator(null);
       setIsManualOperatorSelect(false);
       try {
         await new Promise(resolve => setTimeout(resolve, 900));
         let mockOperator: Biller | undefined;
-        if (identifier.toUpperCase().startsWith('KA')) {
-             mockOperator = billers.find(b => b.billerId === 'icici-fastag');
-        } else {
+        // Very basic mock logic based on common vehicle prefixes
+        if (identifier.toUpperCase().startsWith('KA')) { // Karnataka vehicles often use ICICI/Axis
+             mockOperator = billers.find(b => b.billerId === 'icici-fastag') || billers.find(b => b.billerId === 'axis-fastag');
+        } else if (identifier.toUpperCase().startsWith('MH')) { // Maharashtra
+             mockOperator = billers.find(b => b.billerId === 'hdfc-fastag');
+        } else { // Fallback
              mockOperator = billers.find(b => b.billerId === 'paytm-fastag');
         }
+         if (!mockOperator && billers.length > 0) mockOperator = billers[0]; // Ultimate fallback
 
         if (mockOperator) {
             setDetectedOperator(mockOperator);
             setSelectedBiller(mockOperator.billerId);
             toast({ title: "FASTag Issuer Detected", description: `${mockOperator.billerName}` });
         } else {
-            throw new Error("Could not determine FASTag issuer bank.");
+            throw new Error("Could not determine FASTag issuer bank from current biller list.");
         }
       } catch (error) {
           console.error("Failed to detect FASTag issuer:", error);
@@ -517,8 +591,8 @@ export default function RechargePage() {
         try {
             console.log(`Fetching history for ${rechargePageType}: ${num}`);
             const filters: TransactionFilters = {
-                 type: capitalize(rechargePageType),
-                 searchTerm: num,
+                 type: 'Recharge', // Keep type as 'Recharge' for history fetching
+                 searchTerm: num, // Use the identifier (mobile number, DTH ID etc.)
                  limit: 5
             };
             const history = await getTransactionHistory(filters);
@@ -533,69 +607,77 @@ export default function RechargePage() {
     };
 
   const handleQuickRecharge = (entry: Transaction) => {
-    if (entry.billerId && entry.amount) {
-      setIdentifier(entry.identifier || entry.upiId || '');
+    // Make sure amount is positive, as transactions store debits as negative
+    const rechargeAmount = Math.abs(entry.amount);
+    if (entry.billerId && rechargeAmount > 0) {
+      setIdentifier(entry.identifier || entry.upiId || ''); // Prefer identifier if available
       setSelectedBiller(entry.billerId);
-      setAmount(Math.abs(entry.amount).toString());
-      const plan = rechargePlans.find(p => p.price === Math.abs(entry.amount) && (!entry.description || p.description.includes(entry.description))) || null;
+      setAmount(rechargeAmount.toString());
+      // Try to find a matching plan (simple match by price and description substring)
+      const plan = rechargePlans.find(p => p.price === rechargeAmount && (!entry.description || p.description.toLowerCase().includes(entry.description.split('-')[0].trim().toLowerCase()))) || null;
       setSelectedPlan(plan);
-      toast({ title: "Details Filled", description: `Recharging ₹${Math.abs(entry.amount)} for ${entry.identifier || entry.upiId}` });
+      toast({ title: "Details Filled", description: `Recharging ₹${rechargeAmount} for ${entry.identifier || entry.upiId}` });
       setShowHistory(false);
+      // Also update detectedOperator and billerName if the biller is found
         const biller = billers.find(b => b.billerId === entry.billerId);
         if (biller) {
             setDetectedOperator(biller);
             setSelectedBillerName(biller.billerName);
-            setIsManualOperatorSelect(false);
+            setIsManualOperatorSelect(false); // Assume detection is fine
         } else {
-             setIsManualOperatorSelect(true);
+             setIsManualOperatorSelect(true); // Fallback to manual if biller not in current list
         }
+        // Scroll to payment section
         const paymentSection = document.getElementById('payment-section');
         paymentSection?.scrollIntoView({ behavior: 'smooth' });
     } else {
-      toast({ variant: "destructive", title: "Missing Details", description: "Cannot perform quick recharge for this entry." });
+      toast({ variant: "destructive", title: "Missing Details", description: "Cannot perform quick recharge for this entry. Amount or Biller ID missing." });
     }
   };
 
   const handleSelectSavedNumber = (payee: Payee) => {
-    if (payee.type === 'mobile' && rechargePageType === 'mobile') {
+    // Check if the recharge type matches the contact type or if it's a generic identifier
+    if ((payee.type === 'mobile' && rechargePageType === 'mobile') ||
+        (payee.type === 'dth' && rechargePageType === 'dth') ||
+        (payee.type === 'fastag' && rechargePageType === 'fastag') ) { // Add more types if needed
         setIdentifier(payee.identifier);
-        setIsManualOperatorSelect(false);
-        setDetectedOperator(null);
-        setSelectedBiller('');
+        setIsManualOperatorSelect(false); // Reset manual override to allow auto-detection
+        setDetectedOperator(null); // Clear previous detection
+        setSelectedBiller(''); // Clear manual selection
         setSelectedPlan(null);
         setAmount('');
-    } else if (payee.type === 'dth' && rechargePageType === 'dth'){
-        setIdentifier(payee.identifier);
-        setIsManualOperatorSelect(false);
-        setDetectedOperator(null);
-        setSelectedBiller('');
-        setSelectedPlan(null);
-        setAmount('');
+        if (inputRef.current) inputRef.current.focus();
     } else {
-        toast({description: `Selected contact type (${payee.type}) doesn't match recharge type (${rechargePageType}).`})
+        toast({description: `Selected contact type (${payee.type}) doesn't match recharge type (${rechargePageType}). Please select a relevant contact or enter the number manually.`})
     }
 };
 
   const handleManualEditOperator = () => {
      setIsManualOperatorSelect(true);
-      setDetectedOperator(null);
-      setDetectedRegion(null);
+      setDetectedOperator(null); // Clear auto-detected operator
+      setDetectedRegion(null); // Clear auto-detected region
+      // Keep selectedBiller as is if user was already manually selecting
   }
 
    const handleScheduleRecharge = async () => {
-     if (!identifier || !amount || !selectedBiller || !scheduleFrequency || !scheduledDate) {
+     if (!identifier || !amount || (!selectedBiller && !detectedOperator) || !scheduleFrequency || !scheduledDate) {
        toast({ variant: 'destructive', title: 'Missing Details', description: 'Please fill identifier, amount, operator, date, and frequency to schedule.' });
        return;
      }
+     const finalBillerId = selectedBiller || detectedOperator?.billerId;
+     if (!finalBillerId) {
+         toast({ variant: 'destructive', title: 'Operator Error', description: 'Operator could not be determined.'});
+         return;
+     }
      setIsScheduling(true);
      try {
-       const result = await scheduleRecharge(identifier, Number(amount), scheduleFrequency, scheduledDate, selectedBiller, selectedPlan?.planId);
+       const result = await scheduleRecharge(identifier, Number(amount), scheduleFrequency, scheduledDate, finalBillerId, selectedPlan?.planId);
        if (result.success) {
-         toast({ title: 'Recharge Scheduled', description: `Recharge for ${identifier} scheduled ${scheduleFrequency} starting ${format(scheduledDate, 'PPP')}.` });
+         toast({ title: 'Recharge Scheduled', description: `Recharge for ${identifier} scheduled ${scheduleFrequency} starting ${format(scheduledDate, 'PPP')}. Schedule ID: ${result.scheduleId}` });
          setScheduledDate(undefined);
          setScheduleFrequency(undefined);
        } else {
-         throw new Error('Failed to schedule recharge');
+         throw new Error(result.message || 'Failed to schedule recharge');
        }
      } catch (error: any) {
        console.error('Scheduling failed:', error);
@@ -606,8 +688,9 @@ export default function RechargePage() {
    };
 
    const handleApplyCoupon = () => {
-       if (couponCode) {
-         toast({ title: "Coupon Applied", description: `Coupon "${couponCode}" applied successfully!` });
+       if (couponCode.trim()) {
+         // TODO: Implement actual coupon validation logic with backend
+         toast({ title: "Coupon Applied (Simulated)", description: `Coupon "${couponCode}" applied. Discount will reflect at payment if valid.` });
        } else {
          toast({ variant: "destructive", title: "No Coupon Code", description: "Please enter a coupon code to apply." });
        }
@@ -619,9 +702,9 @@ export default function RechargePage() {
             const result = await cancelRechargeService(transactionId);
             if (result.success) {
                  toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
-                 fetchHistory(identifier);
+                 fetchHistory(identifier); // Refresh history to reflect status change
             } else {
-                 throw new Error(result.message || "Cancellation not possible.");
+                 throw new Error(result.message || "Cancellation not possible at this time.");
             }
         } catch (error: any) {
              console.error("Cancellation failed:", error);
@@ -634,29 +717,34 @@ export default function RechargePage() {
 
   const operatorLogoUrl = useMemo(() => {
       const operator = detectedOperator || billers.find(b => b.billerId === selectedBiller);
-       if (!operator) return '/logos/default.png';
-      return operator.logoUrl || `/logos/${operator.billerName.toLowerCase().split(' ')[0]}.png` || '/logos/default.png';
+       if (!operator || !operator.billerName) return '/logos/default-operator.png'; // Fallback logo
+       // Try to construct logo URL or use a generic one
+      return operator.logoUrl || `/logos/${operator.billerName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/gi, '')}.png`;
   }, [detectedOperator, selectedBiller, billers]);
 
   const remainingValidityDays = useMemo(() => {
     if (rechargePageType === 'mobile' && mockCurrentPlan?.expiryDate) {
         const today = new Date();
         const expiry = new Date(mockCurrentPlan.expiryDate);
+        // Normalize dates to avoid time zone issues with differenceInDays
         today.setHours(0, 0, 0, 0);
         expiry.setHours(0, 0, 0, 0);
 
-        const diffTime = expiry.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays > 0 ? diffDays : 0;
+        // Check if expiry date is valid and not in the past before calculating difference
+        if (!isValid(expiry) || isBefore(expiry, today)) {
+            return 0; // Or handle as expired, e.g., return -1 or a specific string
+        }
+        const diffDays = differenceInDays(expiry, today);
+        return diffDays; // differenceInDays correctly handles dates
     }
     return null;
   }, [mockCurrentPlan, rechargePageType]);
 
   const handleSelectRecentProvider = (provider: Biller) => {
       setSelectedBiller(provider.billerId);
-      setDetectedOperator(provider);
-      setIsManualOperatorSelect(false);
-      setIdentifier('');
+      setDetectedOperator(provider); // Set as detected so it shows up nicely
+      setIsManualOperatorSelect(false); // We've "detected" it by user choice
+      setIdentifier(''); // Clear identifier to avoid fetching plans for old number
       if (inputRef.current) inputRef.current.focus();
   }
 
@@ -714,7 +802,7 @@ export default function RechargePage() {
                                 ))}
                                 <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert(rechargePageType === 'mobile' ? "Add New Contact flow" : "Add New Provider flow")}>
                                     <div className="h-10 w-10 mb-1 border-2 border-dashed border-muted-foreground rounded-full flex items-center justify-center bg-secondary">
-                                        {rechargePageType === 'mobile' ? <UserPlus className="h-5 w-5"/> : <Tv2 className="h-5 w-5"/>}
+                                        {rechargePageType === 'mobile' ? <UserPlus className="h-5 w-5"/> : <TvIcon className="h-5 w-5"/>}
                                     </div>
                                     <span className="text-xs font-medium">Add New</span>
                                 </button>
@@ -803,7 +891,7 @@ export default function RechargePage() {
                              <Label htmlFor="biller-manual">Select Operator</Label>
                               <Select value={selectedBiller} onValueChange={setSelectedBiller} required>
                                 <SelectTrigger id="biller-manual">
-                                     <SelectValue placeholder={isLoading ? "Loading..." : "Select Operator"} />
+                                     <SelectValue placeholder={isLoadingBillers ? "Loading..." : (billers.length === 0 ? "No operators" : "Select Operator")} />
                                 </SelectTrigger>
                                  <SelectContent>
                                      {billers.map((biller) => (
@@ -856,9 +944,9 @@ export default function RechargePage() {
                                 Loading plans...
                              </p>
                            </div>
-                         ) : planCategories.length === 0 && rechargePlans.length > 0 ? (
-                           <p className="text-sm text-muted-foreground text-center py-4">No plans found matching your search.</p>
-                          ) : rechargePlans.length === 0 ? (
+                         ) : planCategories.length === 0 && rechargePlans.length > 0 ? ( // This means search yielded results but categories are empty
+                           <p className="text-sm text-muted-foreground text-center py-4">No plans found matching your search in these categories.</p>
+                          ) : rechargePlans.length === 0 ? ( // This means no plans at all for the biller
                            <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName}.</p>
                          ) : (
                            <Tabs defaultValue={planCategories[0]} className="w-full">
@@ -893,7 +981,7 @@ export default function RechargePage() {
                                                <div>
                                                     <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
                                                      {rechargePageType === 'mobile' && plan.data && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
-                                                     {rechargePageType === 'dth' && plan.channels && <div className="flex items-center gap-1"><Tv2 className="h-3 w-3"/> Channels: {plan.channels}</div>}
+                                                     {rechargePageType === 'dth' && plan.channels && <div className="flex items-center gap-1"><TvIcon className="h-3 w-3"/> Channels: {plan.channels}</div>}
                                                </div>
                                                 <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
                                           </div>
@@ -901,7 +989,7 @@ export default function RechargePage() {
                                                <Checkbox
                                                     id={`compare-${plan.planId}`}
                                                     checked={plansToCompare.some(p => p.planId === plan.planId)}
-                                                    onCheckedChange={(checked) => handleCompareCheckbox(plan, checked)}
+                                                    onCheckedChange={(checked) => handleCompareCheckbox(plan, checked as boolean)}
                                                     disabled={plansToCompare.length >= 3 && !plansToCompare.some(p => p.planId === plan.planId)}
                                                     aria-label={`Compare ${plan.description}`}
                                                      onClick={(e) => e.stopPropagation()}
@@ -909,6 +997,7 @@ export default function RechargePage() {
                                           </div>
                                       </Card>
                                     ))}
+                                     {filteredPlansByCategory[category]?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No plans in this category.</p>}
                                 </TabsContent>
                              ))}
                            </Tabs>
@@ -932,11 +1021,11 @@ export default function RechargePage() {
                           min="1"
                           step="0.01"
                           className="pl-7 text-lg font-semibold h-11"
-                          disabled={!selectedBiller && !detectedOperator}
+                          disabled={(!selectedBiller && !detectedOperator) && !identifier} // Allow manual amount if identifier is present
                         />
                      </div>
                      {rechargePageType === 'mobile' && !selectedPlan && amount && (
-                        <Button variant="link" size="sm" className="p-0 h-auto text-xs mt-1" onClick={() => alert("Show Top-up Vouchers")}>
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs mt-1" onClick={() => alert("Show Top-up Vouchers for this amount")}>
                           Check Talktime Vouchers
                         </Button>
                     )}
@@ -1014,7 +1103,8 @@ export default function RechargePage() {
              <CardContent className="p-4 space-y-4">
                  <div className="flex justify-between items-center text-sm">
                      <span className="text-muted-foreground flex items-center gap-1"><Wallet className="h-4 w-4"/> Paying from:</span>
-                     <Button variant="link" size="sm" className="p-0 h-auto text-sm">(Wallet / Linked Account)</Button>
+                     {/* TODO: Implement payment source selection (Wallet, UPI, Card) */}
+                     <Button variant="link" size="sm" className="p-0 h-auto text-sm">Zet Pay Wallet (Default)</Button>
                  </div>
                   <div className="flex justify-between items-center text-sm">
                      <span className="text-muted-foreground">Available Balance:</span>
@@ -1025,9 +1115,10 @@ export default function RechargePage() {
                      )}
                  </div>
                   {bankStatus && bankStatus !== 'Active' && (
-                      <Alert variant={bankStatus === 'Down' ? "destructive" : "default"} className={`${bankStatus === 'Slow' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
-                          <AlertTitle className="text-xs">{bankStatus === 'Down' ? 'Bank Server Down' : 'Bank Server Slow'}</AlertTitle>
-                          <AlertDescription className="text-xs">Payments via this bank may fail or be delayed.</AlertDescription>
+                      <Alert variant={bankStatus === 'Down' ? "destructive" : "default"} className={`${bankStatus === 'Slow' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : ''}`}>
+                          <AlertTriangle className="h-4 w-4"/>
+                          <AlertTitle className="text-xs">{bankStatus === 'Down' ? 'Operator Server Down' : 'Operator Server Slow'}</AlertTitle>
+                          <AlertDescription className="text-xs">Payments via this operator may fail or be delayed.</AlertDescription>
                       </Alert>
                   )}
                   <Separator />
@@ -1048,7 +1139,7 @@ export default function RechargePage() {
                     onClick={handleRecharge}
                   >
                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                     {bankStatus === 'Down' ? 'Bank Unavailable' : `Proceed to Pay ₹${amount || '0'}`}
+                     {bankStatus === 'Down' ? 'Operator Unavailable' : `Proceed to Pay ₹${amount || '0'}`}
                   </Button>
                   <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => alert("Temporary Freeze: Coming Soon!")}>
                        <AlarmClockOff className="mr-2 h-4 w-4"/> Freeze Payments (e.g., 1 hour)
@@ -1136,4 +1227,3 @@ export default function RechargePage() {
     </div>
   );
 }
-

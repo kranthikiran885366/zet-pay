@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -6,30 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowLeft, Clock, PlusCircle, Edit, Trash2, CalendarIcon, BellRing } from 'lucide-react';
 import Link from 'next/link';
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-
-interface SipReminder {
-    id: string;
-    fundName: string;
-    sipAmount: number;
-    sipDate: number; // Day of the month (1-28)
-    frequency: 'Monthly' | 'Quarterly';
-    nextDueDate?: Date; // Calculated
-}
-
-const mockSipReminders: SipReminder[] = [
-    { id: 'sip1', fundName: 'Axis Bluechip Fund', sipAmount: 5000, sipDate: 5, frequency: 'Monthly' },
-    { id: 'sip2', fundName: 'Parag Parikh Flexi Cap', sipAmount: 10000, sipDate: 15, frequency: 'Monthly' },
-];
+import { mockSipRemindersData, SipReminder } from '@/mock-data/reminders'; // Import from reminders mock data
 
 export default function SipRemindersPage() {
-    const [reminders, setReminders] = useState<SipReminder[]>(mockSipReminders);
+    const [reminders, setReminders] = useState<SipReminder[]>(mockSipRemindersData);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentReminder, setCurrentReminder] = useState<Partial<SipReminder>>({});
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -64,7 +49,6 @@ export default function SipRemindersPage() {
         toast({ title: "SIP Reminder Deleted" });
     };
 
-    // Calculate next due date (simplified)
     const calculateNextDueDate = (sipDate: number, frequency: 'Monthly' | 'Quarterly'): Date => {
         const today = new Date();
         let nextDate = new Date(today.getFullYear(), today.getMonth(), sipDate);
@@ -116,7 +100,6 @@ export default function SipRemindersPage() {
                             </CardHeader>
                             <CardContent className="text-sm">
                                 <p className="flex items-center gap-1 text-primary"><BellRing className="h-4 w-4"/> Next Due: {format(nextDueDate, "PPP")} (Day {reminder.sipDate})</p>
-                                {/* TODO: Add functionality to link to investment page or mark as paid */}
                             </CardContent>
                         </Card>
                     )
@@ -124,7 +107,6 @@ export default function SipRemindersPage() {
             </div>
         )}
 
-        {/* Add/Edit Modal (Simplified) */}
         {isModalOpen && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <Card className="w-full max-w-md">
@@ -144,7 +126,6 @@ export default function SipRemindersPage() {
                 </Card>
             </div>
         )}
-
       </main>
     </div>
   );

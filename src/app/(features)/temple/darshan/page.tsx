@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -15,20 +16,13 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { searchDarshanSlots as searchSlotsApi, bookDarshanSlot as bookSlotApi } from '@/services/temple'; // Use API service
+import { searchDarshanSlots as searchSlotsApi, bookDarshanSlot as bookSlotApi } from '@/services/temple';
+import { mockTemplesData, mockDarshanSlotsPageData } from '@/mock-data'; // Import centralized mock data
 
-// Mock Data (Keep for fallback or UI structure, API is primary)
-const mockTemples = [
-    { id: 'tirupati', name: 'Tirumala Tirupati Devasthanams (TTD)' },
-    { id: 'shirdi', name: 'Shirdi Saibaba Sansthan Trust' },
-    { id: 'vaishno-devi', name: 'Vaishno Devi Shrine Board' },
-    { id: 'sabarimala', name: 'Sabarimala Temple' },
-];
-
-export interface DarshanSlot { // Export interface for API service consistency
-    time: string; // e.g., "08:00 AM - 09:00 AM"
+export interface DarshanSlot {
+    time: string;
     availability: 'Available' | 'Filling Fast' | 'Full';
-    quota: string; // e.g., "Free", "Special Entry (₹300)", "VIP"
+    quota: string;
     ticketsLeft?: number;
 }
 
@@ -49,19 +43,21 @@ export default function DarshanBookingPage() {
             return;
         }
         setIsLoading(true);
-        setSelectedSlot(null); // Reset selection
-        setAvailableSlots([]); // Clear previous slots
+        setSelectedSlot(null);
+        setAvailableSlots([]);
         const dateString = format(selectedDate, 'yyyy-MM-dd');
         console.log("Searching slots via API:", { selectedTemple, date: dateString });
         try {
             const slots = await searchSlotsApi(selectedTemple, dateString);
-            setAvailableSlots(slots);
-            if (slots.length === 0) {
+            // Use mock data if API returns empty or for specific test cases
+            setAvailableSlots(slots.length > 0 ? slots : (mockDarshanSlotsPageData[`${selectedTemple}-${dateString}`] || []));
+            if ((slots.length === 0 && (!mockDarshanSlotsPageData[`${selectedTemple}-${dateString}`] || mockDarshanSlotsPageData[`${selectedTemple}-${dateString}`].length === 0))) {
                 toast({ description: "No darshan slots found for the selected date." });
             }
         } catch (error: any) {
             console.error("Slot search failed:", error);
             toast({ variant: "destructive", title: "Search Failed", description: error.message || "Could not fetch available slots." });
+            setAvailableSlots(mockDarshanSlotsPageData[`${selectedTemple}-${dateString}`] || []); // Fallback
         } finally {
             setIsLoading(false);
         }
@@ -81,11 +77,10 @@ export default function DarshanBookingPage() {
             return;
         }
 
-        // Extract price if present in quota string (basic extraction)
         const quotaPriceMatch = selectedSlot.quota.match(/₹(\d+)/);
         const pricePerPerson = quotaPriceMatch ? parseInt(quotaPriceMatch[1], 10) : 0;
         const totalAmount = pricePerPerson * numberOfPersons;
-        const templeName = mockTemples.find(t => t.id === selectedTemple)?.name || selectedTemple; // Get temple name for API
+        const templeName = mockTemplesData.find(t => t.id === selectedTemple)?.name || selectedTemple;
 
         setIsBooking(true);
         const bookingDetails = {
@@ -99,14 +94,11 @@ export default function DarshanBookingPage() {
         };
         console.log("Confirming Darshan Booking via API:", bookingDetails);
         try {
-            // Use the imported API function
             const result = await bookSlotApi(bookingDetails);
             if (result.success) {
                 toast({ title: "Booking Confirmed!", description: `Booked ${numberOfPersons} slot(s) for ${selectedSlot.time} (${selectedSlot.quota}). Total: ₹${totalAmount}` });
-                // Reset or navigate
                 setSelectedSlot(null);
                 setAvailableSlots([]);
-                // router.push(`/temple/access?bookingId=${result.bookingId}`); // Example redirect to access pass page
             } else {
                  throw new Error(result.message || "Booking failed on server.");
             }
@@ -148,17 +140,15 @@ export default function DarshanBookingPage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleSearchSlots} className="space-y-4">
-                            {/* Temple Selection */}
                              <div className="space-y-1">
                                 <Label htmlFor="temple">Select Temple</Label>
                                 <Select value={selectedTemple} onValueChange={setSelectedTemple} required>
                                     <SelectTrigger id="temple"><SelectValue placeholder="Select Temple" /></SelectTrigger>
                                     <SelectContent>
-                                        {mockTemples.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
+                                        {mockTemplesData.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            {/* Date Selection */}
                              <div className="space-y-1">
                                 <Label htmlFor="darshanDate">Select Date</Label>
                                 <Popover>
@@ -217,7 +207,6 @@ export default function DarshanBookingPage() {
                     </Card>
                 )}
 
-                 {/* Booking Confirmation Section */}
                 {selectedSlot && (
                     <Card className="shadow-md mt-4">
                          <CardHeader>
@@ -234,12 +223,11 @@ export default function DarshanBookingPage() {
                                     id="persons"
                                     type="number"
                                     min="1"
-                                    max="10" // Set a reasonable max
+                                    max="10"
                                     value={numberOfPersons}
                                     onChange={(e) => setNumberOfPersons(Number(e.target.value))}
                                 />
                             </div>
-                             {/* Display Total Amount */}
                             {selectedSlot.quota.includes('₹') && (
                                 <div className="flex justify-between items-center text-sm">
                                      <span className="text-muted-foreground">Total Amount:</span>
@@ -256,7 +244,6 @@ export default function DarshanBookingPage() {
                         </CardContent>
                     </Card>
                 )}
-
             </main>
         </div>
     );

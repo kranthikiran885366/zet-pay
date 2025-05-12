@@ -1,30 +1,25 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react'; // Added useEffect
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ArrowLeft, Music, Play, Pause, Volume2, SkipForward, SkipBack, Download } from 'lucide-react';
 import Link from 'next/link';
-import { Slider } from "@/components/ui/slider"; // Import Slider
+import { Slider } from "@/components/ui/slider";
 import { useToast } from '@/hooks/use-toast';
+import { mockAudioTracksData } from '@/mock-data'; // Import centralized mock data
+import React from 'react'; // Ensure React is imported for JSX
 
-// Mock Data (Replace with actual API for fetching audio files/metadata)
-interface AudioTrack {
+export interface AudioTrack { // Export for mock data file
     id: string;
     title: string;
-    artist: string; // e.g., Temple Name, Singer Name
-    duration: number; // seconds
-    audioUrl: string; // URL to the audio file (MP3, etc.)
-    imageUrl?: string; // Optional image
+    artist: string;
+    duration: number;
+    audioUrl: string;
+    imageUrl?: string;
     category: 'Aarti' | 'Mantra' | 'Bhajan';
 }
-
-const mockAudioTracks: AudioTrack[] = [
-    { id: 'aarti1', title: 'Om Jai Jagdish Hare', artist: 'Various Artists', duration: 300, audioUrl: '/audio/om_jai_jagdish.mp3', category: 'Aarti', imageUrl: '/images/audio/aarti.jpg' },
-    { id: 'mantra1', title: 'Gayatri Mantra (108 times)', artist: 'Traditional Chanting', duration: 900, audioUrl: '/audio/gayatri_mantra.mp3', category: 'Mantra', imageUrl: '/images/audio/mantra.jpg' },
-    { id: 'bhajan1', title: 'Hanuman Chalisa', artist: 'Various Artists', duration: 600, audioUrl: '/audio/hanuman_chalisa.mp3', category: 'Bhajan', imageUrl: '/images/audio/bhajan.jpg' },
-    { id: 'aarti2', title: 'Shirdi Sai Baba Aarti', artist: 'Temple Priests', duration: 450, audioUrl: '/audio/shirdi_aarti.mp3', category: 'Aarti', imageUrl: '/images/audio/shirdi.jpg' },
-];
 
 export default function TempleAudioPage() {
     const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
@@ -32,7 +27,7 @@ export default function TempleAudioPage() {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState([50]);
-    const audioRef = React.useRef&lt;HTMLAudioElement&gt;(null);
+    const audioRef = React.useRef<HTMLAudioElement>(null);
     const { toast } = useToast();
 
     const playTrack = (track: AudioTrack) => {
@@ -41,11 +36,10 @@ export default function TempleAudioPage() {
                 audioRef.current.pause();
                 setIsPlaying(false);
             } else {
-                // Load new track or resume paused track
                 if (currentTrack?.id !== track.id) {
                     audioRef.current.src = track.audioUrl;
                     setCurrentTrack(track);
-                    setCurrentTime(0); // Reset time for new track
+                    setCurrentTime(0);
                 }
                  audioRef.current.play().then(() => {
                     setIsPlaying(true);
@@ -82,36 +76,33 @@ export default function TempleAudioPage() {
         if (isNaN(time) || time === Infinity) return '0:00';
         const minutes = Math.floor(time / 60);
         const seconds = Math.floor(time % 60);
-        return `${minutes}:${seconds &lt; 10 ? '0' : ''}${seconds}`;
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     };
 
      const handleDownload = (track: AudioTrack) => {
-        // In a real app, provide a secure download link or mechanism
         toast({ title: "Download Started (Simulation)", description: `Downloading ${track.title}` });
-        // window.location.href = track.audioUrl; // This might not work depending on CORS/server setup
         alert(`Simulating download of: ${track.audioUrl}`);
     }
 
     const handleNextTrack = () => {
         if (!currentTrack) return;
-        const currentIndex = mockAudioTracks.findIndex(t => t.id === currentTrack.id);
-        const nextIndex = (currentIndex + 1) % mockAudioTracks.length;
-        playTrack(mockAudioTracks[nextIndex]);
+        const currentIndex = mockAudioTracksData.findIndex(t => t.id === currentTrack.id);
+        const nextIndex = (currentIndex + 1) % mockAudioTracksData.length;
+        playTrack(mockAudioTracksData[nextIndex]);
     }
 
     const handlePrevTrack = () => {
          if (!currentTrack) return;
-        const currentIndex = mockAudioTracks.findIndex(t => t.id === currentTrack.id);
-        const prevIndex = (currentIndex - 1 + mockAudioTracks.length) % mockAudioTracks.length;
-        playTrack(mockAudioTracks[prevIndex]);
+        const currentIndex = mockAudioTracksData.findIndex(t => t.id === currentTrack.id);
+        const prevIndex = (currentIndex - 1 + mockAudioTracksData.length) % mockAudioTracksData.length;
+        playTrack(mockAudioTracksData[prevIndex]);
     }
 
-    // Group tracks by category
-    const groupedTracks = mockAudioTracks.reduce((acc, track) => {
+    const groupedTracks = mockAudioTracksData.reduce((acc, track) => {
         if (!acc[track.category]) acc[track.category] = [];
         acc[track.category].push(track);
         return acc;
-    }, {} as Record&lt;string, AudioTrack[]&gt;);
+    }, {} as Record<string, AudioTrack[]>);
     const categories = Object.keys(groupedTracks);
 
 
@@ -129,7 +120,7 @@ export default function TempleAudioPage() {
             </header>
 
             {/* Main Content */}
-            <main className="flex-grow p-4 space-y-4 pb-32"> {/* Added padding-bottom */}
+            <main className="flex-grow p-4 space-y-4 pb-32">
                  {categories.map(category => (
                     <Card key={category} className="shadow-md">
                         <CardHeader>
@@ -139,19 +130,19 @@ export default function TempleAudioPage() {
                              {groupedTracks[category].map(track => (
                                 <div key={track.id} className="flex items-center justify-between p-2 rounded hover:bg-accent">
                                      <div className="flex items-center gap-3 overflow-hidden">
-                                        {track.imageUrl && &lt;img src={track.imageUrl} alt={track.title} className="w-10 h-10 rounded object-cover" data-ai-hint="audio track cover art"/&gt;}
+                                        {track.imageUrl && <img src={track.imageUrl} alt={track.title} className="w-10 h-10 rounded object-cover" data-ai-hint="audio track cover art"/>}
                                          <div className="overflow-hidden">
                                             <p className="text-sm font-medium truncate">{track.title}</p>
                                             <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1 shrink-0">
-                                        &lt;Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => playTrack(track)}&gt;
-                                             {(currentTrack?.id === track.id && isPlaying) ? &lt;Pause className="h-4 w-4" /&gt; : &lt;Play className="h-4 w-4" /&gt;}
-                                         &lt;/Button&gt;
-                                          &lt;Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(track)}&gt;
-                                            &lt;Download className="h-4 w-4 text-muted-foreground"/&gt;
-                                          &lt;/Button&gt;
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => playTrack(track)}>
+                                             {(currentTrack?.id === track.id && isPlaying) ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                                         </Button>
+                                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(track)}>
+                                            <Download className="h-4 w-4 text-muted-foreground"/>
+                                          </Button>
                                     </div>
                                 </div>
                              ))}
@@ -159,51 +150,49 @@ export default function TempleAudioPage() {
                     </Card>
                  ))}
 
-                {/* Hidden Audio Element */}
-                &lt;audio
+                <audio
                     ref={audioRef}
                     onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleTimeUpdate} // Update duration when metadata loads
-                    onEnded={handleNextTrack} // Play next track when current ends
+                    onLoadedMetadata={handleTimeUpdate}
+                    onEnded={handleNextTrack}
                     className="hidden"
-                /&gt;
+                />
             </main>
 
-            {/* Fixed Mini Player */}
             {currentTrack && (
                 <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-3 shadow-lg z-50">
                     <div className="flex items-center gap-3 mb-2">
-                         {currentTrack.imageUrl && &lt;img src={currentTrack.imageUrl} alt={currentTrack.title} className="w-10 h-10 rounded object-cover" data-ai-hint="audio track cover art small"/&gt;}
+                         {currentTrack.imageUrl && <img src={currentTrack.imageUrl} alt={currentTrack.title} className="w-10 h-10 rounded object-cover" data-ai-hint="audio track cover art small"/>}
                         <div className="flex-grow overflow-hidden">
                             <p className="text-sm font-medium truncate">{currentTrack.title}</p>
                             <p className="text-xs text-muted-foreground truncate">{currentTrack.artist}</p>
                         </div>
                         <div className="flex items-center gap-1">
-                              &lt;Button variant="ghost" size="icon" className="h-8 w-8" onClick={handlePrevTrack}&gt;&lt;SkipBack className="h-4 w-4"/&gt;&lt;/Button&gt;
-                              &lt;Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => playTrack(currentTrack)}&gt;
-                                  {isPlaying ? &lt;Pause className="h-5 w-5"/&gt; : &lt;Play className="h-5 w-5"/&gt;}
-                              &lt;/Button&gt;
-                              &lt;Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleNextTrack}&gt;&lt;SkipForward className="h-4 w-4"/&gt;&lt;/Button&gt;
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handlePrevTrack}><SkipBack className="h-4 w-4"/></Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => playTrack(currentTrack)}>
+                                  {isPlaying ? <Pause className="h-5 w-5"/> : <Play className="h-5 w-5"/>}
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleNextTrack}><SkipForward className="h-4 w-4"/></Button>
                         </div>
                     </div>
                      <div className="flex items-center gap-2 text-xs">
                         <span>{formatTime(currentTime)}</span>
-                        &lt;Slider
+                        <Slider
                             value={[currentTime]}
-                            max={duration || 100} // Use duration, fallback to 100
+                            max={duration || 100}
                             step={1}
                             onValueChange={handleSeek}
                             className="flex-grow"
-                        /&gt;
+                        />
                         <span>{formatTime(duration)}</span>
-                         &lt;Volume2 className="h-4 w-4 ml-2"/&gt;
-                         &lt;Slider
+                         <Volume2 className="h-4 w-4 ml-2"/>
+                         <Slider
                             value={volume}
                             max={100}
                             step={1}
                             onValueChange={handleVolumeChange}
                             className="w-20"
-                        /&gt;
+                        />
                     </div>
                 </div>
             )}

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -8,96 +9,55 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X, Plane, UserCircle } from 'lucide-react'; // Added Plane, UserCircle
+import { ArrowLeft, Bus, CalendarIcon, Search, ArrowRightLeft, Loader2, User, Wallet, Filter, ChevronDown, ChevronUp, Armchair, X, Plane, UserCircle } from 'lucide-react';
 import Link from 'next/link';
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { apiClient } from '@/lib/apiClient'; // Import apiClient
-import { confirmBooking } from '@/services/booking'; // Import confirmBooking
+import { apiClient } from '@/lib/apiClient';
+import { confirmBooking } from '@/services/booking';
 import { useRouter } from 'next/navigation';
-
-// Mock Data (Replace with actual API calls)
-const mockCities = ['Bangalore', 'Chennai', 'Hyderabad', 'Mumbai', 'Delhi', 'Pune', 'Kolkata'];
-const mockBusOperators = ['KSRTC', 'RedBus Express', 'VRL Travels', 'Orange Tours', 'SRS Travels'];
-
-interface BusRoute {
-    id: string;
-    operator: string;
-    type: 'AC Sleeper' | 'Non-AC Seater' | 'AC Seater/Sleeper' | 'Volvo Multi-Axle';
-    departureTime: string;
-    arrivalTime: string;
-    duration: string;
-    price: number;
-    seatsAvailable: number;
-    rating: number;
-    boardingPoints: string[];
-    droppingPoints: string[];
-}
-
-const mockBusRoutes: BusRoute[] = [
-    { id: 'bus1', operator: 'KSRTC', type: 'AC Sleeper', departureTime: '21:00', arrivalTime: '05:00', duration: '8h 0m', price: 850, seatsAvailable: 15, rating: 4.2, boardingPoints: ['Majestic', 'Silk Board'], droppingPoints: ['Koyambedu', 'Guindy'] },
-    { id: 'bus2', operator: 'RedBus Express', type: 'Non-AC Seater', departureTime: '22:30', arrivalTime: '06:30', duration: '8h 0m', price: 500, seatsAvailable: 30, rating: 3.8, boardingPoints: ['Madiwala', 'Electronic City'], droppingPoints: ['Perungalathur', 'Tambaram'] },
-    { id: 'bus3', operator: 'VRL Travels', type: 'Volvo Multi-Axle', departureTime: '20:00', arrivalTime: '04:30', duration: '8h 30m', price: 1100, seatsAvailable: 5, rating: 4.5, boardingPoints: ['Anand Rao Circle', 'Hebbal'], droppingPoints: ['Koyambedu', 'Ashok Pillar'] },
-    { id: 'bus4', operator: 'Orange Tours', type: 'AC Seater/Sleeper', departureTime: '21:45', arrivalTime: '05:30', duration: '7h 45m', price: 950, seatsAvailable: 22, rating: 4.0, boardingPoints: ['Majestic', 'Madiwala'], droppingPoints: ['Koyambedu', 'Vadapalani'] },
-];
+import { auth } from '@/lib/firebase';
+import { mockCities, mockBusOperators, mockBusRoutes, BusRoute } from '@/mock-data'; // Import centralized mock data
 
 interface Seat {
-    id: string; // e.g., L1, U5, LA1 (Lower Aisle 1), LSB1 (Lower Single Berth 1)
-    number?: string; // Display number, e.g., 1, 5, A1
+    id: string;
+    number?: string;
     isLower: boolean;
     type: 'seater' | 'sleeper' | 'aisle';
     isAvailable: boolean;
     isWomenOnly?: boolean;
-    isGangway?: boolean; // Indicate if it's a gap/gangway rather than a seat
+    isGangway?: boolean;
     price: number;
-    gridColumn: string; // CSS grid column position
-    gridRow: string; // CSS grid row position
+    gridColumn: string;
+    gridRow: string;
 }
 
-// Generate a more realistic bus seat layout
 const generateBusSeats = (busType: BusRoute['type'], basePrice: number): Seat[] => {
     const seats: Seat[] = [];
     const isSleeper = busType.includes('Sleeper');
     const rows = isSleeper ? 10 : 12;
-    const seaterCols = 5; // 2 seats + aisle + 2 seats
-    const sleeperCols = 4; // 1 berth + aisle + 2 berths
-
-    // --- Lower Deck ---
+    
     for (let r = 1; r <= rows; r++) {
-        if (isSleeper) { // 1 + 2 Sleeper Layout
-            // Single Berth Side (Column 1)
+        if (isSleeper) {
             seats.push({ id: `L${r}S`, number: `L${r}`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '1', gridRow: String(r) });
-            // Aisle (Column 2)
             seats.push({ id: `LA${r}`, isLower: true, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '2', gridRow: String(r) });
-            // Double Berth Side (Column 3 & 4)
             seats.push({ id: `L${r}DA`, number: `L${r}A`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '3', gridRow: String(r) });
             seats.push({ id: `L${r}DB`, number: `L${r}B`, isLower: true, type: 'sleeper', isAvailable: Math.random() > 0.3, price: basePrice + 50, gridColumn: '4', gridRow: String(r) });
-        } else { // 2 + 2 Seater Layout
-            // Left Side (Columns 1 & 2)
+            
+            seats.push({ id: `U${r}S`, number: `U${r}`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '1', gridRow: String(r) });
+            seats.push({ id: `UA${r}`, isLower: false, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '2', gridRow: String(r) });
+            seats.push({ id: `U${r}DA`, number: `U${r}A`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '3', gridRow: String(r) });
+            seats.push({ id: `U${r}DB`, number: `U${r}B`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '4', gridRow: String(r) });
+        } else {
             seats.push({ id: `L${r}A`, number: `${r}A`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '1', gridRow: String(r) });
             seats.push({ id: `L${r}B`, number: `${r}B`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '2', gridRow: String(r) });
-            // Aisle (Column 3)
-             seats.push({ id: `LA${r}`, isLower: true, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '3', gridRow: String(r) });
-             // Right Side (Columns 4 & 5)
-             seats.push({ id: `L${r}C`, number: `${r}C`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '4', gridRow: String(r) });
-             seats.push({ id: `L${r}D`, number: `${r}D`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '5', gridRow: String(r) });
-        }
-    }
-
-    // --- Upper Deck (Only if Sleeper) ---
-    if (isSleeper) {
-        for (let r = 1; r <= rows; r++) {
-             // Single Berth Side (Column 1)
-             seats.push({ id: `U${r}S`, number: `U${r}`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '1', gridRow: String(r) });
-             // Aisle (Column 2) - Marked as not lower deck
-             seats.push({ id: `UA${r}`, isLower: false, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '2', gridRow: String(r) });
-             // Double Berth Side (Column 3 & 4)
-             seats.push({ id: `U${r}DA`, number: `U${r}A`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '3', gridRow: String(r) });
-             seats.push({ id: `U${r}DB`, number: `U${r}B`, isLower: false, type: 'sleeper', isAvailable: Math.random() > 0.4, price: basePrice + 100, gridColumn: '4', gridRow: String(r) });
+            seats.push({ id: `LA${r}`, isLower: true, type: 'aisle', isAvailable: false, price: 0, isGangway: true, gridColumn: '3', gridRow: String(r) });
+            seats.push({ id: `L${r}C`, number: `${r}C`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '4', gridRow: String(r) });
+            seats.push({ id: `L${r}D`, number: `${r}D`, isLower: true, type: 'seater', isAvailable: Math.random() > 0.3, price: basePrice, gridColumn: '5', gridRow: String(r) });
         }
     }
     return seats;
@@ -117,8 +77,8 @@ export default function BusBookingPage() {
     const [showSeatSelection, setShowSeatSelection] = useState(false);
     const [boardingPoint, setBoardingPoint] = useState<string>('');
     const [droppingPoint, setDroppingPoint] = useState<string>('');
-     const [passengerDetails, setPassengerDetails] = useState({ name: '', email: '', phone: '' });
-     const [isBooking, setIsBooking] = useState(false);
+    const [passengerDetails, setPassengerDetails] = useState({ name: '', email: '', phone: '' });
+    const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
     const router = useRouter();
 
@@ -129,15 +89,12 @@ export default function BusBookingPage() {
             return;
         }
         setIsLoading(true);
-        setShowResults(false); // Hide previous results
-        setSearchResults([]); // Clear previous results
+        setShowResults(false);
+        setSearchResults([]);
         console.log("Searching buses:", { fromCity, toCity, date: format(travelDate, 'yyyy-MM-dd') });
         try {
-             // Simulate API call
-            // const results = await apiClient<BusRoute[]>(`/bookings/bus/search?from=${fromCity}&to=${toCity}&date=${format(travelDate, 'yyyy-MM-dd')}`);
             await new Promise(resolve => setTimeout(resolve, 1500));
-            // Filter mock data (in real app, API does this)
-            const results = mockBusRoutes.filter(route => Math.random() > 0.3); // Simulate getting some results
+            const results = mockBusRoutes.filter(route => Math.random() > 0.3);
             setSearchResults(results);
             setShowResults(true);
             if (results.length === 0) {
@@ -155,9 +112,9 @@ export default function BusBookingPage() {
         setSelectedBus(bus);
         const mockSeats = generateBusSeats(bus.type, bus.price);
         setSeatLayout(mockSeats);
-        setSelectedSeats([]); // Clear previously selected seats
+        setSelectedSeats([]);
         setShowSeatSelection(true);
-        setBoardingPoint(''); // Reset points
+        setBoardingPoint('');
         setDroppingPoint('');
     };
 
@@ -171,7 +128,7 @@ export default function BusBookingPage() {
             if (isSelected) {
                 return prev.filter(s => s.id !== seat.id);
             } else {
-                if (prev.length >= 6) { // Limit max seats selectable
+                if (prev.length >= 6) {
                     toast({ description: "You can select a maximum of 6 seats." });
                     return prev;
                 }
@@ -182,26 +139,10 @@ export default function BusBookingPage() {
 
     const totalFare = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
 
-    const handleProceedToBook = () => {
-        if (selectedSeats.length === 0) {
-            toast({ variant: "destructive", title: "Select Seats", description: "Please select at least one seat." });
-            return;
-        }
-        if (!boardingPoint || !droppingPoint) {
-            toast({ variant: "destructive", title: "Select Points", description: "Please select boarding and dropping points." });
-            return;
-        }
-        // Move to passenger details / final confirmation (could be another step or modal)
-        console.log("Proceeding to book:", { selectedBus, selectedSeats, boardingPoint, droppingPoint });
-         // For simplicity, using a simple alert/toast for now. Ideally, navigate to a payment page.
-        // alert(`Booking ${selectedSeats.length} seat(s) on ${selectedBus?.operator} for ₹${totalFare}. BP: ${boardingPoint}, DP: ${droppingPoint}`);
-         handleConfirmBooking(); // Directly call booking confirmation for demo
-    }
-
     const handleConfirmBooking = async () => {
          if (!passengerDetails.name || !passengerDetails.email || !passengerDetails.phone) {
              toast({ variant: "destructive", title: "Passenger Details Required" });
-             return; // In a real app, you'd validate this earlier
+             return;
          }
          if (!selectedBus || !travelDate) {
               toast({ variant: "destructive", title: "Booking Error", description: "Missing booking details." });
@@ -209,11 +150,10 @@ export default function BusBookingPage() {
          }
          setIsBooking(true);
          try {
-             console.log("Confirming booking with details:", passengerDetails);
              const bookingData = {
-                 providerId: selectedBus.id, // Pass bus ID or relevant provider ID
+                 providerId: selectedBus.id,
                  selection: {
-                     busId: selectedBus.id, // Or a service ID
+                     busId: selectedBus.id,
                      routeName: `${fromCity} to ${toCity}`,
                      boardingPoint,
                      droppingPoint,
@@ -221,17 +161,16 @@ export default function BusBookingPage() {
                  },
                  passengerDetails: passengerDetails,
                  totalAmount: totalFare,
-                 paymentMethod: 'wallet', // Or get from UI selection
+                 paymentMethod: 'wallet',
              };
-             const result = await confirmBooking('bus', bookingData); // Use 'bus' type
+             const result = await confirmBooking('bus', bookingData);
 
              if (result.status === 'Completed') {
                 toast({ title: "Booking Confirmed!", description: `Your tickets for ${selectedBus?.operator} are booked. Total Fare: ₹${totalFare}` });
-                // Reset state or navigate away
                 setShowSeatSelection(false);
                 setSelectedBus(null);
                 setShowResults(false);
-                router.push('/history'); // Example: Redirect to history
+                router.push('/history');
              } else {
                  toast({ variant: "destructive", title: `Booking ${result.status || 'Failed'}`, description: result.message || "Could not confirm your booking." });
              }
@@ -249,9 +188,9 @@ export default function BusBookingPage() {
     };
 
     const lowerDeckSeats = seatLayout.filter(s => s.isLower);
-    const upperDeckSeats = seatLayout.filter(s => !s.isLower && s.type !== 'aisle'); // Exclude upper deck aisle placeholders
+    const upperDeckSeats = seatLayout.filter(s => !s.isLower && s.type !== 'aisle');
     const isSleeperLayout = selectedBus?.type.includes('Sleeper');
-    const gridColsClass = isSleeperLayout ? 'grid-cols-4' : 'grid-cols-5'; // 4 for sleeper (1+A+2), 5 for seater (2+A+2)
+    const gridColsClass = isSleeperLayout ? 'grid-cols-4' : 'grid-cols-5';
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
@@ -266,7 +205,7 @@ export default function BusBookingPage() {
                 <h1 className="text-lg font-semibold">Bus Tickets</h1>
             </header>
 
-            {/* Search Form */}
+            {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
                 {!showResults && !showSeatSelection && (
                     <Card className="shadow-md">
@@ -331,7 +270,6 @@ export default function BusBookingPage() {
                     </Card>
                 )}
 
-                {/* Search Results */}
                 {showResults && !showSeatSelection && (
                      <div>
                          <Button variant="outline" onClick={() => setShowResults(false)} className="mb-4">
@@ -339,7 +277,7 @@ export default function BusBookingPage() {
                          </Button>
                          <div className="flex justify-between items-center mb-2">
                              <h2 className="text-lg font-semibold">{searchResults.length} Buses Found</h2>
-                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button> {/* Add Filter functionality */}
+                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button>
                          </div>
                          <div className="space-y-3">
                             {searchResults.map(bus => (
@@ -371,9 +309,8 @@ export default function BusBookingPage() {
                     </div>
                 )}
 
-                {/* Seat Selection Dialog */}
                  <Dialog open={showSeatSelection} onOpenChange={(open) => { if (!open) { setShowSeatSelection(false); setSelectedBus(null); } }}>
-                     <DialogContent className="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl p-0"> {/* Responsive max-width */}
+                     <DialogContent className="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl p-0">
                          <DialogHeader className="p-4 border-b">
                              <DialogTitle className="flex items-center gap-2">
                                  <Bus className="h-5 w-5"/> Select Seats - {selectedBus?.operator}
@@ -383,8 +320,7 @@ export default function BusBookingPage() {
                                  <X className="h-4 w-4"/>
                              </Button>
                          </DialogHeader>
-                         <div className="p-4 max-h-[65vh] overflow-y-auto"> {/* Max height and scroll */}
-                             {/* Legend */}
+                         <div className="p-4 max-h-[65vh] overflow-y-auto">
                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs mb-3 border-b pb-2 justify-center">
                                  <div className="flex items-center gap-1"><div className="w-4 h-4 border border-gray-400 rounded-sm"></div> Available</div>
                                  <div className="flex items-center gap-1"><div className="w-4 h-4 bg-primary text-primary-foreground rounded-sm flex items-center justify-center text-[10px]">✓</div> Selected</div>
@@ -392,14 +328,11 @@ export default function BusBookingPage() {
                                  <div className="flex items-center gap-1"><div className="w-4 h-4 border border-pink-400 bg-pink-100 rounded-sm"></div> Women Only</div>
                              </div>
 
-                              {/* Driver Position Indicator */}
                              <div className="mb-2 text-right pr-4">
                                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-steering-wheel inline-block h-5 w-5 text-muted-foreground"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 15.5V22"/><path d="M12 8.5V2"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
                              </div>
 
-
-                            {/* Lower Deck */}
-                             <div className="mb-4">
+                            <div className="mb-4">
                                  <p className="text-center font-semibold text-sm mb-2">Lower Deck</p>
                                  <div className={`grid ${gridColsClass} gap-1.5 justify-center items-center`}>
                                      {lowerDeckSeats.map(seat => (
@@ -408,7 +341,6 @@ export default function BusBookingPage() {
                                  </div>
                              </div>
 
-                             {/* Upper Deck (if applicable) */}
                              {isSleeperLayout && upperDeckSeats.length > 0 && (
                                  <div className="mt-6">
                                      <Separator className="mb-3"/>
@@ -421,7 +353,6 @@ export default function BusBookingPage() {
                                  </div>
                              )}
 
-                             {/* Boarding & Dropping Points */}
                              <Separator className="my-4"/>
                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                                  <div>
@@ -444,7 +375,6 @@ export default function BusBookingPage() {
                                  </div>
                              </div>
 
-                             {/* Passenger Details (Simple for Demo) */}
                              <Card className="mb-4">
                                   <CardHeader className="pb-2">
                                       <CardTitle className="text-sm">Passenger Details</CardTitle>
@@ -465,7 +395,7 @@ export default function BusBookingPage() {
                               <Button
                                   className="w-full sm:w-auto bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
                                   disabled={selectedSeats.length === 0 || !boardingPoint || !droppingPoint || isBooking || !passengerDetails.name || !passengerDetails.email || !passengerDetails.phone}
-                                  onClick={handleConfirmBooking} // Use confirmation directly for demo
+                                  onClick={handleConfirmBooking}
                               >
                                   {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserCircle className="mr-2 h-4 w-4"/>}
                                   {isBooking ? 'Booking...' : 'Confirm Booking'}
@@ -478,7 +408,6 @@ export default function BusBookingPage() {
     );
 }
 
-// Seat Button Component
 interface SeatButtonProps {
     seat: Seat;
     isSelected: boolean;
@@ -487,7 +416,7 @@ interface SeatButtonProps {
 
 function SeatButton({ seat, isSelected, onSelect }: SeatButtonProps) {
     if (seat.isGangway) {
-         return <div style={{ gridColumn: seat.gridColumn, gridRow: seat.gridRow }} className="w-full h-full"></div>; // Empty div for aisle
+         return <div style={{ gridColumn: seat.gridColumn, gridRow: seat.gridRow }} className="w-full h-full"></div>;
     }
     return (
         <Button
@@ -495,8 +424,8 @@ function SeatButton({ seat, isSelected, onSelect }: SeatButtonProps) {
              variant={isSelected ? "default" : seat.isWomenOnly ? "outline" : "outline"}
              size="icon"
              className={cn(
-                "h-8 text-xs font-mono border rounded", // Base style
-                seat.type === 'sleeper' ? "w-12" : "w-8", // Sleeper wider
+                "h-8 text-xs font-mono border rounded",
+                seat.type === 'sleeper' ? "w-12" : "w-8",
                 !seat.isAvailable && "bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400",
                 isSelected && "bg-primary text-primary-foreground",
                  seat.isWomenOnly && !isSelected && "border-pink-400 bg-pink-100 text-pink-700 hover:bg-pink-200",

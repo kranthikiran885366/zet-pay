@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,36 +13,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
+import { mockTemplesData, mockPrasadamDataPage } from '@/mock-data'; // Import centralized mock data
 
-// Mock Data (Replace with actual API calls)
-const mockTemples = [ // Reuse or fetch centrally
-    { id: 'tirupati', name: 'Tirumala Tirupati Devasthanams (TTD)' },
-    { id: 'shirdi', name: 'Shirdi Saibaba Sansthan Trust' },
-    { id: 'vaishno-devi', name: 'Vaishno Devi Shrine Board' },
-];
-
-interface PrasadamItem {
+export interface PrasadamItem { // Export for mock data file
     id: string;
     name: string;
     description: string;
-    price: number; // Price per unit/packet
+    price: number;
     imageUrl: string;
     minQuantity?: number;
     maxQuantity?: number;
 }
-
-const mockPrasadam: { [templeId: string]: PrasadamItem[] } = {
-    'tirupati': [
-        { id: 'ttd-laddu', name: 'Tirupati Laddu (Large)', description: 'World-famous besan laddu.', price: 50, imageUrl: '/images/prasadam/tirupati_laddu.jpg', minQuantity: 1, maxQuantity: 10 },
-        { id: 'ttd-vada', name: 'Tirupati Vada', description: 'Savory fried lentil snack.', price: 25, imageUrl: '/images/prasadam/tirupati_vada.jpg', minQuantity: 2, maxQuantity: 20 },
-    ],
-    'shirdi': [
-        { id: 'shirdi-packet', name: 'Shirdi Prasadam Packet', description: 'Includes Udi, sweets, and sugar crystals.', price: 100, imageUrl: '/images/prasadam/shirdi_packet.jpg', minQuantity: 1, maxQuantity: 5 },
-    ],
-    'vaishno-devi': [
-         { id: 'vd-prasad', name: 'Vaishno Devi Prasad', description: 'Dry fruits and Mishri.', price: 150, imageUrl: '/images/prasadam/vaishno_devi_prasad.jpg', minQuantity: 1, maxQuantity: 5 },
-    ]
-};
 
 interface CartItem extends PrasadamItem {
     quantity: number;
@@ -56,21 +38,18 @@ export default function PrasadamBookingPage() {
     const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
 
-    // Fetch prasadam when temple changes
-    useState(() => {
+    useEffect(() => { // Changed useState to useEffect
         if (selectedTemple) {
             setIsLoading(true);
-            setCart([]); // Clear cart
-            // Simulate fetching
+            setCart([]);
             setTimeout(() => {
-                setAvailablePrasadam(mockPrasadam[selectedTemple] || []);
+                setAvailablePrasadam(mockPrasadamDataPage[selectedTemple] || []);
                 setIsLoading(false);
             }, 500);
         } else {
             setAvailablePrasadam([]);
             setCart([]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedTemple]);
 
     const handleQuantityChange = (item: PrasadamItem, change: number) => {
@@ -78,29 +57,26 @@ export default function PrasadamBookingPage() {
             const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
             const newQuantity = (existingItem?.quantity || 0) + change;
             const minQty = item.minQuantity || 1;
-            const maxQty = item.maxQuantity || 10; // Default max quantity
+            const maxQty = item.maxQuantity || 10;
 
             if (newQuantity < minQty) {
-                // Remove item if quantity goes below minimum
                 toast({ description: `${item.name} removed from cart (Min Qty: ${minQty})` });
                 return prevCart.filter(cartItem => cartItem.id !== item.id);
             }
             if (newQuantity > maxQty) {
                  toast({ variant: "destructive", title: "Quantity Limit", description: `Maximum ${maxQty} units of ${item.name} allowed.` });
-                 return prevCart; // Don't change quantity
+                 return prevCart;
             }
 
             if (existingItem) {
-                // Update quantity
                 return prevCart.map(cartItem =>
                     cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem
                 );
             } else {
-                 // Add new item (only if change is positive)
                 if (change > 0) {
                     return [...prevCart, { ...item, quantity: newQuantity }];
                 }
-                return prevCart; // Should not happen if starting from 0
+                return prevCart;
             }
         });
     };
@@ -126,14 +102,10 @@ export default function PrasadamBookingPage() {
             deliveryAddress
         });
         try {
-            // Simulate API call for order placement
             await new Promise(resolve => setTimeout(resolve, 2000));
             toast({ title: "Order Placed Successfully!", description: `Your prasadam order (₹${totalAmount}) will be delivered soon.` });
-            // Reset form
             setCart([]);
             setDeliveryAddress('');
-            // Optionally reset temple
-            // setSelectedTemple('');
         } catch (error) {
             console.error("Prasadam order failed:", error);
             toast({ variant: "destructive", title: "Order Failed" });
@@ -165,13 +137,12 @@ export default function PrasadamBookingPage() {
                          <Select value={selectedTemple} onValueChange={setSelectedTemple} required>
                             <SelectTrigger id="temple"><SelectValue placeholder="Select Temple to order from" /></SelectTrigger>
                             <SelectContent>
-                                {mockTemples.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
+                                {mockTemplesData.map(temple => <SelectItem key={temple.id} value={temple.id}>{temple.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </CardContent>
                  </Card>
 
-                 {/* Prasadam Listing */}
                  {selectedTemple && (
                     <Card className="shadow-md mt-4">
                         <CardHeader>
@@ -208,7 +179,6 @@ export default function PrasadamBookingPage() {
                     </Card>
                  )}
 
-                  {/* Delivery & Checkout */}
                   {cart.length > 0 && (
                        <Card className="shadow-md mt-4">
                            <CardHeader>
@@ -228,7 +198,6 @@ export default function PrasadamBookingPage() {
                                          />
                                     </div>
                                     <Separator/>
-                                    {/* Cart Summary */}
                                     <div className="space-y-1 text-sm">
                                          {cart.map(item => (
                                             <div key={item.id} className="flex justify-between">
@@ -252,7 +221,6 @@ export default function PrasadamBookingPage() {
                            </CardContent>
                        </Card>
                   )}
-
             </main>
         </div>
     );

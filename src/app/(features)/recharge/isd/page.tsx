@@ -11,53 +11,19 @@ import { ArrowLeft, PhoneCall, Globe, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import Image from 'next/image'; // If providers have logos
-
-// Mock Data (Replace with actual API calls/data)
-interface CallingCardProvider {
-    id: string;
-    name: string;
-    logoUrl?: string;
-}
-const mockProviders: CallingCardProvider[] = [
-    { id: 'reliance-global', name: 'Reliance Global Call', logoUrl: '/logos/reliance.png' },
-    { id: 'tata-tele', name: 'Tata Tele Calling Card', logoUrl: '/logos/tata.png' },
-    { id: 'matrix', name: 'Matrix Intl. SIM Card', logoUrl: '/logos/matrix.png' }, // Example SIM card top-up
-];
-
-interface CallingCardPlan {
-    id: string;
-    country: string;
-    minutes: number | string; // Can be number or "Unlimited"
-    price: number;
-    validity: string;
-}
-const mockPlans: { [providerId: string]: CallingCardPlan[] } = {
-    'reliance-global': [
-        { id: 'rg-us-100', country: 'USA/Canada', minutes: 1000, price: 500, validity: '30 Days' },
-        { id: 'rg-uk-500', country: 'UK', minutes: 500, price: 600, validity: '30 Days' },
-        { id: 'rg-uae-200', country: 'UAE', minutes: 200, price: 750, validity: '30 Days' },
-    ],
-    'tata-tele': [
-        { id: 'tt-global-basic', country: 'Global Pack', minutes: 300, price: 400, validity: '28 Days' },
-        { id: 'tt-aus-nz-500', country: 'Australia/NZ', minutes: 500, price: 800, validity: '30 Days' },
-    ],
-    'matrix': [ // Example for SIM top-up
-        { id: 'matrix-topup-10', country: 'Global Top-up', minutes: '$10 Value', price: 850, validity: 'N/A' },
-        { id: 'matrix-topup-25', country: 'Global Top-up', minutes: '$25 Value', price: 2100, validity: 'N/A' },
-    ],
-};
+import Image from 'next/image';
+import { mockCallingCardProvidersData, mockCallingCardPlansData, CallingCardProvider, CallingCardPlan } from '@/mock-data'; // Import centralized mock data
 
 export default function IntlCallingRechargePage() {
     const [selectedProvider, setSelectedProvider] = useState<string>('');
-    const [accountNumber, setAccountNumber] = useState(''); // Card number or registered mobile
+    const [accountNumber, setAccountNumber] = useState('');
     const [amount, setAmount] = useState<string>('');
     const [selectedPlan, setSelectedPlan] = useState<CallingCardPlan | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
-    const plans = mockPlans[selectedProvider] || [];
+    const plans = mockCallingCardPlansData[selectedProvider] || [];
 
     const handlePlanSelect = (plan: CallingCardPlan) => {
         setSelectedPlan(plan);
@@ -73,7 +39,6 @@ export default function IntlCallingRechargePage() {
         setIsProcessing(true);
         console.log("Processing Intl Calling Recharge:", { provider: selectedProvider, account: accountNumber, amount });
         try {
-            // Simulate API call (replace with actual)
             await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Recharge Successful!", description: `Your calling card ${accountNumber} has been recharged with ₹${amount}.` });
             setAccountNumber('');
@@ -109,7 +74,6 @@ export default function IntlCallingRechargePage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleRecharge} className="space-y-4">
-                            {/* Provider Selection */}
                             <div className="space-y-1">
                                 <Label htmlFor="provider">Provider</Label>
                                 <Select value={selectedProvider} onValueChange={setSelectedProvider} required>
@@ -117,7 +81,7 @@ export default function IntlCallingRechargePage() {
                                         <SelectValue placeholder="Select Provider" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {mockProviders.map((p) => (
+                                        {mockCallingCardProvidersData.map((p) => (
                                             <SelectItem key={p.id} value={p.id}>
                                                 {p.logoUrl && <Image src={p.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
                                                 {p.name}
@@ -127,7 +91,6 @@ export default function IntlCallingRechargePage() {
                                 </Select>
                             </div>
 
-                            {/* Account/Card Number */}
                             <div className="space-y-1">
                                 <Label htmlFor="accountNumber">Calling Card Number / Registered Mobile</Label>
                                 <Input
@@ -140,7 +103,6 @@ export default function IntlCallingRechargePage() {
                                 />
                             </div>
 
-                            {/* Plans (if available) */}
                             {selectedProvider && plans.length > 0 && (
                                 <div className="space-y-2 pt-2">
                                     <Label>Select Plan/Pack</Label>
@@ -160,7 +122,6 @@ export default function IntlCallingRechargePage() {
                                 </div>
                             )}
 
-                            {/* Amount Input */}
                             <div className="space-y-1">
                                 <Label htmlFor="amount">Top-up Amount (₹)</Label>
                                 <div className="relative">
@@ -172,14 +133,13 @@ export default function IntlCallingRechargePage() {
                                         value={amount}
                                         onChange={(e) => { setAmount(e.target.value); setSelectedPlan(null); }}
                                         required
-                                        min="100" // Example min amount
+                                        min="100"
                                         step="1"
                                         className="pl-7"
                                     />
                                 </div>
                             </div>
 
-                            {/* Payment Button */}
                             <div className="pt-4">
                                 <Separator className="mb-4"/>
                                 <Button

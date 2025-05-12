@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -8,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Car, CalendarIcon, Clock, MapPin, Filter, Users, Briefcase, Loader2, CheckCircle, Wallet, Check } from 'lucide-react';
+import { ArrowLeft, Car, CalendarIcon, Clock, MapPin, Filter, Users, Briefcase, Loader2, CheckCircle, Wallet, Check, Fuel, Gauge, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { format, addDays, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -16,44 +17,17 @@ import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-
-// Mock Data
-const mockCities = ['Bangalore', 'Chennai', 'Hyderabad', 'Mumbai', 'Delhi', 'Pune'];
-const mockCarTypes = ['Hatchback', 'Sedan', 'SUV', 'Luxury'];
-const mockFuelTypes = ['Petrol', 'Diesel', 'Electric', 'CNG'];
-const mockTransmissionTypes = ['Manual', 'Automatic'];
-
-interface CarListing {
-    id: string;
-    name: string; // e.g., "Maruti Swift", "Honda City", "Toyota Innova"
-    type: string; // Hatchback, Sedan, SUV, Luxury
-    transmission: string; // Manual, Automatic
-    fuelType: string; // Petrol, Diesel, Electric
-    seats: number;
-    imageUrl: string;
-    pricePerDay: number;
-    rating: number;
-    location: string; // Pickup location
-    kmsLimit?: string; // e.g., "250 Kms/day"
-    isAvailable: boolean;
-}
-
-const mockCars: CarListing[] = [
-    { id: 'c1', name: 'Maruti Swift', type: 'Hatchback', transmission: 'Manual', fuelType: 'Petrol', seats: 5, imageUrl: 'https://picsum.photos/seed/swift/300/200', pricePerDay: 1200, rating: 4.2, location: 'Airport Road', kmsLimit: '150 Kms/day', isAvailable: true },
-    { id: 'c2', name: 'Honda City', type: 'Sedan', transmission: 'Automatic', fuelType: 'Petrol', seats: 5, imageUrl: 'https://picsum.photos/seed/city/300/200', pricePerDay: 1800, rating: 4.5, location: 'Koramangala', kmsLimit: '200 Kms/day', isAvailable: true },
-    { id: 'c3', name: 'Toyota Innova Crysta', type: 'SUV', transmission: 'Manual', fuelType: 'Diesel', seats: 7, imageUrl: 'https://picsum.photos/seed/innova/300/200', pricePerDay: 2500, rating: 4.6, location: 'Majestic', kmsLimit: '250 Kms/day', isAvailable: true },
-    { id: 'c4', name: 'BMW 5 Series', type: 'Luxury', transmission: 'Automatic', fuelType: 'Petrol', seats: 5, imageUrl: 'https://picsum.photos/seed/bmw5/300/200', pricePerDay: 8000, rating: 4.8, location: 'Indiranagar', kmsLimit: 'Unlimited Kms', isAvailable: false },
-    { id: 'c5', name: 'Hyundai Venue', type: 'SUV', transmission: 'Manual', fuelType: 'Petrol', seats: 5, imageUrl: 'https://picsum.photos/seed/venue/300/200', pricePerDay: 1600, rating: 4.1, location: 'Whitefield', kmsLimit: '200 Kms/day', isAvailable: true },
-];
+import { mockCities, mockCarsData } from '@/mock-data'; // Import centralized mock data
+import type { CarListing } from '@/services/booking'; // Ensure type consistency
 
 export default function CarRentalPage() {
     const [pickupCity, setPickupCity] = useState('');
     const [pickupDate, setPickupDate] = useState<Date | undefined>(new Date());
-    const [dropoffDate, setDropoffDate] = useState<Date | undefined>(addDays(new Date(), 1)); // Default 1 day rental
+    const [dropoffDate, setDropoffDate] = useState<Date | undefined>(addDays(new Date(), 1));
     const [searchResults, setSearchResults] = useState<CarListing[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [showResults, setShowResults] = useState(false);
-    const [selectedCar, setSelectedCar] = useState<CarListing | null>(null); // To show details/book
+    const [selectedCar, setSelectedCar] = useState<CarListing | null>(null);
     const [isBooking, setIsBooking] = useState(false);
     const { toast } = useToast();
 
@@ -69,10 +43,8 @@ export default function CarRentalPage() {
         setSelectedCar(null);
         console.log("Searching Cars:", { city: pickupCity, pickup: format(pickupDate, 'yyyy-MM-dd'), dropoff: format(dropoffDate, 'yyyy-MM-dd') });
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1500));
-            // Filter mock data (in real app, API does this)
-            const results = mockCars.filter(car => car.isAvailable && Math.random() > 0.2); // Simulate availability
+            const results = mockCarsData.filter(car => car.isAvailable && Math.random() > 0.2);
             setSearchResults(results);
             setShowResults(true);
             if (results.length === 0) {
@@ -88,25 +60,19 @@ export default function CarRentalPage() {
 
     const handleSelectCar = (car: CarListing) => {
         setSelectedCar(car);
-        // In a real app, navigate to booking page or show booking form
-        // For now, just show a booking confirmation step (simulated)
          handleConfirmBooking(car);
     };
 
      const handleConfirmBooking = async (car: CarListing) => {
         setIsBooking(true);
-        const rentalDays = differenceInDays(dropoffDate!, pickupDate!) + 1; // +1 to include start day
+        const rentalDays = differenceInDays(dropoffDate!, pickupDate!) + 1;
         const totalCost = rentalDays * car.pricePerDay;
         console.log(`Booking Car: ${car.name}, Days: ${rentalDays}, Total: ${totalCost}`);
         try {
-             // Simulate Booking API Call
              await new Promise(resolve => setTimeout(resolve, 2000));
               toast({ title: "Booking Successful!", description: `Booked ${car.name} for ${rentalDays} days. Total: ₹${totalCost}. Please complete payment.` });
-              // TODO: Redirect to payment page or KYC/License upload if needed
-             // Reset state
              setSelectedCar(null);
              setShowResults(false);
-             // setPickupCity(''); // Optionally clear search
         } catch (error) {
              console.error("Car booking failed:", error);
              toast({ variant: "destructive", title: "Booking Failed", description: "Could not confirm your car booking." });
@@ -177,7 +143,6 @@ export default function CarRentalPage() {
                                         </Popover>
                                     </div>
                                 </div>
-                                {/* Add Time Pickers if needed */}
 
                                 <Button type="submit" className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isLoading}>
                                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
@@ -187,14 +152,13 @@ export default function CarRentalPage() {
                         </CardContent>
                     </Card>
                  ) : (
-                     /* Search Results */
                      <div className="space-y-4">
                          <Button variant="outline" onClick={() => setShowResults(false)} className="mb-4">
                              <ArrowLeft className="mr-2 h-4 w-4"/> Modify Search
                          </Button>
-                         <div className="flex justify-between items-center mb-2">
+                          <div className="flex justify-between items-center mb-2">
                              <h2 className="text-lg font-semibold">{searchResults.length} Cars Found</h2>
-                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button> {/* Add Filter functionality */}
+                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button>
                          </div>
                          {searchResults.map(car => (
                             <Card key={car.id} className="shadow-sm hover:shadow-md transition-shadow">

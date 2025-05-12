@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,35 +11,18 @@ import { ArrowLeft, Home, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { processBillPayment } from '@/services/bills'; // Use bill payment service
-
-// Mock Data
-interface Municipality {
-    id: string;
-    name: string;
-    state: string;
-}
-const mockMunicipalities: Municipality[] = [
-    { id: 'bbmp', name: 'Bruhat Bengaluru Mahanagara Palike (BBMP)', state: 'Karnataka' },
-    { id: 'mcgm', name: 'Municipal Corporation of Greater Mumbai (MCGM)', state: 'Maharashtra' },
-    { id: 'sdmc', name: 'South Delhi Municipal Corporation (SDMC)', state: 'Delhi' },
-    { id: 'ghmc', name: 'Greater Hyderabad Municipal Corporation (GHMC)', state: 'Telangana' },
-    { id: 'gcc', name: 'Greater Chennai Corporation (GCC)', state: 'Tamil Nadu' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockMunicipalitiesData, Municipality } from '@/mock-data'; // Import centralized mock data
 
 export default function PropertyTaxPage() {
-    const [municipalities, setMunicipalities] = useState<Municipality[]>(mockMunicipalities);
+    const [municipalities, setMunicipalities] = useState<Municipality[]>(mockMunicipalitiesData);
     const [selectedMunicipality, setSelectedMunicipality] = useState<string>('');
-    const [propertyId, setPropertyId] = useState(''); // SAS Application No, Property ID, etc.
-    const [assessmentYear, setAssessmentYear] = useState<string>(''); // e.g., "2024-2025"
+    const [propertyId, setPropertyId] = useState('');
+    const [assessmentYear, setAssessmentYear] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
-
-    // useEffect(() => {
-    //     // Fetch actual list of municipalities/corporations if API exists
-    // }, []);
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,11 +35,10 @@ export default function PropertyTaxPage() {
         try {
             const paymentDetails = {
                 billerId: selectedMunicipality,
-                identifier: propertyId, // Use property ID as identifier
+                identifier: propertyId,
                 amount: Number(amount),
-                billerType: 'Property Tax', // Define a specific type
-                billerName: `${municipalityName} (${assessmentYear})`, // Include assessment year
-                // Add other details like owner name if needed by backend
+                billerType: 'Property Tax',
+                billerName: `${municipalityName} (${assessmentYear})`,
             };
             const transactionResult = await processBillPayment(paymentDetails);
 
@@ -75,7 +58,6 @@ export default function PropertyTaxPage() {
         }
     };
 
-    // Generate assessment years (e.g., current and previous few)
     const currentYear = new Date().getFullYear();
     const assessmentYears = Array.from({ length: 3 }, (_, i) => `${currentYear - i}-${currentYear - i + 1}`);
 

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,24 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { Checkbox } from '@/components/ui/checkbox';
-import { processBillPayment } from '@/services/bills'; // Can reuse bill payment logic
-
-// Mock Data
-interface Charity {
-    id: string;
-    name: string;
-    description: string;
-    logoUrl?: string;
-}
-const mockCharities: Charity[] = [
-    { id: 'charity1', name: 'Akshaya Patra Foundation', description: 'Providing mid-day meals to children', logoUrl: '/logos/akshayapatra.png' },
-    { id: 'charity2', name: 'CRY - Child Rights and You', description: 'Working for child rights', logoUrl: '/logos/cry.png' },
-    { id: 'charity3', name: 'HelpAge India', description: 'Supporting elderly citizens', logoUrl: '/logos/helpage.png' },
-    { id: 'charity4', name: 'WWF India', description: 'Wildlife conservation', logoUrl: '/logos/wwf.png' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockCharitiesData, Charity } from '@/mock-data'; // Import centralized mock data
 
 export default function GeneralDonationsPage() {
-    const [charities, setCharities] = useState<Charity[]>(mockCharities);
+    const [charities, setCharities] = useState<Charity[]>(mockCharitiesData);
     const [selectedCharity, setSelectedCharity] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
     const [donorName, setDonorName] = useState('');
@@ -38,10 +26,6 @@ export default function GeneralDonationsPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
-
-    // useEffect(() => {
-    //     // Fetch actual list of charities/NGOs if API exists
-    // }, []);
 
     const handleDonate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -59,11 +43,10 @@ export default function GeneralDonationsPage() {
         try {
              const paymentDetails = {
                 billerId: selectedCharity,
-                identifier: isAnonymous ? 'Anonymous' : donorName, // Use name/anonymous as identifier
+                identifier: isAnonymous ? 'Anonymous' : donorName,
                 amount: Number(amount),
-                billerType: 'Donation', // Specific type
+                billerType: 'Donation',
                 billerName: `Donation to ${charityName}`,
-                // Include PAN if provided for potential backend processing
             };
             const transactionResult = await processBillPayment(paymentDetails);
 
@@ -133,7 +116,7 @@ export default function GeneralDonationsPage() {
                                         value={amount}
                                         onChange={(e) => setAmount(e.target.value)}
                                         required
-                                        min="10" // Example minimum
+                                        min="10"
                                         step="1"
                                         className="pl-7"
                                     />
@@ -148,7 +131,8 @@ export default function GeneralDonationsPage() {
                             </div>
                             <div className="space-y-1">
                                 <Label htmlFor="panNumber">PAN Number (Optional for 80G)</Label>
-                                <Input id="panNumber" placeholder="Enter PAN" value={panNumber} onChange={(e) => setPanNumber(e.target.value)} disabled={isAnonymous}/>
+                                <Input id="panNumber" placeholder="Enter PAN for tax receipt" value={panNumber} onChange={(e) => setPanNumber(e.target.value)} disabled={isAnonymous}/>
+                                <p className="text-xs text-muted-foreground">Needed for 80G tax exemption receipt (if applicable).</p>
                             </div>
                             <div className="flex items-center space-x-2">
                                 <Checkbox id="anonymous-donate" checked={isAnonymous} onCheckedChange={(checked) => setIsAnonymous(Boolean(checked))} />

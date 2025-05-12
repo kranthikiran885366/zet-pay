@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -6,23 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Ticket, MapPin, CalendarDays, Loader2, Wallet, User, Image as ImageIcon, Upload, GraduationCap } from 'lucide-react'; // Added GraduationCap, Upload
+import { ArrowLeft, Ticket, MapPin, CalendarDays, Loader2, Wallet, User, Image as ImageIcon, Upload, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Added RadioGroup
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { format } from 'date-fns';
+import { mockCitiesBusPass, mockOperatorsBusPass, mockPassTypesData } from '@/mock-data'; // Import centralized mock data
 
-// Mock Data
-const mockCities = ['Bangalore', 'Mumbai', 'Delhi', 'Chennai'];
-const mockOperators: { [city: string]: string[] } = {
-    'Bangalore': ['BMTC', 'KSRTC City'],
-    'Mumbai': ['BEST', 'NMMT'],
-    'Delhi': ['DTC'],
-    'Chennai': ['MTC'],
-};
-
-interface BusPass {
+export interface BusPass { // Keep type definition if used internally
     id: string;
     name: string;
     price: number;
@@ -30,21 +23,21 @@ interface BusPass {
     description: string;
     category: 'General' | 'Student';
 }
+export interface PurchasedPass { // Keep type definition if used internally
+    passId: string;
+    purchaseId: string;
+    operatorName: string;
+    operatorLogo?: string;
+    passName: string;
+    passengerName: string;
+    passengerPhotoUrl?: string;
+    validFrom: Date;
+    validUntil: Date;
+    status: 'Active' | 'Expired' | 'Pending Verification' | 'Rejected';
+    qrCodeData?: string;
+    downloadUrl?: string;
+}
 
-const mockPassTypes: { [operator: string]: BusPass[] } = {
-    'BMTC': [
-        { id: 'bmtc-daily', name: 'Daily Pass', price: 70, duration: '1 Day', description: 'Unlimited travel on non-AC buses for one day.', category: 'General' },
-        { id: 'bmtc-monthly-nonac', name: 'Monthly Pass (Non-AC)', price: 1050, duration: '1 Month', description: 'Unlimited travel on non-AC buses for one month.', category: 'General' },
-        { id: 'bmtc-monthly-ac', name: 'Monthly Pass (AC Vajra)', price: 2500, duration: '1 Month', description: 'Unlimited travel on AC Vajra buses for one month.', category: 'General' },
-        { id: 'bmtc-student-monthly', name: 'Student Monthly Pass', price: 200, duration: '1 Month', description: 'Concessional travel for students (Non-AC). Requires validation.', category: 'Student' },
-    ],
-    'BEST': [
-        { id: 'best-daily', name: 'Daily Pass', price: 50, duration: '1 Day', description: 'Unlimited travel within city limits.', category: 'General' },
-        { id: 'best-monthly', name: 'Monthly Pass', price: 800, duration: '1 Month', description: 'Monthly travel pass.', category: 'General' },
-        { id: 'best-student-quarterly', name: 'Student Quarterly Pass', price: 300, duration: '3 Months', description: 'Concessional travel for students. Requires validation.', category: 'Student' },
-    ],
-     // Add more for other operators
-};
 
 export default function BusPassApplicationPage() {
     const [selectedCity, setSelectedCity] = useState('');
@@ -55,30 +48,28 @@ export default function BusPassApplicationPage() {
     const [gender, setGender] = useState('');
     const [address, setAddress] = useState('');
     const [studentId, setStudentId] = useState('');
-    const [photo, setPhoto] = useState<File | null>(null); // State to hold the selected photo file
+    const [photo, setPhoto] = useState<File | null>(null);
     const { toast } = useToast();
     const today = new Date();
 
-    // Filter operators based on selected city
-    const operators = selectedCity ? mockOperators[selectedCity] : [];
-    const passTypes = selectedOperator ? mockPassTypes[selectedOperator] : [];
+    const operators = selectedCity ? mockOperatorsBusPass[selectedCity] : [];
+    const passTypes = selectedOperator ? mockPassTypesData[selectedOperator] : [];
 
     const handleCityChange = (city: string) => {
         setSelectedCity(city);
-        setSelectedOperator(''); // Reset operator on city change
+        setSelectedOperator('');
         setSelectedPassType(null);
     };
 
     const handleOperatorChange = (operator: string) => {
         setSelectedOperator(operator);
-        setSelectedPassType(null); // Reset pass type on operator change
+        setSelectedPassType(null);
     };
 
     const handlePassTypeChange = (passId: string) => {
         setSelectedPassType(passId);
     };
 
-    // Photo upload
     const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -86,7 +77,6 @@ export default function BusPassApplicationPage() {
         }
     };
 
-    // Handle form submission
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -95,8 +85,7 @@ export default function BusPassApplicationPage() {
             return;
         }
 
-        // Gather necessary information based on pass type (student vs general)
-        if (mockPassTypes[selectedOperator]?.find(pt => pt.id === selectedPassType)?.category === 'Student' && !studentId) {
+        if (mockPassTypesData[selectedOperator]?.find(pt => pt.id === selectedPassType)?.category === 'Student' && !studentId) {
             toast({ variant: "destructive", title: "Missing Student ID" });
             return;
         }
@@ -105,7 +94,6 @@ export default function BusPassApplicationPage() {
             return;
         }
 
-        // Submit data (replace with actual API call)
         console.log("Submitting Bus Pass Application:", {
             selectedCity,
             selectedOperator,
@@ -115,11 +103,10 @@ export default function BusPassApplicationPage() {
             gender,
             address,
             studentId,
-            photo: photo.name, // Send only the filename (handle file upload separately)
+            photo: photo.name,
         });
 
         toast({ title: "Application Submitted", description: "Your application has been submitted successfully. Please wait for verification." });
-        // TODO: Reset form and navigate
     };
 
 
@@ -127,7 +114,7 @@ export default function BusPassApplicationPage() {
         <div className="min-h-screen bg-secondary flex flex-col">
             {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
-                <Link href="/passes/my-passes" passHref> {/* Link back to the my passes page */}
+                <Link href="/passes/my-passes" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
@@ -145,7 +132,6 @@ export default function BusPassApplicationPage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* City Selection */}
                             <div className="space-y-2">
                                 <Label htmlFor="city">City</Label>
                                 <Select value={selectedCity} onValueChange={handleCityChange} required>
@@ -153,14 +139,13 @@ export default function BusPassApplicationPage() {
                                         <SelectValue placeholder="Select a City" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {mockCities.map((city) => (
+                                        {mockCitiesBusPass.map((city) => (
                                             <SelectItem key={city} value={city}>{city}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {/* Operator Selection */}
                             {selectedCity && (
                                 <div className="space-y-2">
                                     <Label htmlFor="operator">Operator</Label>
@@ -177,7 +162,6 @@ export default function BusPassApplicationPage() {
                                 </div>
                             )}
 
-                            {/* Pass Type Selection */}
                             {selectedOperator && (
                                 <div className="space-y-2">
                                     <Label htmlFor="passType">Pass Type</Label>
@@ -196,7 +180,6 @@ export default function BusPassApplicationPage() {
                                 </div>
                             )}
 
-                            {/* Personal Details */}
                             <Separator/>
                             <div className="space-y-2">
                                 <Label htmlFor="name">Full Name</Label>
@@ -228,20 +211,18 @@ export default function BusPassApplicationPage() {
                                 <Input type="text" id="address" placeholder="Enter your address" value={address} onChange={(e) => setAddress(e.target.value)} required />
                             </div>
 
-                            {/* Student Specific Fields */}
-                            {mockPassTypes[selectedOperator]?.find(pt => pt.id === selectedPassType)?.category === 'Student' && (
+                            {mockPassTypesData[selectedOperator]?.find(pt => pt.id === selectedPassType)?.category === 'Student' && (
                                 <div className="space-y-2">
                                     <Label htmlFor="studentId">Student ID</Label>
                                     <Input type="text" id="studentId" placeholder="Enter your Student ID" value={studentId} onChange={(e) => setStudentId(e.target.value)} required />
                                 </div>
                             )}
 
-                            {/* Photo Upload */}
                             <div className="space-y-2">
                                 <Label htmlFor="photo">Upload Photo</Label>
                                 <Input type="file" id="photo" accept="image/*" onChange={handlePhotoUpload} required />
                                 {photo && (
-                                    <p className="text-sm text-muted-foreground">Selected: {photo.name} ({format(photo.lastModified, 'PPP')})</p>
+                                    <p className="text-sm text-muted-foreground">Selected: {photo.name} ({photo.lastModified ? format(new Date(photo.lastModified), 'PPP') : ''})</p>
                                 )}
                             </div>
 

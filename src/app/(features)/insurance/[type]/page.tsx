@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,36 +13,8 @@ import { useParams } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { processBillPayment } from '@/services/bills'; // Use bill payment service
-
-// Mock Data (Replace with actual API calls/data)
-interface Insurer {
-    id: string;
-    name: string;
-    logoUrl?: string;
-}
-const mockInsurers: { [type: string]: Insurer[] } = {
-    'bike': [
-        { id: 'acko-bike', name: 'Acko General Insurance', logoUrl: '/logos/acko.png' },
-        { id: 'hdfc-ergo-bike', name: 'HDFC ERGO General Insurance', logoUrl: '/logos/hdfc_ergo.png' },
-        { id: 'icici-lombard-bike', name: 'ICICI Lombard General Insurance', logoUrl: '/logos/icici_lombard.png' },
-    ],
-    'car': [
-        { id: 'bajaj-allianz-car', name: 'Bajaj Allianz General Insurance', logoUrl: '/logos/bajaj_allianz.png' },
-        { id: 'tata-aig-car', name: 'TATA AIG General Insurance', logoUrl: '/logos/tata_aig.png' },
-        { id: 'reliance-gen-car', name: 'Reliance General Insurance', logoUrl: '/logos/reliance_gen.png' },
-    ],
-    'health': [
-        { id: 'star-health', name: 'Star Health Insurance', logoUrl: '/logos/star_health.png' },
-        { id: 'care-health', name: 'Care Health Insurance', logoUrl: '/logos/care.png' },
-        { id: 'niva-bupa', name: 'Niva Bupa Health Insurance', logoUrl: '/logos/niva_bupa.png' },
-    ],
-    'life': [
-        { id: 'lic', name: 'Life Insurance Corporation (LIC)', logoUrl: '/logos/lic.png' },
-        { id: 'hdfc-life', name: 'HDFC Life Insurance', logoUrl: '/logos/hdfc_life.png' },
-        { id: 'sbi-life', name: 'SBI Life Insurance', logoUrl: '/logos/sbi_life.png' },
-    ]
-};
+import { processBillPayment } from '@/services/bills';
+import { mockInsurersData, Insurer } from '@/mock-data'; // Import centralized mock data
 
 const insuranceTypeDetails: { [key: string]: { title: string; icon: React.ElementType; identifierLabel: string; billerType: string } } = {
     'bike': { title: 'Bike Insurance Premium', icon: Bike, identifierLabel: 'Policy Number / Vehicle Reg. No.', billerType: 'Bike Insurance' },
@@ -52,27 +25,25 @@ const insuranceTypeDetails: { [key: string]: { title: string; icon: React.Elemen
 
 export default function InsurancePaymentPage() {
     const params = useParams();
-    const type = typeof params.type === 'string' ? params.type : 'bike'; // Default to bike
-    const details = insuranceTypeDetails[type] || insuranceTypeDetails['life']; // Fallback
+    const type = typeof params.type === 'string' ? params.type : 'bike';
+    const details = insuranceTypeDetails[type] || insuranceTypeDetails['life'];
 
     const [insurers, setInsurers] = useState<Insurer[]>([]);
     const [selectedInsurer, setSelectedInsurer] = useState<string>('');
-    const [identifier, setIdentifier] = useState(''); // Policy number or Vehicle Reg
-    const [dob, setDob] = useState<string>(''); // Sometimes required for LIC etc.
+    const [identifier, setIdentifier] = useState('');
+    const [dob, setDob] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
     const [isLoadingInsurers, setIsLoadingInsurers] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
-        // Fetch insurers based on type
         setIsLoadingInsurers(true);
-        // Simulate fetching
         setTimeout(() => {
-            setInsurers(mockInsurers[type] || []);
+            setInsurers(mockInsurersData[type] || []);
             setIsLoadingInsurers(false);
         }, 500);
-        setSelectedInsurer(''); // Reset selection on type change
+        setSelectedInsurer('');
         setIdentifier('');
         setDob('');
         setAmount('');
@@ -84,8 +55,6 @@ export default function InsurancePaymentPage() {
             toast({ variant: "destructive", title: "Missing Information" });
             return;
         }
-         // Add DOB validation if required for specific insurers (e.g., LIC)
-         // if (selectedInsurer === 'lic' && !dob) { ... }
 
         setIsProcessing(true);
         const insurerName = insurers.find(i => i.id === selectedInsurer)?.name || details.title;
@@ -96,7 +65,6 @@ export default function InsurancePaymentPage() {
                 amount: Number(amount),
                 billerType: details.billerType,
                 billerName: insurerName,
-                // Optionally include DOB or other verification data if needed by backend
             };
             const transactionResult = await processBillPayment(paymentDetails);
 
@@ -165,7 +133,6 @@ export default function InsurancePaymentPage() {
                                 />
                             </div>
 
-                            {/* Conditionally show DOB input for specific insurers like LIC */}
                             {selectedInsurer === 'lic' && (
                                 <div className="space-y-1">
                                     <Label htmlFor="dob">Date of Birth (for verification)</Label>

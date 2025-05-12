@@ -1,43 +1,34 @@
+
 'use client';
 
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input"; // Added Input
+import { Label } from "@/components/ui/label"; // Added Label
 import { ArrowLeft, Map, CalendarDays, Users, Info, Wallet, Loader2, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import Image from 'next/image';
+import { mockTempleEventsData } from '@/mock-data'; // Import centralized mock data
 
-// Mock Data (Replace with actual API calls)
-interface TempleEvent {
+export interface TempleEvent { // Export for mock data file
     id: string;
     name: string;
     description: string;
     location: string;
     startDate: Date;
     endDate: Date;
-    pricePerPerson?: number; // Optional price
+    pricePerPerson?: number;
     imageUrl: string;
     category: 'Yatra' | 'Special Pooja' | 'Festival' | 'Cultural Program';
     bookingRequired: boolean;
     slotsAvailable?: number;
 }
 
-const mockEvents: TempleEvent[] = [
-    {
-        id: 'event1', name: 'Vaishno Devi Yatra Package', description: 'Guided pilgrimage tour including travel and accommodation.', location: 'Jammu & Kashmir', startDate: new Date(2024, 8, 10), endDate: new Date(2024, 8, 15), pricePerPerson: 15000, imageUrl: '/images/events/vaishno_devi_yatra.jpg', category: 'Yatra', bookingRequired: true, slotsAvailable: 50
-    },
-    {
-        id: 'event2', name: 'Diwali Special Lakshmi Pooja at Tirupati', description: 'Participate in the grand Lakshmi Pooja during Diwali.', location: 'Tirupati', startDate: new Date(2024, 10, 1), endDate: new Date(2024, 10, 1), pricePerPerson: 1500, imageUrl: '/images/events/diwali_pooja.jpg', category: 'Special Pooja', bookingRequired: true, slotsAvailable: 100
-    },
-    {
-        id: 'event3', name: 'Shirdi Ram Navami Celebrations', description: 'Join the special celebrations and processions.', location: 'Shirdi', startDate: new Date(2025, 3, 10), endDate: new Date(2025, 3, 12), imageUrl: '/images/events/ram_navami.jpg', category: 'Festival', bookingRequired: false
-    },
-];
-
 export default function TempleEventsPage() {
-    const [events] = useState<TempleEvent[]>(mockEvents); // Replace with fetched data
+    const [events] = useState<TempleEvent[]>(mockTempleEventsData);
     const [selectedEvent, setSelectedEvent] = useState<TempleEvent | null>(null);
     const [numberOfPersons, setNumberOfPersons] = useState<number>(1);
     const [isBooking, setIsBooking] = useState(false);
@@ -53,7 +44,7 @@ export default function TempleEventsPage() {
              return;
          }
         setSelectedEvent(event);
-        setNumberOfPersons(1); // Reset persons count
+        setNumberOfPersons(1);
     };
 
     const handleConfirmBooking = async () => {
@@ -73,10 +64,9 @@ export default function TempleEventsPage() {
             totalAmount
         });
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Event Booking Confirmed!", description: `Successfully booked ${numberOfPersons} place(s) for ${selectedEvent.name}.` });
-            setSelectedEvent(null); // Close booking section
+            setSelectedEvent(null);
         } catch (error) {
             console.error("Event booking failed:", error);
             toast({ variant: "destructive", title: "Booking Failed" });
@@ -118,8 +108,9 @@ export default function TempleEventsPage() {
                                  {event.slotsAvailable !== undefined && <p className="flex items-center gap-1"><Users className="h-3 w-3"/> Slots Left: {event.slotsAvailable > 0 ? event.slotsAvailable : 'Sold Out'}</p>}
                              </div>
                               {event.bookingRequired ? (
-                                 <Button className="w-full mt-3" onClick={() => handleBookEvent(event)} disabled={event.slotsAvailable !== undefined && event.slotsAvailable <= 0}>
-                                     {event.slotsAvailable !== undefined && event.slotsAvailable <= 0 ? 'Sold Out' : 'Book Now'}
+                                 <Button className="w-full mt-3" onClick={() => handleBookEvent(event)} disabled={(event.slotsAvailable !== undefined && event.slotsAvailable <= 0) || isBooking}>
+                                     {isBooking && selectedEvent?.id === event.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                                     {event.slotsAvailable !== undefined && event.slotsAvailable <= 0 ? 'Sold Out' : (isBooking && selectedEvent?.id === event.id ? 'Processing...' : 'Book Now')}
                                  </Button>
                              ) : (
                                  <Button variant="outline" className="w-full mt-3" disabled>Booking Not Required</Button>
@@ -137,8 +128,6 @@ export default function TempleEventsPage() {
                      </Card>
                  )}
 
-
-                 {/* Booking Confirmation Section (Simplified Modal/Inline) */}
                  {selectedEvent && (
                      <Card className="shadow-lg border-primary mt-6 fixed bottom-4 left-4 right-4 z-50 bg-background p-4 rounded-lg animate-in slide-in-from-bottom-10 fade-in-50 duration-300">
                          <CardHeader className="p-0 pb-3">
@@ -147,16 +136,16 @@ export default function TempleEventsPage() {
                          </CardHeader>
                          <CardContent className="p-0 pb-3 space-y-3">
                              <div className="space-y-1">
-                                 &lt;Label htmlFor="event-persons"&gt;Number of Persons&lt;/Label&gt;
-                                 &lt;Input
+                                 <Label htmlFor="event-persons">Number of Persons</Label>
+                                 <Input
                                     id="event-persons"
                                     type="number"
                                     min="1"
-                                    max={selectedEvent.slotsAvailable || 10} // Max is available slots or a default
+                                    max={selectedEvent.slotsAvailable || 10}
                                     value={numberOfPersons}
                                     onChange={(e) => setNumberOfPersons(Number(e.target.value))}
-                                /&gt;
-                             &lt;/div&gt;
+                                />
+                             </div>
                               {selectedEvent.pricePerPerson !== undefined && (
                                 <div className="flex justify-between items-center text-sm font-semibold">
                                     <span>Total Amount:</span>
@@ -165,18 +154,15 @@ export default function TempleEventsPage() {
                               )}
                          </CardContent>
                          <div className="flex gap-2">
-                             &lt;Button variant="outline" className="flex-1" onClick={() => setSelectedEvent(null)}&gt;Cancel&lt;/Button&gt;
-                             &lt;Button className="flex-1 bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isBooking} onClick={handleConfirmBooking}&gt;
-                                 {isBooking ? &lt;Loader2 className="mr-2 h-4 w-4 animate-spin" /&gt; : &lt;Check className="mr-2 h-4 w-4" /&gt;}
+                             <Button variant="outline" className="flex-1" onClick={() => setSelectedEvent(null)}>Cancel</Button>
+                             <Button className="flex-1 bg-[#32CD32] hover:bg-[#2AAE2A] text-white" disabled={isBooking} onClick={handleConfirmBooking}>
+                                 {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                                  {isBooking ? 'Processing...' : 'Confirm Booking'}
-                             &lt;/Button&gt;
+                             </Button>
                          </div>
-                     &lt;/Card&gt;
+                     </Card>
                  )}
             </main>
         </div>
     );
 }
-
-// Helper function to format date (already imported from date-fns)
-// import { format } from 'date-fns';

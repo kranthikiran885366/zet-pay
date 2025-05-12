@@ -7,40 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Mailbox, Loader2, Wallet } from 'lucide-react'; // Using Mailbox as placeholder icon
+import { ArrowLeft, Mailbox, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-
-// Mock Data (Replace with actual API calls/data)
-interface DigitalVoucherBrand {
-    id: string;
-    name: string;
-    logoUrl?: string;
-    denominations: number[];
-    allowCustomAmount: boolean;
-    minAmount?: number;
-    maxAmount?: number;
-}
-const mockDigitalVoucherBrands: DigitalVoucherBrand[] = [
-    { id: 'google-play-voucher', name: 'Google Play Recharge Code', logoUrl: '/logos/googleplay.png', denominations: [100, 300, 500, 1000, 1500, 5000], allowCustomAmount: true, minAmount: 10, maxAmount: 5000 },
-    { id: 'apple-store-voucher', name: 'App Store & iTunes Code', logoUrl: '/logos/appstore.png', denominations: [500, 1000, 2000, 5000], allowCustomAmount: false },
-    { id: 'uber-voucher', name: 'Uber Voucher', logoUrl: '/logos/uber.png', denominations: [100, 250, 500], allowCustomAmount: true, minAmount: 50 },
-    // Add more brands like Amazon Shopping Voucher etc.
-];
+import { mockDigitalVoucherBrandsData, DigitalVoucherBrand } from '@/mock-data'; // Import centralized mock data
 
 export default function DigitalVoucherPage() {
-    const [brands, setBrands] = useState<DigitalVoucherBrand[]>(mockDigitalVoucherBrands);
+    const [brands] = useState<DigitalVoucherBrand[]>(mockDigitalVoucherBrandsData);
     const [selectedBrand, setSelectedBrand] = useState<DigitalVoucherBrand | null>(null);
     const [selectedDenomination, setSelectedDenomination] = useState<number | null>(null);
     const [customAmount, setCustomAmount] = useState<string>('');
-    const [recipientMobile, setRecipientMobile] = useState(''); // Mobile number to send voucher code
+    const [recipientMobile, setRecipientMobile] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
-        // Reset amount when brand changes
         setSelectedDenomination(null);
         setCustomAmount('');
         setRecipientMobile('');
@@ -76,7 +59,6 @@ export default function DigitalVoucherPage() {
             toast({ variant: "destructive", title: "Missing Information", description: "Please select brand, amount, and enter a valid recipient mobile number." });
             return;
         }
-        // Custom amount validation
         if (customAmount && !selectedDenomination) {
             if (selectedBrand.allowCustomAmount === false) {
                 toast({ variant: "destructive", title: "Invalid Amount", description: `${selectedBrand.name} does not allow custom amounts.` });
@@ -93,7 +75,6 @@ export default function DigitalVoucherPage() {
             }
         }
 
-
         setIsProcessing(true);
         console.log("Purchasing Digital Voucher:", {
             brand: selectedBrand.name,
@@ -101,10 +82,8 @@ export default function DigitalVoucherPage() {
             recipientMobile
         });
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1500));
             toast({ title: "Voucher Purchased!", description: `₹${finalAmount} ${selectedBrand.name} voucher code sent to ${recipientMobile}.` });
-            // Reset form
             setSelectedBrand(null);
             setRecipientMobile('');
         } catch (err) {
@@ -137,7 +116,6 @@ export default function DigitalVoucherPage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handlePurchase} className="space-y-4">
-                            {/* Brand Selection */}
                             <div className="space-y-1">
                                 <Label htmlFor="brand">Brand / Platform</Label>
                                 <Select value={selectedBrand?.id || ''} onValueChange={handleSelectBrand} required>
@@ -157,7 +135,6 @@ export default function DigitalVoucherPage() {
 
                            {selectedBrand && (
                                <>
-                                     {/* Denomination Selection */}
                                      {selectedBrand.denominations.length > 0 && (
                                          <div className="space-y-2">
                                              <Label>Select Amount (₹)</Label>
@@ -176,8 +153,6 @@ export default function DigitalVoucherPage() {
                                          </div>
                                      )}
 
-
-                                     {/* Custom Amount Input */}
                                      {selectedBrand.allowCustomAmount && (
                                          <div className="space-y-1">
                                              <Label htmlFor="customAmount">Or Enter Custom Amount (₹)</Label>
@@ -201,7 +176,6 @@ export default function DigitalVoucherPage() {
 
                                      <Separator />
 
-                                    {/* Recipient Mobile */}
                                     <div className="space-y-1">
                                         <Label htmlFor="recipientMobile">Recipient Mobile Number</Label>
                                         <Input
@@ -217,8 +191,6 @@ export default function DigitalVoucherPage() {
                                         <p className="text-xs text-muted-foreground">Voucher code will be sent via SMS to this number.</p>
                                     </div>
 
-
-                                     {/* Purchase Button */}
                                      <div className="pt-4">
                                          <Separator className="mb-4"/>
                                           <div className="flex justify-between items-center text-sm mb-2">

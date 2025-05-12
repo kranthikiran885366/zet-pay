@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,33 +11,17 @@ import { ArrowLeft, Building, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { processBillPayment } from '@/services/bills'; // Use bill payment service
-
-// Mock Data (Replace with actual API calls/data)
-interface HousingSociety {
-    id: string;
-    name: string;
-    city: string;
-}
-const mockSocieties: HousingSociety[] = [
-    { id: 'soc1', name: 'Prestige Lakeside Habitat', city: 'Bangalore' },
-    { id: 'soc2', name: 'DLF Park Place', city: 'Gurgaon' },
-    { id: 'soc3', name: 'Hiranandani Gardens', city: 'Mumbai' },
-    { id: 'soc4', name: 'My Home Bhooja', city: 'Hyderabad' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockSocietiesData, HousingSociety } from '@/mock-data'; // Import centralized mock data
 
 export default function HousingSocietyPage() {
-    const [societies, setSocieties] = useState<HousingSociety[]>(mockSocieties);
+    const [societies, setSocieties] = useState<HousingSociety[]>(mockSocietiesData);
     const [selectedSociety, setSelectedSociety] = useState<string>('');
     const [flatNumber, setFlatNumber] = useState('');
     const [amount, setAmount] = useState<string>('');
     const [isLoadingSocieties, setIsLoadingSocieties] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
-
-    // useEffect(() => {
-    //     // Fetch actual list of societies if API exists
-    // }, []);
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,9 +34,9 @@ export default function HousingSocietyPage() {
         try {
             const paymentDetails = {
                 billerId: selectedSociety,
-                identifier: flatNumber, // Use flat number as identifier
+                identifier: flatNumber,
                 amount: Number(amount),
-                billerType: 'Housing Society', // Define a specific type
+                billerType: 'Housing Society',
                 billerName: societyName,
             };
             const transactionResult = await processBillPayment(paymentDetails);

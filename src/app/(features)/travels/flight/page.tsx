@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -16,17 +17,14 @@ import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { searchBookings, confirmBooking } from '@/services/booking'; // Import booking services
-import type { FlightListing, BookingConfirmation } from '@/services/types'; // Import types
+import { searchBookings, confirmBooking } from '@/services/booking';
+import type { FlightListing, BookingConfirmation } from '@/services/types';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase'; // For auth check
+import { auth } from '@/lib/firebase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
-// Mock Data (Ensure mockCities has values for SelectTrigger to not throw error in testing if API fails)
-const mockCities = ['Bangalore (BLR)', 'Chennai (MAA)', 'Hyderabad (HYD)', 'Mumbai (BOM)', 'Delhi (DEL)', 'Kolkata (CCU)', 'Pune (PNQ)', 'Goa (GOI)'];
-const mockPassengerCounts = [1, 2, 3, 4, 5, 6];
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { mockCities, mockPassengerCounts } from '@/mock-data'; // Import centralized mock data
 
 export default function FlightBookingPage() {
     const [fromCity, setFromCity] = useState('');
@@ -123,13 +121,12 @@ export default function FlightBookingPage() {
                 flightId: selectedFlight.id,
                 flightNumber: selectedFlight.flightNumber,
                 departureDate: format(departureDate, 'yyyy-MM-dd'),
-                // Include return details if round trip and applicable
                 returnDate: tripType === 'roundTrip' && returnDate ? format(returnDate, 'yyyy-MM-dd') : undefined,
                 departureCity: fromCity,
                 arrivalCity: toCity,
             },
             passengerDetails: passengerDetailsForm,
-            totalAmount: selectedFlight.price * (passengers.adults + passengers.children), // Simplified total
+            totalAmount: selectedFlight.price * (passengers.adults + passengers.children),
             paymentMethod: 'wallet',
         };
         console.log("Confirming Flight Booking via Client Service:", bookingData);
@@ -140,7 +137,7 @@ export default function FlightBookingPage() {
                 toast({ title: "Flight Booking Successful!", description: `Booked ${selectedFlight.airline} ${selectedFlight.flightNumber}. PNR: ${result.bookingDetails?.pnr || 'Pending'}. Total: ₹${bookingData.totalAmount.toLocaleString()}`, duration: 7000 });
                 setShowBookingModal(false);
                 setSelectedFlight(null);
-                setShowResults(false); // Optionally go back to search
+                setShowResults(false);
                 router.push('/history');
             } else {
                 throw new Error(result.message || `Booking ${result.status || 'Failed'}`);
@@ -159,7 +156,7 @@ export default function FlightBookingPage() {
     };
 
     const handlePassengerChange = (type: 'adults' | 'children' | 'infants', value: number) => {
-        const newCount = Math.max(type === 'adults' ? 1 : 0, value); // Adults min 1
+        const newCount = Math.max(type === 'adults' ? 1 : 0, value);
         const totalPassengers = (type === 'adults' ? newCount : passengers.adults) +
                                 (type === 'children' ? newCount : passengers.children) +
                                 (type === 'infants' ? newCount : passengers.infants);
@@ -315,7 +312,6 @@ export default function FlightBookingPage() {
                     </div>
                 )}
 
-                {/* Booking Confirmation Modal */}
                 <Dialog open={showBookingModal} onOpenChange={setShowBookingModal}>
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>

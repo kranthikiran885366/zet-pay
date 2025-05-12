@@ -17,85 +17,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-
-// Mock Data (Replace with actual API calls)
-const mockStations = [
-    { code: 'SBC', name: 'KSR Bengaluru City Jn' },
-    { code: 'MAS', name: 'MGR Chennai Central' },
-    { code: 'HYB', name: 'Hyderabad Deccan Nampally' },
-    { code: 'CSMT', name: 'Mumbai CSMT' },
-    { code: 'NDLS', name: 'New Delhi' },
-    { code: 'HWH', name: 'Howrah Jn' },
-];
-
-const mockQuotas = ['GENERAL', 'TATKAL', 'LADIES', 'PREMIUM TATKAL', 'PHYSICALLY HANDICAPPED'];
-const mockClasses = ['SL', '3A', '2A', '1A', 'CC', 'EC', '2S'];
-
-interface TrainDetails {
-    trainNumber: string;
-    trainName: string;
-    departureStation: string; // Code
-    arrivalStation: string; // Code
-    departureTime: string;
-    arrivalTime: string;
-    duration: string;
-    runningDays: string[]; // e.g., ['Mon', 'Wed', 'Fri']
-    classesAvailable: string[]; // e.g., ['SL', '3A', '2A']
-}
-
-interface AvailabilityStatus {
-    status: 'AVAILABLE' | 'WL' | 'RAC' | 'NOT AVAILABLE' | 'CHARTING DONE';
-    number?: number; // Available count or WL/RAC number
-    date: string; // Date of availability
-    confirmProbability?: number; // For WL/RAC
-}
-
-interface TrainAvailability extends TrainDetails {
-    availability: { [classCode: string]: AvailabilityStatus };
-}
-
-const mockTrainAvailability: TrainAvailability[] = [
-    {
-        trainNumber: '12658', trainName: 'Bengaluru Mail', departureStation: 'SBC', arrivalStation: 'MAS', departureTime: '22:40', arrivalTime: '04:30', duration: '5h 50m', runningDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], classesAvailable: ['SL', '3A', '2A', '1A'],
-        availability: {
-            'SL': { status: 'WL', number: 15, date: format(new Date(), 'dd-MMM-yyyy'), confirmProbability: 80 },
-            '3A': { status: 'AVAILABLE', number: 50, date: format(new Date(), 'dd-MMM-yyyy') },
-            '2A': { status: 'AVAILABLE', number: 10, date: format(new Date(), 'dd-MMM-yyyy') },
-            '1A': { status: 'RAC', number: 2, date: format(new Date(), 'dd-MMM-yyyy'), confirmProbability: 95 },
-        }
-    },
-     {
-        trainNumber: '22691', trainName: 'Rajdhani Express', departureStation: 'SBC', arrivalStation: 'NDLS', departureTime: '20:00', arrivalTime: '05:30 +2d', duration: '33h 30m', runningDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], classesAvailable: ['3A', '2A', '1A'],
-        availability: {
-            '3A': { status: 'AVAILABLE', number: 25, date: format(new Date(), 'dd-MMM-yyyy') },
-            '2A': { status: 'WL', number: 5, date: format(new Date(), 'dd-MMM-yyyy'), confirmProbability: 60 },
-            '1A': { status: 'NOT AVAILABLE', date: format(new Date(), 'dd-MMM-yyyy') },
-        }
-    },
-     {
-        trainNumber: '11014', trainName: 'Lokmanya TT Exp', departureStation: 'SBC', arrivalStation: 'CSMT', departureTime: '16:00', arrivalTime: '14:30 +1d', duration: '22h 30m', runningDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], classesAvailable: ['SL', '3A', '2A'],
-        availability: {
-            'SL': { status: 'AVAILABLE', number: 150, date: format(new Date(), 'dd-MMM-yyyy') },
-            '3A': { status: 'RAC', number: 10, date: format(new Date(), 'dd-MMM-yyyy'), confirmProbability: 90 },
-            '2A': { status: 'WL', number: 2, date: format(new Date(), 'dd-MMM-yyyy'), confirmProbability: 75 },
-        }
-    },
-];
-
-interface PnrStatus {
-    pnr: string;
-    trainNumber: string;
-    trainName: string;
-    journeyDate: string;
-    bookingStatus: string; // e.g., "CNF", "WL 10", "RAC 5"
-    currentStatus: string; // e.g., "CNF", "WL 5", "RAC 2"
-    chartPrepared: boolean;
-    passengers: { seat: string; status: string }[];
-}
-
+import { mockStations, mockQuotas, mockClasses, mockTrainAvailability, TrainAvailability, AvailabilityStatus, PnrStatus } from '@/mock-data'; // Import centralized mock data
 
 export default function TrainBookingPage() {
-    const [activeTab, setActiveTab] = useState('search'); // 'search' or 'pnr'
+    const [activeTab, setActiveTab] = useState('search');
     const [pnrNumber, setPnrNumber] = useState('');
     const [pnrStatusResult, setPnrStatusResult] = useState<PnrStatus | null>(null);
     const [isLoadingPnr, setIsLoadingPnr] = useState(false);
@@ -122,9 +47,7 @@ export default function TrainBookingPage() {
         setPnrStatusResult(null);
         console.log("Checking PNR:", pnrNumber);
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1500));
-            // Mock result based on PNR (very basic)
             if (pnrNumber === '1234567890') {
                 setPnrStatusResult({ pnr: pnrNumber, trainNumber: '12658', trainName: 'Bengaluru Mail', journeyDate: format(new Date(), 'dd-MMM-yyyy'), bookingStatus: 'WL 15', currentStatus: 'RAC 5', chartPrepared: false, passengers: [{ seat: 'S4, 32', status: 'RAC 5' }] });
             } else if (pnrNumber === '9876543210') {
@@ -149,11 +72,10 @@ export default function TrainBookingPage() {
         setIsLoadingSearch(true);
         setShowResults(false);
         setSearchResults([]);
-        setSelectedTrain(null); // Reset selection
+        setSelectedTrain(null);
         setSelectedClass(null);
         console.log("Searching Trains:", { fromStation, toStation, date: format(journeyDate, 'yyyy-MM-dd'), quota: selectedQuota });
         try {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1500));
             const results = mockTrainAvailability.filter(train =>
                 train.departureStation === fromStation && train.arrivalStation === toStation
@@ -174,12 +96,8 @@ export default function TrainBookingPage() {
      const handleSelectTrainClass = (train: TrainAvailability, classCode: string) => {
         setSelectedTrain(train);
         setSelectedClass(classCode);
-         // In a real app, you'd likely navigate to a passenger details/booking page here
-         // or show a booking button within this card.
          console.log("Selected Train:", train.trainNumber, "Class:", classCode);
          toast({title: "Proceeding to Booking", description: `Selected ${classCode} for ${train.trainName} (${train.trainNumber})`});
-         // router.push(`/travels/train/book?train=${train.trainNumber}&class=${classCode}...`);
-          // Simulate proceeding to booking confirmation (or payment)
          alert(`Book ${classCode} on ${train.trainName}?`);
     };
 
@@ -222,7 +140,6 @@ export default function TrainBookingPage() {
                         <TabsTrigger value="pnr">PNR Status</TabsTrigger>
                     </TabsList>
 
-                    {/* Search Tickets Tab */}
                     <TabsContent value="search">
                         {!showResults ? (
                             <Card className="shadow-md">
@@ -231,7 +148,6 @@ export default function TrainBookingPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <form onSubmit={handleSearchTrains} className="space-y-4">
-                                        {/* From/To Stations */}
                                         <div className="flex items-center gap-2">
                                             <div className="flex-1 space-y-1">
                                                 <Label htmlFor="fromStation">From Station</Label>
@@ -255,7 +171,6 @@ export default function TrainBookingPage() {
                                                 </Select>
                                             </div>
                                         </div>
-                                        {/* Date & Quota */}
                                         <div className="grid grid-cols-2 gap-4">
                                              <div className="space-y-1">
                                                 <Label htmlFor="journeyDate">Date of Journey</Label>
@@ -290,7 +205,6 @@ export default function TrainBookingPage() {
                                 </CardContent>
                             </Card>
                         ) : (
-                            /* Search Results */
                             <div className="space-y-4">
                                  <Button variant="outline" onClick={() => setShowResults(false)} className="mb-4">
                                      <ArrowLeft className="mr-2 h-4 w-4"/> Modify Search
@@ -340,7 +254,6 @@ export default function TrainBookingPage() {
                         )}
                     </TabsContent>
 
-                    {/* PNR Status Tab */}
                     <TabsContent value="pnr">
                         <Card className="shadow-md">
                              <CardHeader>

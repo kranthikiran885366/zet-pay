@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,35 +7,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, HandCoins, Loader2, Wallet } from 'lucide-react'; // Using HandCoins icon
+import { ArrowLeft, HandCoins, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { processBillPayment } from '@/services/bills'; // Use generic bill payment service
-
-// Mock Data (Replace with actual API calls/data)
-interface Club {
-    id: string;
-    name: string;
-}
-const mockClubs: Club[] = [
-    { id: 'club1', name: 'City Sports Club' },
-    { id: 'club2', name: 'Downtown Recreational Club' },
-    { id: 'club3', name: 'XYZ Social Club' },
-];
+import { processBillPayment } from '@/services/bills';
+import { mockClubsData, Club } from '@/mock-data'; // Import centralized mock data
 
 export default function ClubFeesPage() {
-    const [clubs, setClubs] = useState<Club[]>(mockClubs);
+    const [clubs, setClubs] = useState<Club[]>(mockClubsData);
     const [selectedClub, setSelectedClub] = useState<string>('');
     const [membershipId, setMembershipId] = useState('');
     const [amount, setAmount] = useState<string>('');
     const [isLoadingClubs, setIsLoadingClubs] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
-
-    // useEffect(() => {
-    //     // Fetch actual clubs if API exists
-    // }, []);
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,7 +36,7 @@ export default function ClubFeesPage() {
                 billerId: selectedClub,
                 identifier: membershipId,
                 amount: Number(amount),
-                billerType: 'Club Fee', // Define a specific type
+                billerType: 'Club Fee',
                 billerName: clubName,
             };
             const transactionResult = await processBillPayment(paymentDetails);

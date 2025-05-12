@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -7,21 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Landmark, HelpCircle, RefreshCw, CircleAlert } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Landmark, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
-import type { Transaction } from '@/services/types'; // Import Transaction
-import { payViaWallet, getWalletBalance } from '@/services/wallet';
+import type { Transaction } from '@/services/types';
+import { payViaWallet as payViaWalletApiService, getWalletBalance as getWalletBalanceService } from '@/services/wallet'; // Use Wallet Service
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { auth } from '@/lib/firebase'; // Import Firebase auth instance
-import { format, addBusinessDays } from "date-fns";
+import { auth } from '@/lib/firebase';
+import { format } from "date-fns"; // Removed addBusinessDays as it's not used
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from '@/components/ui/separator';
 
-type PaymentSourceOption = 'wallet' | string; // 'wallet' or a UPI ID string
+type PaymentSourceOption = 'wallet' | string;
 
 export default function PayPage() {
   const searchParams = useSearchParams();
@@ -45,7 +46,7 @@ export default function PayPage() {
 
   const [linkedAccounts, setLinkedAccounts] = useState<BankAccount[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [selectedPaymentSource, setSelectedPaymentSource] = useState<PaymentSourceOption>(''); // UPI ID or 'wallet'
+  const [selectedPaymentSource, setSelectedPaymentSource] = useState<PaymentSourceOption>('');
   const [isLoadingPaymentOptions, setIsLoadingPaymentOptions] = useState(true);
   const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
 
@@ -57,7 +58,7 @@ export default function PayPage() {
     const tn = searchParams.get('tn');
     const qr = searchParams.get('qrData');
     const stealth = searchParams.get('stealth') === 'true';
-    const sourceUpi = searchParams.get('sourceAccountUpiId'); // For pre-selection
+    const sourceUpi = searchParams.get('sourceAccountUpiId');
 
     if (pa) setRecipientUpiId(pa);
     if (pn) setRecipientName(pn);
@@ -77,7 +78,7 @@ export default function PayPage() {
       try {
         const [accounts, balance] = await Promise.all([
           getLinkedAccounts(),
-          getWalletBalance()
+          getWalletBalanceService() // Use Wallet Service
         ]);
         setLinkedAccounts(accounts);
         setWalletBalance(balance);
@@ -96,13 +97,12 @@ export default function PayPage() {
         }
         setBankStatuses(statuses);
         
-        // Set default payment source
         if (sourceUpi && accounts.find(acc => acc.upiId === sourceUpi)) {
           setSelectedPaymentSource(sourceUpi);
         } else if (accounts.length > 0) {
           const defaultAccount = accounts.find(acc => acc.isDefault) || accounts[0];
           setSelectedPaymentSource(defaultAccount.upiId);
-        } else if (balance > 0) {
+        } else if (balance !== null && balance > 0) { // Check if balance is not null
           setSelectedPaymentSource('wallet');
         } else {
           setError("No payment methods available. Please link a bank account or add funds to your wallet.");
@@ -136,7 +136,7 @@ export default function PayPage() {
       pinPromiseResolverRef.current.resolve(upiPin);
     } else {
       toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
-      pinPromiseResolverRef.current?.resolve(null); // Resolve with null to indicate cancellation/failure
+      pinPromiseResolverRef.current?.resolve(null);
     }
     pinPromiseResolverRef.current = null;
     setIsPinDialogOpen(false);
@@ -145,11 +145,11 @@ export default function PayPage() {
   const handlePinCancel = () => {
     setIsPinDialogOpen(false);
     if (pinPromiseResolverRef.current) {
-        pinPromiseResolverRef.current.resolve(null); // Resolve with null indicating cancellation
+        pinPromiseResolverRef.current.resolve(null);
         pinPromiseResolverRef.current = null;
     }
-    setIsProcessing(false); // Reset processing state if PIN entry is cancelled
-    setShowConfirmation(false); // Reset confirmation state
+    setIsProcessing(false);
+    setShowConfirmation(false);
   };
 
   const handlePayment = async () => {
@@ -174,19 +174,17 @@ export default function PayPage() {
         return;
     }
 
-
     setIsProcessing(true);
     setShowConfirmation(true);
     setPaymentResult(null);
     setError(null);
 
     try {
-      let result: UpiTransactionResult; // Use UpiTransactionResult as a common type for result structure
+      let result: UpiTransactionResult;
 
       if (selectedPaymentSource === 'wallet') {
-        // Call wallet payment service
-        const walletResult = await payViaWallet(auth.currentUser.uid, recipientUpiId, Number(amount), note);
-        result = { // Adapt wallet result to UpiTransactionResult structure
+        const walletResult = await payViaWalletApiService(auth.currentUser.uid, recipientUpiId, Number(amount), note); // Use Wallet Service
+        result = {
             success: walletResult.success,
             transactionId: walletResult.transactionId,
             amount: Number(amount),
@@ -194,34 +192,31 @@ export default function PayPage() {
             status: walletResult.success ? 'Completed' : 'Failed',
             message: walletResult.message,
         };
-      } else { // UPI Payment
+      } else {
         const enteredPin = await promptForPin();
-        if (enteredPin === null) { // User cancelled PIN entry
+        if (enteredPin === null) {
             setIsProcessing(false);
             setShowConfirmation(false);
-            return; // Stop processing
+            return;
         }
-        // processUpiPayment from service handles backend call which includes logging, fallback etc.
         result = await processUpiPayment(
           recipientUpiId,
           Number(amount),
           enteredPin,
           note,
-          selectedPaymentSource, // This is the sourceAccountUpiId
-          isStealthScan // Pass stealth scan flag
+          selectedPaymentSource,
+          isStealthScan
         );
       }
       
-      setPaymentResult(result); // Store the result
+      setPaymentResult(result);
 
       if (result.success || result.status === 'Completed' || result.status === 'FallbackSuccess') {
         toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${recipientName || recipientUpiId}.`, duration: 5000 });
-        // If it used wallet (either directly or as fallback), refresh wallet balance
         if (selectedPaymentSource === 'wallet' || result.usedWalletFallback) {
-            getWalletBalance().then(setWalletBalance).catch(console.error);
+            getWalletBalanceService().then(setWalletBalance).catch(console.error); // Use Wallet Service
         }
       } else {
-        // Error message will be from the result.message
         setError(result.message || `Payment ${result.status || 'Failed'}`);
       }
 
@@ -229,15 +224,14 @@ export default function PayPage() {
       console.error("Payment failed:", err);
       const errorMessage = err.message || "Payment failed. Please try again.";
       setError(errorMessage);
-      setPaymentResult({ // Set a generic failure result for display
+      setPaymentResult({
           amount: Number(amount),
           recipientUpiId: recipientUpiId,
           status: 'Failed',
           message: errorMessage,
       });
     } finally {
-      setIsProcessing(false); // Stop loading for the main button
-      // PIN dialog closing and its specific loading is handled by handlePinSubmit/Cancel
+      setIsProcessing(false);
     }
   };
 
@@ -292,7 +286,7 @@ export default function PayPage() {
                         min="1"
                         step="0.01"
                         className="pl-7 text-2xl font-bold h-14"
-                        disabled={searchParams.get('am') !== null || isProcessing} // Disable if amount from QR
+                        disabled={searchParams.get('am') !== null || isProcessing}
                     />
                 </div>
               </div>
@@ -329,7 +323,7 @@ export default function PayPage() {
                                 </div>
                             </SelectItem>
                         ))}
-                        {walletBalance !== null && walletBalance > 0 && (
+                        {walletBalance !== null && walletBalance >= 0 && ( // Show wallet if balance is 0 or more
                              <SelectItem value="wallet">
                                 <div className="flex items-center gap-2">
                                     <Wallet className="h-4 w-4 text-muted-foreground"/>
@@ -347,7 +341,7 @@ export default function PayPage() {
                 )}
                  {selectedPaymentSource !== 'wallet' && bankStatuses[selectedPaymentSource] === 'Slow' && (
                     <p className="text-xs text-yellow-600 pt-1">Selected bank server is slow. Payment might take longer.</p>
-                )}
+                 )}
               </div>
 
               {error && <Alert variant="destructive"><CircleAlert className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
@@ -459,4 +453,3 @@ export default function PayPage() {
     </div>
   );
 }
-

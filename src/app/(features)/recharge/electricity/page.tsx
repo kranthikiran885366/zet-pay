@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Power, Loader2, Wallet, Info } from 'lucide-react';
 import Link from 'next/link';
-import { getBillers, Biller, processRecharge } from '@/services/recharge'; // Reuse recharge service
+import { getBillers, Biller, processRecharge } from '@/services/recharge';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
+import { mockBillersData } from '@/mock-data'; // Import centralized mock data
 
 export default function PrepaidElectricityRechargePage() {
     const [providers, setProviders] = useState<Biller[]>([]);
@@ -21,31 +22,21 @@ export default function PrepaidElectricityRechargePage() {
     const [amount, setAmount] = useState<string>('');
     const [isLoadingProviders, setIsLoadingProviders] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [error, setError] = useState<string | null>(error);
+    const [error, setError] = useState<string | null>(null); // Removed error state initialization
     const { toast } = useToast();
 
-    // Fetch Electricity Providers (assuming a specific type like 'PrepaidElectricity')
     useEffect(() => {
         const fetchProviders = async () => {
             setIsLoadingProviders(true);
             setError(null);
             try {
-                // Use 'Electricity' type, backend might need to differentiate prepaid/postpaid
-                // Or use a specific type like 'PrepaidElectricity' if API supports it
                 const fetchedProviders = await getBillers('Electricity');
-                setProviders(fetchedProviders.length > 0 ? fetchedProviders : [ // Mock data if API is empty
-                     { billerId: 'mock-prepaid-bescom', billerName: 'BESCOM Prepaid (Mock)', billerType: 'Electricity' },
-                     { billerId: 'mock-prepaid-tneb', billerName: 'TNEB Prepaid (Mock)', billerType: 'Electricity' },
-                ]);
+                setProviders(fetchedProviders.length > 0 ? fetchedProviders : (mockBillersData['Electricity'] || []));
             } catch (err) {
                 console.error("Failed to load electricity providers:", err);
                 setError('Failed to load providers.');
                 toast({ variant: "destructive", title: "Error Loading Providers" });
-                 // Fallback mock data
-                 setProviders([
-                    { billerId: 'mock-prepaid-bescom', billerName: 'BESCOM Prepaid (Mock)', billerType: 'Electricity' },
-                    { billerId: 'mock-prepaid-tneb', billerName: 'TNEB Prepaid (Mock)', billerType: 'Electricity' },
-                 ]);
+                 setProviders(mockBillersData['Electricity'] || []);
             } finally {
                 setIsLoadingProviders(false);
             }
@@ -63,11 +54,9 @@ export default function PrepaidElectricityRechargePage() {
         }
         setIsProcessing(true);
         try {
-            // Use 'electricity' type, backend might differentiate based on billerId or other params
             const result = await processRecharge('electricity', consumerNumber, Number(amount), selectedProvider);
             if (result.status === 'Completed') {
                 toast({ title: "Recharge Successful!", description: `Prepaid electricity for ${consumerNumber} recharged with ₹${amount}.` });
-                // Reset form
                 setConsumerNumber('');
                 setAmount('');
             } else {
@@ -104,7 +93,6 @@ export default function PrepaidElectricityRechargePage() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleRecharge} className="space-y-4">
-                            {/* Provider Selection */}
                             <div className="space-y-1">
                                 <Label htmlFor="provider">Electricity Provider</Label>
                                 <Select value={selectedProvider} onValueChange={setSelectedProvider} required disabled={isLoadingProviders}>
@@ -123,7 +111,6 @@ export default function PrepaidElectricityRechargePage() {
                                 {error && !isLoadingProviders && <p className="text-xs text-destructive mt-1">{error}</p>}
                             </div>
 
-                            {/* Consumer Number Input */}
                             <div className="space-y-1">
                                 <Label htmlFor="consumerNumber">Consumer Number / Meter Number</Label>
                                 <Input
@@ -136,7 +123,6 @@ export default function PrepaidElectricityRechargePage() {
                                 />
                             </div>
 
-                            {/* Amount Input */}
                             <div className="space-y-1">
                                 <Label htmlFor="amount">Recharge Amount (₹)</Label>
                                 <div className="relative">
@@ -148,7 +134,7 @@ export default function PrepaidElectricityRechargePage() {
                                         value={amount}
                                         onChange={(e) => { setAmount(e.target.value); }}
                                         required
-                                        min="50" // Example min amount
+                                        min="50"
                                         step="1"
                                         className="pl-7"
                                     />
@@ -157,7 +143,6 @@ export default function PrepaidElectricityRechargePage() {
 
                             {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
-                             {/* Payment Button */}
                             <div className="pt-4">
                                 <Separator className="mb-4"/>
                                 <Button

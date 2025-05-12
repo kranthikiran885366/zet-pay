@@ -8,50 +8,31 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addDays, differenceInDays } from "date-fns";
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-
-interface BillReminder {
-    id: string;
-    billerName: string; // e.g., "Electricity Bill", "Credit Card"
-    dueDate: string; // ISO string format
-    amount?: number; // Optional amount
-    notes?: string;
-    category: string; // e.g., Utilities, Finance, Subscription
-    isPaid?: boolean; // Track if manually marked as paid
-}
-
-const REMINDER_CATEGORIES = ["Utilities", "Finance", "Subscription", "Rent", "Insurance", "Loan", "Other"];
+import { REMINDER_CATEGORIES, BillReminder, mockRemindersData } from '@/mock-data/reminders'; // Import from new file
 
 export default function BillRemindersPage() {
     const [reminders, setReminders] = useState<BillReminder[]>([]);
     const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
     const [currentReminder, setCurrentReminder] = useState<Partial<BillReminder>>({});
     const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(true); // For initial load
+    const [isLoading, setIsLoading] = useState(true);
 
     const { toast } = useToast();
 
-    // Load reminders from local storage on mount
     useEffect(() => {
         setIsLoading(true);
         const storedReminders = localStorage.getItem('payfriend-reminders');
         if (storedReminders) {
-            setReminders(JSON.parse(storedReminders));
-        }
-        // Add mock data if empty
-        else {
-             const mockReminders: BillReminder[] = [
-                { id: 'rem1', billerName: 'Airtel Postpaid', dueDate: addDays(new Date(), 5).toISOString(), amount: 799, category: 'Utilities', isPaid: false },
-                { id: 'rem2', billerName: 'HDFC Credit Card', dueDate: addDays(new Date(), 12).toISOString(), category: 'Finance', isPaid: false },
-                 { id: 'rem3', billerName: 'Netflix Subscription', dueDate: addDays(new Date(), -2).toISOString(), amount: 499, category: 'Subscription', isPaid: true }, // Example paid overdue
-             ];
-            setReminders(mockReminders);
-             localStorage.setItem('payfriend-reminders', JSON.stringify(mockReminders));
+            setReminders(JSON.parse(storedReminders).map((r: BillReminder) => ({...r, dueDate: new Date(r.dueDate).toISOString() })));
+        } else {
+            setReminders(mockRemindersData.map(r => ({...r, dueDate: new Date(r.dueDate).toISOString() })));
+            localStorage.setItem('payfriend-reminders', JSON.stringify(mockRemindersData));
         }
          setIsLoading(false);
     }, []);
@@ -64,14 +45,12 @@ export default function BillRemindersPage() {
 
         let updatedReminders;
         if (editingReminderId) {
-            // Update existing reminder
              updatedReminders = reminders.map(r =>
                 r.id === editingReminderId
-                    ? { ...r, ...currentReminder, amount: currentReminder.amount || undefined, notes: currentReminder.notes || undefined } as BillReminder // Ensure correct type
+                    ? { ...r, ...currentReminder, amount: currentReminder.amount || undefined, notes: currentReminder.notes || undefined } as BillReminder
                     : r
             );
         } else {
-            // Add new reminder
             const newReminder: BillReminder = {
                 id: `rem-${Date.now()}`,
                 billerName: currentReminder.billerName!,
@@ -79,12 +58,12 @@ export default function BillRemindersPage() {
                 category: currentReminder.category!,
                 amount: currentReminder.amount || undefined,
                 notes: currentReminder.notes || undefined,
-                isPaid: false, // Default to unpaid
+                isPaid: false,
             };
             updatedReminders = [...reminders, newReminder];
         }
 
-        setReminders(updatedReminders.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())); // Sort by due date
+        setReminders(updatedReminders.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()));
         localStorage.setItem('payfriend-reminders', JSON.stringify(updatedReminders));
         setIsReminderDialogOpen(false);
         setCurrentReminder({});
@@ -127,7 +106,6 @@ export default function BillRemindersPage() {
         return { text: `Due in ${daysDiff} days`, color: 'text-blue-600', icon: BellRing };
     }
 
-     // Filter reminders into upcoming/past
     const upcomingReminders = reminders.filter(r => !r.isPaid).sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
     const pastReminders = reminders.filter(r => r.isPaid).sort((a,b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
 
@@ -233,7 +211,6 @@ export default function BillRemindersPage() {
                     </Card>
                 )}
 
-                {/* Upcoming Reminders */}
                  {!isLoading && upcomingReminders.length > 0 && (
                     <Card className="shadow-md">
                         <CardHeader>
@@ -259,7 +236,6 @@ export default function BillRemindersPage() {
                     </Card>
                  )}
 
-                  {/* Past/Paid Reminders */}
                  {!isLoading && pastReminders.length > 0 && (
                      <Card className="shadow-md">
                         <CardHeader>
@@ -289,7 +265,6 @@ export default function BillRemindersPage() {
     );
 }
 
-// Reminder Card Component
 interface ReminderCardProps {
     reminder: BillReminder;
     statusText: string;
@@ -322,13 +297,6 @@ function ReminderCard({ reminder, statusText, statusColor, statusIcon: Icon, onE
                      {reminder.isPaid ? <XCircle className="h-3 w-3 mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
                      {reminder.isPaid ? 'Mark Unpaid' : 'Mark Paid'}
                  </Button>
-                 {/* <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => onEdit(reminder)}><Edit className="h-4 w-4"/></Button>
-                 <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4"/></Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>...</AlertDialogContent> // Simplified for brevity
-                 </AlertDialog> */}
              </div>
         </div>
     );

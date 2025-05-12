@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -9,36 +10,19 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-
-interface RestStop {
-    id: string;
-    name: string;
-    highway: string; // e.g., NH44, Mumbai-Pune Expressway
-    locationDesc: string; // e.g., "Near Krishnagiri Toll Plaza"
-    amenities: string[]; // "Food Court", "Clean Restrooms", "Fuel Station", "Parking", "ATM", "Dhaba", "Rooms"
-    rating?: number;
-    imageUrl?: string;
-    services?: { name: string, available: boolean }[];
-}
-
-const mockRestStops: RestStop[] = [
-    { id: 'rs1', name: 'Highway King - Behror', highway: 'NH48 (Delhi-Jaipur)', locationDesc: 'Approx. 130km from Delhi', amenities: ['Food Court', 'Clean Restrooms', 'Parking', 'Fuel Station', 'Dhaba'], rating: 4.2, imageUrl: 'https://picsum.photos/seed/reststop1/400/200', services: [{name: 'EV Charging', available: true}, {name: 'Air Filling', available: true}] },
-    { id: 'rs2', name: 'A1 Plaza - Karnal', highway: 'NH44 (Delhi-Chandigarh)', locationDesc: 'Karnal Bypass', amenities: ['Food Court', 'Restrooms', 'Parking', 'ATM', 'Rooms'], rating: 4.0, imageUrl: 'https://picsum.photos/seed/reststop2/400/200' },
-    { id: 'rs3', name: 'Food Express - Khalapur', highway: 'Mumbai-Pune Expressway', locationDesc: 'Near Khalapur Toll', amenities: ['Food Court', 'Clean Restrooms', 'Parking', 'Fuel Station'], rating: 3.8, imageUrl: 'https://picsum.photos/seed/reststop3/400/200' },
-];
+import { mockRestStopsData, RestStop } from '@/mock-data'; // Import centralized mock data
 
 export default function RestStopInfoPage() {
     const [searchTerm, setSearchTerm] = useState('');
-    const [stops, setStops] = useState<RestStop[]>(mockRestStops);
+    const [stops, setStops] = useState<RestStop[]>(mockRestStopsData);
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
 
     const handleSearch = async (e?: React.FormEvent) => {
         e?.preventDefault();
         setIsLoading(true);
-        // Simulate API search
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const filtered = mockRestStops.filter(s =>
+        const filtered = mockRestStopsData.filter(s =>
             s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             s.highway.toLowerCase().includes(searchTerm.toLowerCase()) ||
             s.locationDesc.toLowerCase().includes(searchTerm.toLowerCase())
@@ -75,7 +59,6 @@ export default function RestStopInfoPage() {
              <Button variant="outline" size="icon" disabled><Filter className="h-4 w-4"/></Button>
         </form>
 
-         {/* Placeholder Map Area */}
         <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground border mb-4">
             <MapPin className="h-8 w-8 mr-2" /> Map View with Rest Stops (Coming Soon)
         </div>
