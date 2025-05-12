@@ -43,7 +43,7 @@ export default function LoginPage() {
       setRecaptchaVerifier(verifier);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth]);
+  }, [auth]); // Removed toast from deps as it's stable
 
 
   const handleSendOtp = async (e: React.FormEvent<HTMLFormElement>) => {

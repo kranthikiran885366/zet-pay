@@ -55,6 +55,8 @@ export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: Rec
             errorMessage = "Invalid phone number format. Please include country code (e.g., +91).";
         } else if (error.code === 'auth/too-many-requests') {
             errorMessage = "Too many OTP requests. Please try again later.";
+        } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
+            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration.";
         }
         // Add more specific Firebase error codes as needed
         throw new Error(errorMessage);
@@ -73,6 +75,8 @@ export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult,
     try {
         const userCredential = await confirmationResult.confirm(otpCode);
         console.log("[Auth Service] OTP verified, Firebase login successful for:", userCredential.user.uid);
+        // Trigger profile creation/fetch after successful login
+        await verifyTokenAndGetProfile();
         return userCredential.user;
     } catch (error: any) {
         console.error("[Auth Service] Firebase OTP verification error:", error.code, error.message);
@@ -94,6 +98,7 @@ export async function login(email: string, password: string): Promise<User> {
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         console.log("[Auth Service] Firebase login successful for:", userCredential.user.uid);
+        await verifyTokenAndGetProfile(); // Verify with backend after successful Firebase login
         return userCredential.user;
     } catch (error: any) {
         console.error("[Auth Service] Firebase login error:", error.code, error.message);
@@ -126,6 +131,8 @@ export async function signup(name: string, email: string, password: string): Pro
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         console.log("[Auth Service] Firebase signup successful for:", user.uid);
+         // Trigger profile creation/fetch after successful signup
+        await verifyTokenAndGetProfile();
         return user;
     } catch (error: any) {
         console.error("[Auth Service] Firebase signup error:", error.code, error.message);
@@ -136,6 +143,8 @@ export async function signup(name: string, email: string, password: string): Pro
             errorMessage = "Invalid email format.";
         } else if (error.code === 'auth/weak-password') {
             errorMessage = "Password is too weak. Please use at least 6 characters.";
+        } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
+            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration.";
         }
         throw new Error(errorMessage);
     }
@@ -197,14 +206,19 @@ export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
             console.log("[Auth Service] Token verified, profile received:", result.user.uid);
             return {
                 ...result.user,
-                createdAt: result.user.createdAt ? new Date(result.user.createdAt) : undefined,
-                updatedAt: result.user.updatedAt ? new Date(result.updatedAt) : undefined,
+                createdAt: result.user.createdAt ? new Date(result.user.createdAt as string) : undefined,
+                updatedAt: result.user.updatedAt ? new Date(result.user.updatedAt as string) : undefined,
             };
         } else {
-            throw new Error("Verification failed or user profile not found.");
+            // This case should ideally be handled by apiClient throwing an error if response.ok is false
+            throw new Error("Verification failed or user profile not found in API response.");
         }
-    } catch (error) {
-        console.error("[Auth Service] Error verifying token or fetching profile:", error);
-        return null;
+    } catch (error: any) {
+        console.error("[Auth Service] Error verifying token or fetching profile:", error.message);
+        // Avoid throwing "User not authenticated." again if apiClient already did
+        if (error.message === "User not authenticated.") {
+            return null;
+        }
+        throw error; // Re-throw other errors
     }
 }
