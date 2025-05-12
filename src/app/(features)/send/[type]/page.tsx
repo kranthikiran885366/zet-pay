@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -12,17 +13,16 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { getContacts, savePayee, PayeeClient as Payee } from '@/services/contacts'; // Use client interface
 import { processUpiPayment, verifyUpiId as verifyUpiIdService, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi'; // Import processUpiPayment
-import type { Transaction } from '@/services/types';
-import { payViaWallet, getWalletBalance } from '@/services/wallet';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { auth } from '@/lib/firebase';
+// Transaction import not needed here as processUpiPayment handles logging internally
+import { auth } from '@/lib/firebase'; // Import Firebase auth instance
 import { format } from "date-fns";
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { apiClient } from '@/lib/apiClient';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ZetChat } from '@/components/zet-chat'; // Import ZetChat
 
 // Interface extending PayeeClient with additional properties for UI
@@ -107,7 +107,7 @@ export default function SendMoneyPage() {
             const [fetchedContacts, fetchedAccounts, fetchedWalletBalance] = await Promise.all([
                 getContacts(),
                 getLinkedAccounts(),
-                getWalletBalance()
+                apiClient<{balance: number}>('/wallet/balance').then(res => res.balance) // Assuming direct API call for balance
             ]);
              const displayContacts = fetchedContacts.map(c => ({...c, verificationStatus: 'pending', isZetChatUser: Math.random() > 0.5}) as DisplayPayee); // Simulate isZetChatUser
              setAllContacts(displayContacts);
@@ -329,19 +329,18 @@ export default function SendMoneyPage() {
                      selectedAccountUpiId
                  );
              } else {
-                 result = await payViaWallet(
-                    auth.currentUser?.uid,
-                    payeeToPay.upiId!,
-                    Number(amount),
-                    note || `Payment to ${payeeToPay.name}`
-                 );
+                 result = await apiClient<WalletTransactionResult>('/wallet/pay', {
+                    method: 'POST',
+                    body: JSON.stringify({ recipientIdentifier: payeeToPay.upiId!, amount: Number(amount), note: note || `Payment to ${payeeToPay.name}` }),
+                });
              }
 
             setPaymentResult(result as UpiTransactionResult);
             if (result.success || result.status === 'Completed' || result.status === 'FallbackSuccess') {
                 toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${payeeToPay.verifiedName || payeeToPay.name}.`, duration: 5000 });
                  if (selectedPaymentSource === 'wallet' || (result as UpiTransactionResult).usedWalletFallback) {
-                    getWalletBalance().then(setWalletBalance);
+                    // Refresh wallet balance
+                    apiClient<{balance: number}>('/wallet/balance').then(res => setWalletBalance(res.balance));
                  }
             } else {
                 throw new Error(result.message || `Payment ${result.status || 'Failed'}`);
@@ -725,6 +724,11 @@ export default function SendMoneyPage() {
     switch(status) {
         case 'Slow': return <Badge variant="secondary" className="ml-2 text-xs bg-yellow-100 text-yellow-700">Slow</Badge>;
         case 'Down': return <Badge variant="destructive" className="ml-2 text-xs">Down</Badge>;
-        default: return null;
+        default: return null; // Active returns null, consistent with balance page
     }
  };
+
+// Remove Transaction interface as it's imported from types now
+// import type { Transaction } from '@/services/types';
+// Removed buttonVariants export as it's not used
+// export { Button, buttonVariants } 
