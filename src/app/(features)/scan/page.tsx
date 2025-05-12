@@ -169,7 +169,7 @@ export default function ScanPage() {
           fetchFavoriteQrs();
       }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, auth.currentUser]);
+  }, [activeTab]);
 
   const fetchRecentScans = async () => {
       setIsLoadingRecents(true);
@@ -216,6 +216,11 @@ export default function ScanPage() {
   }, [torchOn]);
 
   const handleScannedData = useCallback(async (data: string) => {
+    if (!auth.currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please log in to scan and pay." });
+        setIsProcessingScan(false); // Reset processing scan if not authenticated
+        return;
+    }
     if (isProcessingScan) return; 
 
     await stopCameraStream(false); 
@@ -313,6 +318,11 @@ export default function ScanPage() {
       setIsScanningActive(true);
 
       const scanInterval = setInterval(async () => { 
+        if (!auth.currentUser) { // Check auth before simulating scan
+            console.log("[Client Scan] Simulated Live QR detection skipped: User not authenticated.");
+            clearInterval(scanInterval);
+            return;
+        }
         if (isScanningActive && streamRef.current && !isProcessingScan) { 
             if (Math.random() < 0.05) { 
                  const mockQrData = Math.random() > 0.5
@@ -377,6 +387,11 @@ export default function ScanPage() {
   }, [torchOn, torchSupported, toast, isStealthSilentMode]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!auth.currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please log in to upload QR." });
+        if (event.target) event.target.value = ''; // Clear file input
+        return;
+    }
     const file = event.target.files?.[0];
     if (file) {
       setIsProcessingUpload(true);
@@ -399,6 +414,8 @@ export default function ScanPage() {
                     throw new Error("Could not get canvas context");
                 }
                 ctx.drawImage(image, 0, 0);
+                // In a real app, use a QR decoding library like jsQR or Zxing-js here
+                // For mock, simulate detection from filename
                 const mockDecodedData = `upi://pay?pa=uploaded.${file.name.split('.')[0]}@okbank&pn=Uploaded%20Merchant&am=50`;
                 if (mockDecodedData) {
                     await handleScannedData(mockDecodedData);
@@ -885,3 +902,5 @@ export default function ScanPage() {
     </div>
   );
 }
+
+    
