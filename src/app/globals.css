@@ -86,6 +86,9 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+  ::selection {
+    background-color: hsl(var(--primary) / 0.2); /* Primary color with 20% opacity */
+  }
 }
 
 /* Added for splash screen progress bar animation */
