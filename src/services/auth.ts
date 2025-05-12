@@ -45,8 +45,8 @@ export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: Fir
         } else if (error.code === 'auth/too-many-requests') {
             errorMessage = "Too many OTP requests. Please try again later.";
         } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
-            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration in src/lib/firebase.ts.";
-        } else if (error.code === 'auth/operation-not-allowed') {
+            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration in src/lib/firebase.ts and ensure it matches your Firebase project.";
+        } else if (error.code === 'auth/operation-not-allowed' || error.message.includes('PHONE_NUMBER_SIGN_IN_NOT_ENABLED')) {
             errorMessage = "Phone number sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication -> Sign-in method).";
         }
         throw new Error(errorMessage);
@@ -69,7 +69,10 @@ export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult,
         const lastSignInTime = user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).getTime() : 0;
 
         // Determine if new user based on a small time difference between creation and last sign-in
-        const isNewUser = Math.abs(lastSignInTime - creationTime) < 10000; // 10 seconds tolerance
+        // Also consider if creationTime is very recent (e.g., within last minute)
+        const isNewUser = Math.abs(lastSignInTime - creationTime) < 15000 || // 15 seconds tolerance for first sign in
+                           (Date.now() - creationTime) < 60000; // Or created within the last minute
+
         console.log(`[Auth Service] User metadata: creationTime=${user.metadata.creationTime}, lastSignInTime=${user.metadata.lastSignInTime}. Is new user: ${isNewUser}`);
 
         if (isNewUser) {
@@ -156,42 +159,8 @@ export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
     } catch (error: any) {
         console.error("[Auth Service] Error verifying token or fetching profile:", error.message);
         if (error.message === "User not authenticated.") {
-            return null;
+            return null; // Or rethrow specific error if frontend should handle "not authenticated" differently here
         }
-        throw error;
+        throw error; // Re-throw other API client errors
     }
 }
-
-
-// Kept for reference if email/password sign-up is re-enabled
-// export async function signup(name: string, email: string, password?: string): Promise<User> {
-//     console.log(`[Auth Service] Attempting signup for email: ${email}`);
-//     if (!password) throw new Error("Password is required for email signup.");
-//     try {
-//         const { createUserWithEmailAndPassword } = await import('firebase/auth');
-//         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-//         const user = userCredential.user;
-//         console.log("[Auth Service] Firebase signup successful for:", user.uid);
-
-//         await updateFirebaseProfile(user, { displayName: name });
-//         console.log("[Auth Service] Firebase Auth profile (displayName) updated.");
-
-//         await upsertUserProfile({ name, email, phone: user.phoneNumber || undefined });
-//         console.log("[Auth Service] Firestore profile upserted via user service for new signup.");
-
-//         return user;
-//     } catch (error: any) {
-//         console.error("[Auth Service] Firebase signup error:", error.code, error.message);
-//         let errorMessage = "Signup failed. Please try again.";
-//         if (error.code === 'auth/email-already-in-use') {
-//             errorMessage = "This email address is already registered.";
-//         } else if (error.code === 'auth/invalid-email') {
-//             errorMessage = "Invalid email format.";
-//         } else if (error.code === 'auth/weak-password') {
-//             errorMessage = "Password is too weak. Please use at least 6 characters.";
-//         } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
-//             errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration.";
-//         }
-//         throw new Error(errorMessage);
-//     }
-// }
