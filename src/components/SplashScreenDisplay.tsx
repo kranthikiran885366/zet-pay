@@ -3,11 +3,25 @@
 import { Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+interface ShapeStyle {
+  width: string;
+  height: string;
+  top: string;
+  left: string;
+  animationDelay: string;
+  transform: string;
+  opacity: number;
+}
+
 const SplashScreenDisplay = () => {
   const [loadingText, setLoadingText] = useState('');
   const fullLoadingText = "Loading your world...";
+  const [shapeStyles, setShapeStyles] = useState<ShapeStyle[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true); // Component has mounted on the client
+
     let index = 0;
     const intervalId = setInterval(() => {
       setLoadingText(fullLoadingText.substring(0, index + 1));
@@ -20,23 +34,31 @@ const SplashScreenDisplay = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    // Generate styles only on the client after mount
+    if (isMounted) {
+      const newStyles: ShapeStyle[] = [...Array(10)].map(() => ({
+        width: `${Math.random() * 150 + 50}px`,
+        height: `${Math.random() * 150 + 50}px`,
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 5}s`,
+        transform: `translate(-50%, -50%) scale(${Math.random() * 0.5 + 0.5})`,
+        opacity: Math.random() * 0.2 + 0.1,
+      }));
+      setShapeStyles(newStyles);
+    }
+  }, [isMounted]);
+
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-primary via-primary/80 to-teal-600 text-primary-foreground overflow-hidden relative">
       {/* Subtle animated background elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
-        {[...Array(10)].map((_, i) => (
+        {isMounted && shapeStyles.map((style, i) => (
           <div
             key={`bg-shape-${i}`}
             className="absolute rounded-full bg-white/10 animate-pulse-slow"
-            style={{
-              width: `${Math.random() * 150 + 50}px`,
-              height: `${Math.random() * 150 + 50}px`,
-              top: `${Math.random() * 100}%`,
-              left: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              transform: `translate(-50%, -50%) scale(${Math.random() * 0.5 + 0.5})`,
-              opacity: Math.random() * 0.2 + 0.1,
-            }}
+            style={style}
           />
         ))}
       </div>
