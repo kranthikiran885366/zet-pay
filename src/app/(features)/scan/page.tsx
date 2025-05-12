@@ -44,7 +44,8 @@ const parseUpiUrl = (url: string): ParsedUpiData => {
             return { isValidUpi: false, originalData: url };
         }
         const params = new URLSearchParams(decodedUrl.substring(decodedUrl.indexOf('?') + 1));
-        const isZetPay = params.get('pa')?.includes('@payfriend') || Math.random() > 0.5;
+        // Simulate ZetPay user detection; backend should ideally confirm this
+        const isZetPay = params.get('pa')?.includes('@zetpay') || params.get('pa')?.includes('@payfriend') || Math.random() > 0.5;
         return {
             payeeName: params.get('pn') || undefined,
             payeeAddress: params.get('pa') || undefined,
@@ -62,14 +63,12 @@ const parseUpiUrl = (url: string): ParsedUpiData => {
 };
 
 interface QrValidationResult extends ApiQrValidationResult {
-    isDuplicateRecent: boolean;
-    pastPaymentSuggestions?: number[];
-    isFavorite?: boolean;
-    customTagName?: string;
+    isDuplicateRecent?: boolean; // Make optional as it's client-side logic
+    // Past payment suggestions would come from backend if tied to validated UPI ID
 }
 
-const RECENT_SCANS_KEY = 'payfriend_recent_scans';
-const RECENT_SCANS_MAX_LOCAL = 5; // Max local recent scans shown before API fetch
+const RECENT_SCANS_KEY = 'payfriend_recent_scans_local'; // Use a distinct key for local recent scans
+const RECENT_SCANS_MAX_LOCAL = 5;
 const RECENT_SCAN_COOLDOWN_MS = 15000; 
 
 interface RecentScanEntry {
@@ -82,6 +81,7 @@ const simpleHash = (str: string): string => {
     for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
+        hash |= 0; // Convert to 32bit integer
     }
     return hash.toString();
 };
@@ -143,7 +143,8 @@ export default function ScanPage() {
         try {
           const profile = await getCurrentUserProfile();
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
-          upiIdToUse = (profile as any)?.primaryUpiId || `${currentUser.uid.substring(0,5)}@payfriend`;
+          // Use a primary UPI ID if set in profile, otherwise fallback
+          upiIdToUse = profile?.upiId || `${currentUser.uid.substring(0,5)}@payfriend`;
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
           if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`;
@@ -151,6 +152,7 @@ export default function ScanPage() {
       }
       setUserName(nameToUse);
       setUserUpiId(upiIdToUse);
+      // Use a generic QR code image or a service that doesn't require host config
       setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(nameToUse)}&mc=0000`);
       setIsQrLoading(false);
     };
@@ -172,6 +174,7 @@ export default function ScanPage() {
   }, [activeTab]);
 
   const fetchRecentScans = async () => {
+      if (!auth.currentUser) return;
       setIsLoadingRecents(true);
       try {
           const recents = await getRecentScansApi();
@@ -185,6 +188,7 @@ export default function ScanPage() {
   };
 
   const fetchFavoriteQrs = async () => {
+      if (!auth.currentUser) return;
       setIsLoadingFavorites(true);
       try {
           const favorites = await getFavoriteQrsApi();
@@ -218,7 +222,7 @@ export default function ScanPage() {
   const handleScannedData = useCallback(async (data: string) => {
     if (!auth.currentUser) {
         toast({ variant: "destructive", title: "Not Authenticated", description: "Please log in to scan and pay." });
-        setIsProcessingScan(false); // Reset processing scan if not authenticated
+        setIsProcessingScan(false);
         return;
     }
     if (isProcessingScan) return; 
@@ -239,35 +243,47 @@ export default function ScanPage() {
     }
 
     const qrHash = simpleHash(data);
-    // Local recent scan check (visual cue or soft block)
     const localRecentScans: RecentScanEntry[] = JSON.parse(localStorage.getItem(RECENT_SCANS_KEY) || '[]');
     const isLocallyRecent = localRecentScans.some(scan => scan.qrDataHash === qrHash && (Date.now() - scan.timestamp) < RECENT_SCAN_COOLDOWN_MS);
     const updatedLocalRecentScans = [{ qrDataHash: qrHash, timestamp: Date.now() }, ...localRecentScans.filter(s => s.qrDataHash !== qrHash)].slice(0, RECENT_SCANS_MAX_LOCAL);
     localStorage.setItem(RECENT_SCANS_KEY, JSON.stringify(updatedLocalRecentScans));
-    if (isLocallyRecent && !isStealthSilentMode) toast({description: "This QR was scanned locally recently.", duration: 3000});
-
+    
+    if (isLocallyRecent && !isStealthSilentMode && !isStealthMode) { // Don't show for stealth mode
+        toast({description: "This QR was scanned locally recently. Proceed with caution if this is unexpected.", duration: 4000});
+    }
 
     try {
-      const validation: QrValidationResult = await validateQrCodeApi(data, parsedData.signature, isStealthMode);
-      setValidationResult({...validation, isDuplicateRecent: isLocallyRecent, upiId: parsedData.payeeAddress });
+      const validation: ApiQrValidationResult = await validateQrCodeApi(data, parsedData.signature, isStealthMode);
+      // Combine with local checks
+      const fullValidationResult: QrValidationResult = {
+        ...validation,
+        isDuplicateRecent: isLocallyRecent,
+        // Favorites check will happen after fetching favorites
+      };
+      setValidationResult(fullValidationResult);
       
       if (validation.merchantNameFromDb && parsedData.payeeName !== validation.merchantNameFromDb) {
           setScannedUpiData(prev => prev ? ({...prev, payeeName: validation.merchantNameFromDb}) : null);
+      }
+      
+      // Check if this QR is already a favorite
+      const favMatch = favoriteQrs.find(f => f.qrDataHash === qrHash);
+      if (favMatch) {
+          setValidationResult(prev => prev ? {...prev, isFavorite: true, customTagName: favMatch.customTagName} : null);
       }
       
       if (validation.pastPaymentSuggestions && validation.pastPaymentSuggestions.length > 0 && !isStealthMode) {
           setShowRepeatSuggestionModal(true);
       }
 
-
       if (!isStealthSilentMode) {
         if (validation.isBlacklisted) {
           toast({ variant: "destructive", title: "Warning: Suspicious QR", description: validation.message || "This QR code is flagged as suspicious.", duration: 7000 });
         } else if (validation.isReportedPreviously) {
           toast({ variant: "destructive", title: "Warning: Reported QR", description: "This QR code has been reported by other users. Proceed with extreme caution.", duration: 7000 });
-        } else if (!validation.isVerifiedMerchant && !validation.hasValidSignature && !isLocallyRecent) {
+        } else if (!validation.isVerifiedMerchant && !validation.hasValidSignature && !isLocallyRecent && !isStealthMode) {
           toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant and QR signature is missing/invalid. Proceed with caution.", duration: 7000 });
-        } else if (!validation.isVerifiedMerchant && !isLocallyRecent){
+        } else if (!validation.isVerifiedMerchant && !isLocallyRecent && !isStealthMode){
           toast({ variant: "default", title: "Unverified Payee", description: "Payee is not a verified merchant. Proceed with caution.", duration: 5000 });
         } else {
           toast({ title: "QR Validated", description: "Details fetched successfully." });
@@ -276,13 +292,13 @@ export default function ScanPage() {
     } catch (error: any) {
       console.error("QR Validation Error:", error);
       if (!isStealthSilentMode) toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
-      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isLocallyRecent, hasValidSignature: false, isReportedPreviously: false});
+      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, isDuplicateRecent: isLocallyRecent, hasValidSignature: false, isReportedPreviously: false}); // Basic fallback
     } finally {
       setIsProcessingScan(false);
-      fetchRecentScans(); // Refresh recent scans list
+      if(auth.currentUser) fetchRecentScans(); // Refresh recent scans list
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopCameraStream, toast, isStealthMode, isStealthSilentMode, router, isProcessingScan]);
+  }, [toast, stopCameraStream, isStealthMode, isStealthSilentMode, isProcessingScan, favoriteQrs]); // Added favoriteQrs
 
   const getCameraStream = useCallback(async () => {
     setHasCameraPermission(null);
@@ -304,40 +320,43 @@ export default function ScanPage() {
         const capabilities = (videoTrack as any).getCapabilities();
         setTorchSupported(!!capabilities?.torch);
         const hour = new Date().getHours();
-        const currentAmbientLight = (hour < 7 || hour > 19) ? 'dim' : 'bright';
+        const currentAmbientLight = (hour < 7 || hour > 19) ? 'dim' : 'bright'; // Basic time-based check
         setAmbientLight(currentAmbientLight);
 
         if (currentAmbientLight === 'dim' && !!capabilities?.torch && !torchOn && (isStealthMode || activeTab === 'scan')) {
             try {
                 await (videoTrack as any).applyConstraints({ advanced: [{ torch: true }] });
                 setTorchOn(true);
-                if(!isStealthSilentMode) toast({ description: "Low light, torch auto-activated." });
+                if(!isStealthSilentMode && !isStealthMode) toast({ description: "Low light, torch auto-activated." });
             } catch(e) { console.warn("Error auto-activating torch:", e); }
         }
       }
       setIsScanningActive(true);
 
+      // Simulate live QR detection for testing purposes
+      // In a real app, a QR decoding library would continuously process video frames
       const scanInterval = setInterval(async () => { 
-        if (!auth.currentUser) { // Check auth before simulating scan
+        if (!auth.currentUser) { 
             console.log("[Client Scan] Simulated Live QR detection skipped: User not authenticated.");
             clearInterval(scanInterval);
             return;
         }
-        if (isScanningActive && streamRef.current && !isProcessingScan) { 
-            if (Math.random() < 0.05) { 
+        if (isScanningActive && streamRef.current && !isProcessingScan && document.visibilityState === 'visible') { // Only scan if tab is active
+            // This is a MOCK detection. Replace with actual QR library.
+            if (Math.random() < 0.03) { // Lower chance to avoid constant triggers
                  const mockQrData = Math.random() > 0.5
                     ? "upi://pay?pa=demomerchant@okbank&pn=Demo%20Store&am=100&tn=TestPayment&sign=MOCK_SIGNATURE_VALID"
                     : "upi://pay?pa=anotheruser@okupi&pn=Another%20User";
                  console.log("[Client Scan] Simulated Live QR detected:", mockQrData);
                  await handleScannedData(mockQrData); 
-                 clearInterval(scanInterval); 
+                 clearInterval(scanInterval); // Stop after one mock detection
             }
         } else if (!isScanningActive || !streamRef.current) {
             clearInterval(scanInterval);
         }
-      }, 2000); 
+      }, 2000); // Check every 2 seconds
 
-      return () => clearInterval(scanInterval);
+      return () => clearInterval(scanInterval); // Cleanup interval
 
     } catch (error: any) {
       console.error('[Client Scan] Error accessing camera:', error.name, error.message);
@@ -346,7 +365,7 @@ export default function ScanPage() {
       if (!isStealthSilentMode) toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please check permissions.'});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast, stopCameraStream, isScanningActive, handleScannedData, torchOn, isStealthMode, isStealthSilentMode, activeTab, isProcessingScan]);
+  }, [toast, stopCameraStream, handleScannedData, torchOn, isStealthMode, isStealthSilentMode, activeTab, isProcessingScan]); // Dependencies adjusted
 
   useEffect(() => {
     if (activeTab === 'scan' && isScanningActive && ambientLight === 'dim' && torchSupported && !torchOn && !isStealthMode && !isStealthSilentMode) {
@@ -366,7 +385,7 @@ export default function ScanPage() {
         if (cleanupScanInterval) cleanupScanInterval();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, getCameraStream, stopCameraStream, scannedUpiData, isProcessingScan]);
+  }, [activeTab, stopCameraStream, scannedUpiData, isProcessingScan]); // Removed getCameraStream from deps
 
   const toggleTorch = useCallback(async () => {
     if (!streamRef.current || !torchSupported) {
@@ -378,18 +397,18 @@ export default function ScanPage() {
     try {
       await (videoTrack as any).applyConstraints({ advanced: [{ torch: newTorchState }] });
       setTorchOn(newTorchState);
-      if (!isStealthSilentMode) toast({ description: `Torch ${newTorchState ? 'ON' : 'OFF'}` });
+      if (!isStealthSilentMode && !isStealthMode) toast({ description: `Torch ${newTorchState ? 'ON' : 'OFF'}` });
     } catch (err) {
       console.error('[Client Scan] Error controlling torch:', err);
-      if (!isStealthSilentMode) toast({ variant: "destructive", title: "Could not control torch"});
-      setTorchOn(false);
+      if (!isStealthSilentMode && !isStealthMode) toast({ variant: "destructive", title: "Could not control torch"});
+      setTorchOn(false); // Revert state on error
     }
-  }, [torchOn, torchSupported, toast, isStealthSilentMode]);
+  }, [torchOn, torchSupported, toast, isStealthSilentMode, isStealthMode]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!auth.currentUser) {
         toast({ variant: "destructive", title: "Not Authenticated", description: "Please log in to upload QR." });
-        if (event.target) event.target.value = ''; // Clear file input
+        if (event.target) event.target.value = '';
         return;
     }
     const file = event.target.files?.[0];
@@ -401,58 +420,60 @@ export default function ScanPage() {
       await stopCameraStream();
       if (!isStealthSilentMode) toast({ title: "Processing Image...", description: "Attempting to decode QR code." });
       try {
-        const qrReader = new FileReader();
-        qrReader.onload = async (e) => {
-            const image = new window.Image();
-            image.src = e.target?.result as string;
-            image.onload = async () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = image.width;
-                canvas.height = image.height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    throw new Error("Could not get canvas context");
-                }
-                ctx.drawImage(image, 0, 0);
-                // In a real app, use a QR decoding library like jsQR or Zxing-js here
-                // For mock, simulate detection from filename
-                const mockDecodedData = `upi://pay?pa=uploaded.${file.name.split('.')[0]}@okbank&pn=Uploaded%20Merchant&am=50`;
-                if (mockDecodedData) {
-                    await handleScannedData(mockDecodedData);
-                } else {
-                    if (!isStealthSilentMode) toast({ variant: "destructive", title: "No QR Code Found", description: "Could not find a QR code in the image." });
-                }
-            };
-        };
-        qrReader.readAsDataURL(file);
+        // SIMULATED QR DECODING FROM IMAGE
+        // In a real app, use a library like jsQR or zxing-js
+        // For example:
+        // const imageData = await new Promise(resolve => {
+        //   const reader = new FileReader();
+        //   reader.onload = () => resolve(reader.result);
+        //   reader.readAsDataURL(file);
+        // });
+        // const image = new Image(); image.src = imageData as string;
+        // await new Promise(resolve => image.onload = resolve);
+        // const canvas = document.createElement('canvas'); ...
+        // const code = jsQR(ctx.getImageData(...));
+        // if (code) { handleScannedData(code.data); } else { /* no QR found */ }
+        
+        // Mocking successful scan from image name
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing
+        const mockDecodedData = `upi://pay?pa=uploaded.${file.name.split('.')[0].replace(/\s+/g, '_')}@okbank&pn=Uploaded%20Merchant&am=50`;
+        await handleScannedData(mockDecodedData);
+
       } catch(error) {
         console.error("Error processing uploaded QR:", error);
         if (!isStealthSilentMode) toast({ variant: "destructive", title: "Processing Error", description: "Failed to process the image." });
       } finally {
          setIsProcessingUpload(false);
-         if (event.target) event.target.value = '';
-         if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) {
+         if (event.target) event.target.value = ''; // Clear file input
+         if (activeTab === 'scan' && !streamRef.current && !scannedUpiData) { // Restart camera if needed
             getCameraStream();
          }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast, stopCameraStream, activeTab, getCameraStream, handleScannedData, scannedUpiData, isStealthSilentMode]);
+  }, [toast, stopCameraStream, activeTab, handleScannedData, scannedUpiData, isStealthSilentMode]); // Removed getCameraStream from deps
 
   const proceedToPayment = (amountToPay?: number) => {
-    if (!scannedUpiData || !scannedUpiData.isValidUpi || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
-        if (!isStealthSilentMode || isStealthMode) toast({variant: "destructive", title: "Cannot Proceed", description: validationResult?.isBlacklisted || validationResult?.isReportedPreviously ? "Payment blocked for suspicious or reported QR." : "Invalid payment details."});
+    if (!scannedUpiData || !scannedUpiData.isValidUpi || !scannedUpiData.payeeAddress) {
+        if (!isStealthSilentMode || isStealthMode) toast({variant: "destructive", title: "Cannot Proceed", description: "Invalid payment details."});
         return;
     }
+    if (validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
+        if (!isStealthSilentMode || isStealthMode) toast({variant: "destructive", title: "Payment Blocked", description: "Cannot proceed with suspicious or reported QR."});
+        return;
+    }
+    
     const query = new URLSearchParams();
     query.set('pa', scannedUpiData.payeeAddress);
-    if (scannedUpiData.payeeName) query.set('pn', scannedUpiData.payeeName);
+    if (scannedUpiData.payeeName || validationResult?.merchantNameFromDb) {
+        query.set('pn', validationResult?.merchantNameFromDb || scannedUpiData.payeeName!);
+    }
     
     const finalAmount = amountToPay !== undefined ? amountToPay.toString() : scannedUpiData.amount;
     if (finalAmount && !(isStealthMode && hideAmountInStealth)) query.set('am', finalAmount);
     
     if (scannedUpiData.note) query.set('tn', scannedUpiData.note);
-    query.set('qrData', scannedUpiData.originalData);
+    query.set('qrData', scannedUpiData.originalData); // Pass original QR data for reference
     if (isStealthMode) query.set('stealth', 'true');
     router.push(`/pay?${query.toString()}`);
   };
@@ -462,22 +483,34 @@ export default function ScanPage() {
         toast({variant: "destructive", title: "Report Error", description: "Reason for reporting is required."});
         return;
     }
+    if (!auth.currentUser) {
+        toast({variant: "destructive", title: "Not Authenticated", description: "Please log in to report QR."});
+        return;
+    }
     setShowReportDialog(false);
     try {
         await reportQrCodeApi(rawScannedText, reportReason);
         toast({ title: "QR Reported", description: "Thank you for helping keep PayFriend safe." });
         setReportReason("");
+        // Optionally, refresh validation result for the current QR if it's still displayed
+        if(validationResult && rawScannedText) {
+            setValidationResult(prev => prev ? {...prev, isReportedPreviously: true} : null);
+        }
     } catch (error: any) {
         toast({ variant: "destructive", title: "Report Failed", description: error.message || "Could not submit report." });
     }
   };
 
   const handleSaveContact = () => {
-    if (!scannedUpiData || !scannedUpiData.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
-        toast({variant: "destructive", title: "Cannot Save", description: validationResult?.isBlacklisted || validationResult?.isReportedPreviously ? "Cannot save suspicious contact." : "Invalid contact details."});
+    if (!scannedUpiData || !scannedUpiData.payeeAddress || !auth.currentUser) {
+        toast({variant: "destructive", title: "Cannot Save", description: "Invalid contact details or not logged in."});
         return;
     }
-    router.push(`/send/bank?upiId=${encodeURIComponent(scannedUpiData.payeeAddress)}&name=${encodeURIComponent(scannedUpiData.payeeName || validationResult?.merchantNameFromDb || '')}&type=bank&action=add`);
+     if (validationResult?.isBlacklisted || validationResult?.isReportedPreviously) {
+        toast({variant: "destructive", title: "Cannot Save", description: "Cannot save suspicious contact."});
+        return;
+    }
+    router.push(`/send/bank?upiId=${encodeURIComponent(scannedUpiData.payeeAddress)}&name=${encodeURIComponent(validationResult?.merchantNameFromDb || scannedUpiData.payeeName || '')}&type=bank&action=add`);
   };
 
   const resetScanState = useCallback(() => {
@@ -486,10 +519,11 @@ export default function ScanPage() {
     setValidationResult(null);
     setIsProcessingScan(false);
     setShowRepeatSuggestionModal(false);
-    if (activeTab === 'scan' && !streamRef.current) {
+    if (activeTab === 'scan' && !streamRef.current && hasCameraPermission !== false) { // Only restart if permission not denied
         getCameraStream();
     }
-  },[activeTab, getCameraStream]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[activeTab, hasCameraPermission]); // Removed getCameraStream
 
   const getVerificationBadge = () => {
     if (!validationResult) return null;
@@ -509,73 +543,96 @@ export default function ScanPage() {
     if (validationResult.hasValidSignature) {
         return <Badge variant="secondary" className={cn(baseClasses, "bg-blue-100 text-blue-700")}><Fingerprint className="h-3 w-3"/>Authentic QR</Badge>;
     }
+    if(validationResult.isDuplicateRecent && !isStealthMode && !isStealthSilentMode) {
+        return <Badge variant="outline" className={cn(baseClasses, "text-yellow-700 border-yellow-500")}><RefreshCw className="h-3 w-3"/>Recently Scanned</Badge>;
+    }
     return <Badge variant="outline" className={cn(baseClasses, "text-yellow-700 border-yellow-500")}><ShieldQuestion className="h-3 w-3"/>Unverified Payee/QR</Badge>;
   };
 
   const openChat = () => {
+    if (!auth.currentUser) {
+        toast({variant: "destructive", title: "Login Required", description: "Please log in to chat."});
+        return;
+    }
     if (scannedUpiData?.isZetPayUser && scannedUpiData.payeeAddress) {
         setChatRecipient({
-            id: scannedUpiData.payeeAddress,
-            name: scannedUpiData.payeeName || validationResult?.merchantNameFromDb || "Payee",
+            id: scannedUpiData.payeeAddress, // Use UPI ID as chat identifier
+            name: validationResult?.merchantNameFromDb || scannedUpiData.payeeName || "Payee",
+            // avatar: scannedUpiData.avatarUrl // If we had avatar info
         });
         setShowChatModal(true);
     } else {
-        if (!isStealthSilentMode) toast({ description: "Chat is only available with other Zet Pay users." });
+        if (!isStealthSilentMode && !isStealthMode) toast({ description: "Chat is only available with other Zet Pay users." });
     }
   };
 
   const handleFavoriteAction = async () => {
-    if (!scannedUpiData || !scannedUpiData.payeeAddress) return;
+    if (!scannedUpiData || !scannedUpiData.payeeAddress || !auth.currentUser) {
+         toast({variant: "destructive", title: "Action Failed", description: "Cannot manage favorites. Ensure QR is valid and you are logged in."});
+        return;
+    }
+    const qrHash = simpleHash(scannedUpiData.originalData);
     if (validationResult?.isFavorite) { // Unfavorite
         try {
-            await removeFavoriteQrApi(simpleHash(scannedUpiData.originalData));
+            await removeFavoriteQrApi(qrHash);
             toast({ title: "Removed from Favorites" });
             setValidationResult(prev => prev ? { ...prev, isFavorite: false, customTagName: undefined } : null);
-            fetchFavoriteQrs();
-        } catch (error) {
-            toast({ variant: "destructive", title: "Failed to remove favorite" });
+            fetchFavoriteQrs(); // Refresh favorites list
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Failed to remove favorite", description: error.message });
         }
     } else { // Add to favorite
-        setFavoriteTagName(scannedUpiData.payeeName || validationResult?.merchantNameFromDb || '');
+        setFavoriteTagName(validationResult?.merchantNameFromDb || scannedUpiData.payeeName || '');
         setFavoriteDefaultAmount(scannedUpiData.amount || '');
         setShowAddFavoriteDialog(true);
     }
   };
 
   const handleSaveFavorite = async () => {
-    if (!scannedUpiData || !scannedUpiData.payeeAddress) return;
+    if (!scannedUpiData || !scannedUpiData.payeeAddress || !auth.currentUser) {
+        toast({variant: "destructive", title: "Save Failed", description: "Cannot save favorite. Ensure QR is valid and you are logged in."});
+        return;
+    }
     try {
         await addFavoriteQrApi({
             qrData: scannedUpiData.originalData,
             payeeUpi: scannedUpiData.payeeAddress,
-            payeeName: scannedUpiData.payeeName || validationResult?.merchantNameFromDb || 'Unnamed Favorite',
+            payeeName: validationResult?.merchantNameFromDb || scannedUpiData.payeeName || 'Unnamed Favorite',
             customTagName: favoriteTagName || undefined,
             defaultAmount: favoriteDefaultAmount ? Number(favoriteDefaultAmount) : undefined,
         });
         toast({ title: "Added to Favorites" });
         setValidationResult(prev => prev ? { ...prev, isFavorite: true, customTagName: favoriteTagName || undefined } : null);
-        fetchFavoriteQrs();
+        fetchFavoriteQrs(); // Refresh favorites list
         setShowAddFavoriteDialog(false);
-    } catch (error) {
-        toast({ variant: "destructive", title: "Failed to add favorite" });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Failed to add favorite", description: error.message });
     }
   };
   
   const handlePayFromFavorite = (fav: FavoriteQr) => {
-      const parsed = parseUpiUrl(fav.qrData); // Assume qrData is stored in favorite
+      if (!auth.currentUser) {
+          toast({variant: "destructive", title: "Login Required"});
+          return;
+      }
+      const parsed = parseUpiUrl(fav.qrData);
       if (parsed.isValidUpi && parsed.payeeAddress) {
+          // Directly set data and proceed, bypassing camera scan
+          setRawScannedText(fav.qrData);
           setScannedUpiData(parsed);
-          setValidationResult({ // Simulate a basic valid result for favorite
-              isVerifiedMerchant: true, // Assume favorites are generally trusted
+          // We might not have full validationResult for a favorite initially,
+          // but we can construct a basic one or trigger a quick validation.
+          // For simplicity, proceed to payment, /pay page will re-validate if needed.
+          setValidationResult({
+              isVerifiedMerchant: true, // Assume favorites are generally trusted or were verified
               isBlacklisted: false,
-              isDuplicateRecent: false,
+              isReportedPreviously: false,
               merchantNameFromDb: fav.payeeName,
               upiId: fav.payeeUpi,
               isFavorite: true,
               customTagName: fav.customTagName,
               pastPaymentSuggestions: fav.defaultAmount ? [fav.defaultAmount] : [],
           });
-          // Proceed to payment or show confirmation
            const amountToPay = fav.defaultAmount || (parsed.amount ? Number(parsed.amount) : undefined);
            proceedToPayment(amountToPay);
       } else {
@@ -585,16 +642,16 @@ export default function ScanPage() {
 
 
   const scanAreaClasses = cn(
-    "relative aspect-square w-full max-w-sm mx-auto sm:aspect-video sm:max-w-md md:max-w-lg bg-muted rounded-md overflow-hidden border border-border",
-    isStealthMode && "sm:h-40 aspect-square !border-transparent shadow-xl"
+    "relative aspect-square w-full max-w-sm mx-auto sm:max-w-md md:max-w-lg bg-black rounded-md overflow-hidden border-2 border-primary/30 shadow-inner",
+    isStealthMode && "sm:h-40 !border-transparent shadow-xl"
   );
 
   const cameraOverlayClasses = cn(
-      "absolute inset-0 border-[10vw] sm:border-[5vw] border-black/30 pointer-events-none",
+      "absolute inset-0 border-[calc(50%-min(40%,120px))] sm:border-[calc(50%-min(35%,150px))] border-black/50 pointer-events-none", // Creates a square viewport
       isStealthMode && "border-[2vw] sm:border-[1vw] border-primary/30"
   );
   const cameraGuidelineClasses = cn(
-      "absolute top-1/2 left-1/2 w-3/5 aspect-square transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-75 rounded-md",
+      "absolute top-1/2 left-1/2 w-[min(80%,240px)] aspect-square transform -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-primary opacity-50 rounded-md", // Square guideline
       isStealthMode && "w-4/5 border-primary/70"
   );
 
@@ -631,7 +688,7 @@ export default function ScanPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isProcessingScan && (
+                {isProcessingScan && !validationResult && ( // Show main processing only if no validation result yet
                     <div className="flex flex-col items-center justify-center p-6 space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         <p className="text-muted-foreground">Processing QR...</p>
@@ -641,10 +698,10 @@ export default function ScanPage() {
                     <Card className={cn("p-4", isStealthMode ? "border-primary/50 bg-background" : "border-border", validationResult.isBlacklisted || validationResult.isReportedPreviously ? "border-destructive bg-destructive/10" : validationResult.isVerifiedMerchant ? "border-green-500 bg-green-50" : "bg-muted/50")}>
                          <div className="flex justify-between items-start">
                             <div>
-                                <CardTitle className="text-base mb-1 break-all">Pay to: {scannedUpiData.payeeName || validationResult.merchantNameFromDb || scannedUpiData.payeeAddress}</CardTitle>
+                                <CardTitle className="text-base mb-1 break-all">Pay to: {validationResult.merchantNameFromDb || scannedUpiData.payeeName || scannedUpiData.payeeAddress}</CardTitle>
                                 <CardDescription className="text-xs break-all">UPI ID: {scannedUpiData.payeeAddress}</CardDescription>
                             </div>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleFavoriteAction}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleFavoriteAction} disabled={isProcessingScan}>
                                 <Star className={cn("h-5 w-5", validationResult.isFavorite ? "text-yellow-500 fill-yellow-400" : "text-muted-foreground")}/>
                             </Button>
                          </div>
@@ -655,19 +712,19 @@ export default function ScanPage() {
                          {isStealthMode && hideAmountInStealth && scannedUpiData.amount && (
                             <p className="text-xl font-bold mt-2">Amount: Hidden (Tap to Pay)</p>
                          )}
-                         {!isStealthMode && scannedUpiData.amount && <p className="text-xl font-bold mt-2">Amount: ₹{scannedUpiData.amount}</p>}
+                         {(!isStealthMode || !hideAmountInStealth) && scannedUpiData.amount && <p className="text-xl font-bold mt-2">Amount: ₹{scannedUpiData.amount}</p>}
 
                         <div className={cn("grid grid-cols-2 gap-2 mt-4", isStealthMode && "grid-cols-1")}>
-                             <Button onClick={() => proceedToPayment()} className={cn("flex-1 bg-green-600 hover:bg-green-700", isStealthMode && "h-10 text-sm")} disabled={validationResult.isBlacklisted || validationResult.isReportedPreviously}>
-                                <Wallet className="mr-2 h-4 w-4"/>Pay Now
+                             <Button onClick={() => proceedToPayment()} className={cn("flex-1 bg-green-600 hover:bg-green-700", isStealthMode && "h-10 text-sm")} disabled={validationResult.isBlacklisted || validationResult.isReportedPreviously || isProcessingScan}>
+                                {isProcessingScan ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Wallet className="mr-2 h-4 w-4"/>} Pay Now
                             </Button>
-                            {!isStealthMode && <Button variant="outline" onClick={resetScanState} className="flex-1"><RefreshCw className="mr-2 h-4 w-4"/>Rescan</Button>}
+                            {!isStealthMode && <Button variant="outline" onClick={resetScanState} className="flex-1" disabled={isProcessingScan}><RefreshCw className="mr-2 h-4 w-4"/>Rescan</Button>}
                         </div>
                         {!isStealthMode && (
                              <div className="grid grid-cols-3 gap-2 mt-2">
-                                 <Button variant="link" size="sm" className="text-xs" onClick={() => setShowReportDialog(true)} disabled={!rawScannedText}><Flag className="mr-1 h-3 w-3"/>Report</Button>
-                                 <Button variant="link" size="sm" className="text-xs" onClick={openChat} disabled={!scannedUpiData?.isZetPayUser}><MessageSquare className="mr-1 h-3 w-3"/>Chat</Button>
-                                 <Button variant="link" size="sm" className="text-xs" onClick={handleSaveContact} disabled={!scannedUpiData?.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously}><UserPlus className="mr-1 h-3 w-3"/>Save</Button>
+                                 <Button variant="link" size="sm" className="text-xs" onClick={() => setShowReportDialog(true)} disabled={!rawScannedText || isProcessingScan}><Flag className="mr-1 h-3 w-3"/>Report</Button>
+                                 <Button variant="link" size="sm" className="text-xs" onClick={openChat} disabled={!scannedUpiData?.isZetPayUser || isProcessingScan}><MessageSquare className="mr-1 h-3 w-3"/>Chat</Button>
+                                 <Button variant="link" size="sm" className="text-xs" onClick={handleSaveContact} disabled={!scannedUpiData?.payeeAddress || validationResult?.isBlacklisted || validationResult?.isReportedPreviously || isProcessingScan}><UserPlus className="mr-1 h-3 w-3"/>Save</Button>
                              </div>
                         )}
                     </Card>
@@ -749,7 +806,7 @@ export default function ScanPage() {
                                     <div key={scan.qrDataHash} className="flex items-center justify-between p-2 border rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => handleScannedData(scan.qrData)}>
                                         <div>
                                             <p className="text-sm font-medium truncate">{scan.payeeName || scan.payeeUpi}</p>
-                                            <p className="text-xs text-muted-foreground">Paid ₹{scan.lastAmountPaid?.toFixed(2)} on {new Date(scan.lastPaidDate).toLocaleDateString()}</p>
+                                            {scan.lastAmountPaid && <p className="text-xs text-muted-foreground">Paid ₹{scan.lastAmountPaid?.toFixed(2)} on {new Date(scan.lastPaidDate).toLocaleDateString()}</p>}
                                         </div>
                                         <Button variant="ghost" size="xs">Pay Again</Button>
                                     </div>
@@ -806,7 +863,10 @@ export default function ScanPage() {
                  )}
                  <p className="text-base font-medium">{userName}</p>
                  <p className="text-sm text-muted-foreground">{userUpiId}</p>
-                 <Button variant="outline" onClick={() => alert("Share QR functionality to be implemented.")}>Share QR Code</Button>
+                 <Button variant="outline" onClick={() => {
+                     if(userQRCodeUrl) navigator.clipboard.writeText(userUpiId).then(()=>toast({title:"UPI ID Copied!"})).catch(()=>toast({title:"Copy Failed", variant:"destructive"}));
+                     else toast({title: "QR not loaded", variant:"destructive"});
+                 }}>Share QR Code</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -876,7 +936,7 @@ export default function ScanPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Pay Again?</DialogTitle>
-                    <DialogDescription>You've paid <span className="font-semibold">{scannedUpiData?.payeeName || validationResult?.merchantNameFromDb || scannedUpiData?.payeeAddress}</span> before.</DialogDescription>
+                    <DialogDescription>You've paid <span className="font-semibold">{validationResult?.merchantNameFromDb || scannedUpiData?.payeeName || scannedUpiData?.payeeAddress}</span> before.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-2">
                     <p className="text-sm">Previous payment amounts:</p>
@@ -886,6 +946,7 @@ export default function ScanPage() {
                                 Pay ₹{amt.toFixed(2)}
                             </Button>
                         ))}
+                         {(validationResult?.pastPaymentSuggestions?.length || 0) === 0 && <p className="text-xs text-muted-foreground">No specific past amounts recorded for suggestions.</p>}
                     </div>
                     <Separator className="my-3"/>
                     <Button className="w-full" onClick={() => { proceedToPayment(scannedUpiData?.amount ? Number(scannedUpiData.amount) : undefined ); setShowRepeatSuggestionModal(false);}}>
@@ -902,5 +963,3 @@ export default function ScanPage() {
     </div>
   );
 }
-
-    

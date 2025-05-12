@@ -18,15 +18,15 @@ export interface ParsedUpiData {
 export interface QrValidationResult {
   isVerifiedMerchant: boolean;
   isBlacklisted: boolean;
-  isDuplicateRecent: boolean;
+  // isDuplicateRecent: boolean; // This is now client-side only for immediate UX, backend might have its own checks
   merchantNameFromDb?: string;
   message?: string;
-  upiId?: string;
+  upiId?: string; // This should be the `pa` from the QR
   hasValidSignature?: boolean;
   isReportedPreviously?: boolean;
-  pastPaymentSuggestions?: number[]; // Added
-  isFavorite?: boolean; // Added
-  customTagName?: string; // Added
+  pastPaymentSuggestions?: number[];
+  isFavorite?: boolean;
+  customTagName?: string;
 }
 
 // Interface for recent scans returned by API
@@ -52,22 +52,24 @@ export async function validateQrCodeApi(
     qrData: string,
     signature?: string,
     stealthModeInitiated?: boolean
-): Promise<QrValidationResult> {
+): Promise<ApiQrValidationResult> { // Expect ApiQrValidationResult (which might differ from client's QrValidationResult)
     console.log("[Client Scan Service] Validating QR via API:", qrData.substring(0,30));
+    if (!auth.currentUser) {
+        throw new Error("User not authenticated. Please log in.");
+    }
     try {
-      const result = await apiClient<QrValidationResult>('/scan/validate', {
+      const result = await apiClient<ApiQrValidationResult>('/scan/validate', { // Ensure this matches the type from backend
         method: 'POST',
         body: JSON.stringify({
             qrData,
-            userId: auth.currentUser?.uid, // Backend should verify this token anyway
-            signature,
-            stealthModeInitiated
+            // userId is inferred from token by backend
+            signature: signature || undefined, // Send undefined if not present
+            stealthModeInitiated: stealthModeInitiated || false,
         }),
       });
       return result;
     } catch (error: any) {
       console.error("QR Validation API Error:", error);
-      // Return a default error structure or rethrow
       throw new Error(error.message || "Could not validate QR code with backend.");
     }
 }
@@ -83,12 +85,15 @@ export async function reportQrCodeApi(
     reason: string
 ): Promise<{ success: boolean; message?: string; reportId?: string }> {
     console.log("[Client Scan Service] Reporting QR via API:", qrData.substring(0,30));
+    if (!auth.currentUser) {
+        throw new Error("User not authenticated. Please log in to report.");
+    }
     try {
         const result = await apiClient<{ success: boolean; message?: string; reportId?: string }>('/scan/report', {
             method: 'POST',
             body: JSON.stringify({
                 qrData,
-                userId: auth.currentUser?.uid, // Backend verifies token
+                // userId is inferred from token by backend
                 reason,
             }),
         });
@@ -105,14 +110,22 @@ export async function reportQrCodeApi(
  */
 export async function getRecentScansApi(): Promise<RecentScan[]> {
     console.log("[Client Scan Service] Fetching recent scans via API...");
+    if (!auth.currentUser) {
+        console.warn("[Client Scan Service] User not authenticated, cannot fetch recent scans.");
+        return [];
+    }
     try {
         const recentScans = await apiClient<RecentScan[]>('/scan/recent');
         return recentScans.map(scan => ({
             ...scan,
-            lastPaidDate: new Date(scan.lastPaidDate).toISOString() // Ensure it's ISO string if needed
+            lastPaidDate: new Date(scan.lastPaidDate).toISOString()
         }));
     } catch (error) {
         console.error("Error fetching recent scans via API:", error);
         return [];
     }
 }
+
+// Re-exporting QrValidationResult from API as ApiQrValidationResult
+// if client needs to distinguish from its own QrValidationResult type.
+export type { QrValidationResult as ApiQrValidationResult };

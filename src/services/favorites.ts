@@ -6,16 +6,16 @@ import { auth } from '@/lib/firebase';
 
 export interface FavoriteQr {
     userId: string;
-    qrDataHash: string; // Primary key for the favorite QR based on its content hash
-    qrData: string; // Store the full QR data string for re-use
+    qrDataHash: string; 
+    qrData: string; 
     payeeUpi: string;
     payeeName: string;
-    customTagName?: string; // User-defined tag for easy identification
-    defaultAmount?: number; // Optional pre-filled amount
-    frequencyCount?: number; // How many times this QR has been paid (updated by backend)
-    lastPaidDate?: string; // ISO date string (updated by backend)
-    createdAt: string; // ISO date string
-    updatedAt: string; // ISO date string
+    customTagName?: string; 
+    defaultAmount?: number; 
+    frequencyCount?: number; 
+    lastPaidDate?: string; 
+    createdAt: string; 
+    updatedAt: string; 
 }
 
 interface AddFavoriteQrPayload {
@@ -33,6 +33,9 @@ interface AddFavoriteQrPayload {
  */
 export async function addFavoriteQrApi(payload: AddFavoriteQrPayload): Promise<FavoriteQr> {
     console.log("[Client Favorites Service] Adding favorite QR via API:", payload.payeeName);
+    if (!auth.currentUser) {
+        throw new Error("User not authenticated. Please log in to add favorites.");
+    }
     try {
         const newFavorite = await apiClient<FavoriteQr>('/favorites/qr', {
             method: 'POST',
@@ -51,6 +54,10 @@ export async function addFavoriteQrApi(payload: AddFavoriteQrPayload): Promise<F
  */
 export async function getFavoriteQrsApi(): Promise<FavoriteQr[]> {
     console.log("[Client Favorites Service] Fetching favorite QRs via API...");
+    if (!auth.currentUser) {
+        console.warn("[Client Favorites Service] User not authenticated, cannot fetch favorites.");
+        return [];
+    }
     try {
         const favorites = await apiClient<FavoriteQr[]>('/favorites/qr');
         return favorites;
@@ -67,6 +74,9 @@ export async function getFavoriteQrsApi(): Promise<FavoriteQr[]> {
  */
 export async function removeFavoriteQrApi(qrDataHash: string): Promise<void> {
     console.log(`[Client Favorites Service] Removing favorite QR via API, hash: ${qrDataHash}`);
+    if (!auth.currentUser) {
+        throw new Error("User not authenticated. Please log in to remove favorites.");
+    }
     try {
         await apiClient<void>(`/favorites/qr/${qrDataHash}`, {
             method: 'DELETE',
@@ -76,6 +86,3 @@ export async function removeFavoriteQrApi(qrDataHash: string): Promise<void> {
         throw new Error(error.message || "Could not remove favorite.");
     }
 }
-
-// Update Favorite QR (e.g., change tag or default amount) - Optional for now
-// export async function updateFavoriteQrApi(qrDataHash: string, updates: Partial<Pick<FavoriteQr, 'customTagName' | 'defaultAmount'>>): Promise<FavoriteQr> { ... }
