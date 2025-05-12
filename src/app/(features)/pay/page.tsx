@@ -19,6 +19,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { auth } from '@/lib/firebase';
 import { format } from "date-fns";
 import { Badge } from '@/components/ui/badge';
+import { cn } from "@/lib/utils";
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { apiClient } from '@/lib/apiClient';
 
 // Helper to parse UPI URL (basic example)
 const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; amount?: string, note?: string } => {
@@ -40,7 +44,7 @@ const parseUpiUrl = (url: string): { payeeName?: string; payeeAddress?: string; 
 type PaymentSource = 'upi' | 'wallet';
 
 // Combine Transaction and UpiTransactionResult for the result state
-type PaymentResultState = (Transaction & { ticketId?: string; refundEta?: string });
+type PaymentResultState = (Transaction & { ticketId?: string; refundEta?: string; usedWalletFallback?: boolean });
 
 export default function PaymentConfirmationPage() {
     const searchParams = useSearchParams();
@@ -89,7 +93,7 @@ export default function PaymentConfirmationPage() {
          try {
              const [userAccounts, currentWalletBalance] = await Promise.all([
                  getLinkedAccounts(),
-                 getWalletBalance() // No need to pass userId if apiClient handles auth
+                 getWalletBalance()
              ]);
 
              setAccounts(userAccounts);
@@ -99,8 +103,8 @@ export default function PaymentConfirmationPage() {
                  const defaultAccount = userAccounts.find(acc => acc.isDefault);
                  const initialAccountUpiId = defaultAccount?.upiId || userAccounts[0]?.upiId || '';
                  setSelectedAccountUpiId(initialAccountUpiId);
-                 fetchBankStatuses(userAccounts); // Fetch statuses after getting accounts
-                 setSelectedPaymentSource('upi'); // Default to UPI if accounts exist
+                 fetchBankStatuses(userAccounts);
+                 setSelectedPaymentSource('upi');
              } else if (currentWalletBalance > 0) {
                   setSelectedPaymentSource('wallet');
              } else {
@@ -134,9 +138,9 @@ export default function PaymentConfirmationPage() {
 
 
     useEffect(() => {
-        if (!userId) return; // Don't process if no user
+        if (!userId) return;
 
-        const finalPayeeAddress = searchParams.get('pa') || searchParams.get('recipientUpiId'); // Accept both params
+        const finalPayeeAddress = searchParams.get('pa') || searchParams.get('recipientUpiId');
         const finalPayeeName = searchParams.get('pn');
         const finalAmount = searchParams.get('am');
         const finalNote = searchParams.get('tn');
@@ -158,12 +162,12 @@ export default function PaymentConfirmationPage() {
             setIsVerifying(true);
             setError(null);
             try {
-                 const { verifiedName, isBlacklisted, reason } = await apiClient<{ verifiedName: string | null, isBlacklisted?: boolean, reason?: string }>(`/upi/verify?upiId=${encodeURIComponent(address)}`);
-                 if (isBlacklisted) {
+                 const validationResult = await verifyUpiId(address);
+                 if (validationResult.isBlacklisted) {
                      setPayeeName(`Suspicious Payee`);
-                     setError(`Payment Blocked: ${reason || 'Recipient is flagged as suspicious.'}`);
-                 } else if (verifiedName) {
-                     setPayeeName(verifiedName);
+                     setError(`Payment Blocked: ${validationResult.reason || 'Recipient is flagged as suspicious.'}`);
+                 } else if (validationResult.verifiedName) {
+                     setPayeeName(validationResult.verifiedName);
                  } else {
                      setPayeeName('Unverified Payee');
                      setError(`Could not verify UPI ID: ${address}. Proceed with caution.`);
@@ -251,10 +255,10 @@ export default function PaymentConfirmationPage() {
 
         let paymentSuccess = false;
         let resultMessage = "Payment Failed";
-        let finalStatus: Transaction['status'] = 'Failed';
-        let finalTransactionId: string | undefined = undefined; // Use the ID from the backend if possible
+        let finalStatus: Transaction['status'] | 'FallbackSuccess' = 'Failed';
+        let finalTransactionId: string | undefined = undefined;
         let descriptionSuffix = '';
-        let upiPaymentResult: UpiTransactionResult | null = null; // Store UPI specific result
+        let upiPaymentResult: UpiTransactionResult | null = null;
 
         try {
              if (sourceToUse === 'upi') {
@@ -265,69 +269,61 @@ export default function PaymentConfirmationPage() {
                      return;
                  }
 
-                 // Call service which calls backend
                  upiPaymentResult = await processUpiPayment(
                      payeeAddress,
                      currentAmount,
                      enteredPin,
                      note || `Payment to ${payeeName}`,
-                     accountToUse // Pass selected account
+                     accountToUse
                  );
-                 finalTransactionId = upiPaymentResult.transactionId; // Backend provides the ID
+                 finalTransactionId = upiPaymentResult.transactionId;
                  paymentSuccess = upiPaymentResult.status === 'Completed' || upiPaymentResult.status === 'FallbackSuccess';
-                 finalStatus = upiPaymentResult.status === 'FallbackSuccess' ? 'Completed' : upiPaymentResult.status;
+                 finalStatus = upiPaymentResult.status === 'FallbackSuccess' ? 'FallbackSuccess' : upiPaymentResult.status;
                  resultMessage = upiPaymentResult.message || (paymentSuccess ? "Transaction Successful" : `Payment ${upiPaymentResult.status}`);
+
                  if (upiPaymentResult.usedWalletFallback) {
                      descriptionSuffix = ' (Paid via Wallet)';
-                     // Refresh wallet balance after fallback
                      getWalletBalance().then(setWalletBalance);
                  }
 
              } else { // Wallet payment
                  const result = await payViaWallet(
-                    undefined, // Backend infers user
+                    userId, // Send userId for wallet payment
                     payeeAddress,
                     currentAmount,
                     note || `Payment to ${payeeName}`
                  );
-                 finalTransactionId = result.transactionId; // Backend provides the ID
-                 paymentSuccess = result.success;
-                 finalStatus = result.success ? 'Completed' : 'Failed';
+                 finalTransactionId = result.transactionId;
+                 paymentSuccess = result.success ?? false; // Handle undefined success
+                 finalStatus = paymentSuccess ? 'Completed' : 'Failed';
                  resultMessage = result.message || (paymentSuccess ? "Transaction Successful" : "Payment Failed");
                  descriptionSuffix = ' (Paid via Wallet)';
                  if(paymentSuccess) {
-                    setWalletBalance(prev => prev - currentAmount); // Optimistic update
+                    setWalletBalance(prev => prev - currentAmount);
                  }
              }
 
-             // If a transaction ID was returned from the backend (success or failure), fetch the full details
              if (finalTransactionId) {
-                // Assuming backend logged the transaction and we have its ID
-                // Fetch the logged transaction details to display
-                // This might be redundant if UPI/Wallet services already return the full Tx object
-                // For now, we'll construct a partial result object
                  setPaymentResult({
                     id: finalTransactionId,
-                    userId: userId, // Use client-side ID
+                    userId: userId,
                     type: paymentSuccess ? 'Sent' : 'Failed',
                     name: payeeName,
                     description: `${note || `Payment to ${payeeName}`}${descriptionSuffix}`,
                     amount: -currentAmount,
                     status: finalStatus,
-                    date: new Date(), // Use current date as placeholder
+                    date: new Date(),
                     upiId: payeeAddress,
                     paymentMethodUsed: sourceToUse === 'upi' ? 'UPI' : 'Wallet',
-                    // Include ticket info if available from UPI failure
                     ticketId: upiPaymentResult?.ticketId,
                     refundEta: upiPaymentResult?.refundEta,
+                    usedWalletFallback: upiPaymentResult?.usedWalletFallback || (sourceToUse === 'wallet' && paymentSuccess) // Mark true if wallet was used
                  });
 
              } else {
-                 // Handle case where backend didn't return an ID (shouldn't happen ideally)
                  throw new Error("Backend did not return transaction details.");
              }
 
-             // Display success/failure based on the final status
             if (paymentSuccess) {
                  toast({
                      title: "Payment Successful!",
@@ -336,8 +332,10 @@ export default function PaymentConfirmationPage() {
                  });
             } else {
                  setError(`Payment ${finalStatus}. ${resultMessage}`);
-                 if (finalStatus === 'Failed') setShowRetryOptions(true);
-                 toast({ // Show toast even for pending/failed
+                 if (finalStatus === 'Failed' && sourceToUse === 'upi' && !(upiPaymentResult?.usedWalletFallback)) {
+                    setShowRetryOptions(true); // Show retry only if UPI fails and fallback didn't happen/isn't wallet
+                 }
+                 toast({
                     variant: finalStatus === 'Failed' ? "destructive" : "default",
                     title: `Payment ${finalStatus}`,
                     description: `${resultMessage} ${upiPaymentResult?.ticketId ? `(Ticket: ${upiPaymentResult.ticketId})` : ''}`,
@@ -345,14 +343,14 @@ export default function PaymentConfirmationPage() {
                  });
             }
         } catch (err: any) {
-             // Catch errors from API client or pin prompt cancellation
              console.error("Payment processing error:", err);
              const message = err.message || "Payment failed due to an unexpected error.";
              setError(message);
              finalStatus = 'Failed';
-             setShowRetryOptions(true);
+             if (sourceToUse === 'upi' && !(upiPaymentResult?.usedWalletFallback)) {
+                 setShowRetryOptions(true);
+             }
 
-             // Construct a minimal failure result for display
               setPaymentResult({
                  id: `local_fail_${Date.now()}`,
                  userId: userId,
@@ -366,6 +364,7 @@ export default function PaymentConfirmationPage() {
                  paymentMethodUsed: sourceToUse === 'upi' ? 'UPI' : 'Wallet',
                  ticketId: upiPaymentResult?.ticketId,
                  refundEta: upiPaymentResult?.refundEta,
+                 usedWalletFallback: upiPaymentResult?.usedWalletFallback
              });
 
               toast({
@@ -393,11 +392,11 @@ export default function PaymentConfirmationPage() {
 
     const renderContent = () => {
          if (paymentResult) {
-             const isSuccess = paymentResult.status === 'Completed';
+             const isSuccess = paymentResult.status === 'Completed' || paymentResult.status === 'FallbackSuccess';
              const isPending = paymentResult.status === 'Pending';
-             const isFailed = !isSuccess && !isPending; // Covers Failed, Cancelled, etc.
+             const isFailed = !isSuccess && !isPending;
              const iconColor = isSuccess ? 'text-green-600' : isPending ? 'text-yellow-600' : 'text-destructive';
-             const titleText = isSuccess ? 'Payment Successful' : isPending ? 'Payment Pending' : 'Payment Failed';
+             const titleText = paymentResult.status === 'FallbackSuccess' ? 'Payment Successful (via Wallet)' : isSuccess ? 'Payment Successful' : isPending ? 'Payment Pending' : 'Payment Failed';
              const IconComponent = isSuccess ? CheckCircle : isPending ? Clock : XCircle;
              const amountText = `₹${Math.abs(paymentResult.amount).toFixed(2)}`;
              let descText = isSuccess
@@ -406,9 +405,10 @@ export default function PaymentConfirmationPage() {
                  ? `Sending ${amountText} to ${paymentResult.name} is pending confirmation.`
                  : `Failed to send ${amountText} to ${paymentResult.name}`;
 
-             if (paymentResult.description?.includes('(Paid via Wallet)')) {
-                  descText += ` (via Wallet)`;
+             if (paymentResult.usedWalletFallback || paymentResult.description?.includes('(Paid via Wallet)')) {
+                  descText = `UPI payment failed. Successfully sent ${amountText} to ${paymentResult.name} using your Zet Pay Wallet.`;
              }
+
 
              return (
                  <Card className={`shadow-md border-2 ${isSuccess ? 'border-green-500' : isPending ? 'border-yellow-500' : 'border-destructive'}`}>
@@ -428,7 +428,7 @@ export default function PaymentConfirmationPage() {
                             <p><strong>Amount:</strong> {amountText}</p>
                             <p><strong>To:</strong> {paymentResult.name} ({paymentResult.upiId})</p>
                             <p><strong>Date:</strong> {format(new Date(paymentResult.date), 'PPp')}</p>
-                             {paymentResult.description?.includes('(Paid via Wallet)')) && (
+                             {paymentResult.usedWalletFallback && (
                                 <p className="font-medium text-blue-600 flex items-center justify-center gap-1"><Wallet className="h-3 w-3"/> Paid via Wallet (Recovery Scheduled)</p>
                              )}
                               {isFailed && paymentResult.description && !paymentResult.description.includes('(Paid via Wallet)') && <p><strong>Reason:</strong> {paymentResult.description.replace(/Payment Failed - |Payment Pending - /i, '')}</p>}
@@ -446,12 +446,12 @@ export default function PaymentConfirmationPage() {
                          <Link href="/" passHref>
                              <Button className="w-full">Go to Home</Button>
                          </Link>
-                          {!isSuccess && !isPending && ( // Show Try Again only for failed states
+                          {!isSuccess && !isPending && (
                               <Button variant="outline" className="w-full" onClick={() => { setPaymentResult(null); setError(null); setShowRetryOptions(false); }}>Try Again</Button>
                           )}
-                           {(isFailed && paymentResult.ticketId) && ( // Show help only if ticket exists (failed, might be debited)
+                           {(isFailed && paymentResult.ticketId) && (
                                 <Link href={`/support?ticketId=${paymentResult.ticketId}`} passHref>
-                                    <Button variant="link" className="w-full flex items-center gap-1"><HelpCircle className="h-4 w-4"/> Get Help</Button>
+                                    <Button variant="link" className="w-full flex items-center gap-1 text-destructive"><HelpCircle className="h-4 w-4"/> Get Help</Button>
                                 </Link>
                             )}
                           <Link href="/history" passHref>
@@ -483,7 +483,7 @@ export default function PaymentConfirmationPage() {
                                 <Label htmlFor="amount" className="text-sm text-muted-foreground">Amount to Pay</Label>
                                 <div className="text-4xl font-bold flex items-center justify-center">
                                     <span className="mr-1">₹</span>
-                                     {searchParams.get('am') ? ( // If amount is from param, make it read-only
+                                     {searchParams.get('am') ? (
                                          <span className="px-2">{Number(amount).toFixed(2)}</span>
                                      ) : (
                                          <Input
@@ -532,7 +532,7 @@ export default function PaymentConfirmationPage() {
                                 <Select value={selectedAccountUpiId || (selectedPaymentSource === 'wallet' ? 'wallet' : '')} onValueChange={(value) => {
                                     if (value === 'wallet') {
                                         setSelectedPaymentSource('wallet');
-                                        setSelectedAccountUpiId(''); // Clear bank selection
+                                        setSelectedAccountUpiId('');
                                     } else {
                                         setSelectedPaymentSource('upi');
                                         setSelectedAccountUpiId(value);
@@ -567,7 +567,7 @@ export default function PaymentConfirmationPage() {
                                          )}
                                      </SelectContent>
                                  </Select>
-                                {accounts.length === 0 && selectedPaymentSource === 'upi' && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
+                             {accounts.length === 0 && selectedPaymentSource === 'upi' && !isLoading && <p className="text-xs text-destructive pt-1">Please link a bank account in Profile &gt; UPI Settings.</p>}
                             </div>
 
 
@@ -685,3 +685,5 @@ export default function PaymentConfirmationPage() {
     </div>
     );
 }
+
+```
