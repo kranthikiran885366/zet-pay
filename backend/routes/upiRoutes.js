@@ -54,6 +54,7 @@ router.post('/pay',
     body('pin').isString().isLength({ min: 4, max: 6 }).isNumeric().withMessage('UPI PIN must be 4 or 6 digits.'),
     body('sourceAccountUpiId').isString().trim().notEmpty().contains('@').withMessage('Valid Source Account UPI ID is required.'),
     body('note').optional().isString().trim().isLength({ max: 50 }),
+    body('stealthScan').optional().isBoolean().withMessage('stealthScan must be a boolean.'), // Added validation for stealthScan
     handleValidationErrors,
     asyncHandler(upiController.processUpiPayment)
 );

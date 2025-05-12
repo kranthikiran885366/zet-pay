@@ -47,28 +47,28 @@ function simpleHash(str) {
  * @param {string} userId - The ID of the user scanning.
  * @param {string} qrData - The raw string data from the QR code.
  * @param {string} [signatureFromQr] - Optional signature extracted from QR.
+ * @param {boolean} [stealthModeInitiated] - Flag if scan was initiated in stealth mode.
  * @returns {Promise<object>} Validation result.
  */
-async function validateScannedQr(userId, qrData, signatureFromQr) {
-    console.log(`[Scan Service Backend] Validating QR for user ${userId}: ${qrData.substring(0, 50)}...`);
+async function validateScannedQr(userId, qrData, signatureFromQr, stealthModeInitiated = false) {
+    console.log(`[Scan Service Backend] Validating QR for user ${userId}${stealthModeInitiated ? ' (Stealth Mode)' : ''}: ${qrData.substring(0, 50)}...`);
     let isVerifiedMerchant = false;
     let isBlacklisted = false;
     let merchantNameFromDb = null;
     let message = "QR code processed.";
-    let hasValidSignature = false; // New check
-    let isReportedPreviously = false; // New check
+    let hasValidSignature = false;
+    let isReportedPreviously = false;
 
     const parsedUpi = parseUpiDataFromQr(qrData);
 
     if (!parsedUpi || !parsedUpi.isValidUpi || !parsedUpi.pa) {
-        await logScan(userId, qrData, false, false, false, "Invalid UPI QR format", null, false, false);
+        await logScan(userId, qrData, false, false, false, "Invalid UPI QR format", null, false, false, stealthModeInitiated);
         return { isVerifiedMerchant, isBlacklisted, isDuplicateRecent: false, merchantNameFromDb: null, message: "Invalid UPI QR format.", upiId: null, hasValidSignature, isReportedPreviously };
     }
 
     const upiId = parsedUpi.pa;
-    const qrSignature = signatureFromQr || parsedUpi.sign; // Use signature from param if provided, else from parsed QR
+    const qrSignature = signatureFromQr || parsedUpi.sign;
 
-    // 1. Check against verified merchants
     try {
         const merchantRef = doc(db, VERIFIED_MERCHANTS_COLLECTION, upiId);
         const merchantSnap = await getDoc(merchantRef);
@@ -81,7 +81,6 @@ async function validateScannedQr(userId, qrData, signatureFromQr) {
         }
     } catch (e) { console.error("[Scan Service Backend] Error checking verified merchants:", e); }
 
-    // 2. Check against blacklisted QRs/UPI IDs
     try {
         const blacklistRefByUpi = doc(db, BLACKLISTED_QRS_COLLECTION, upiId);
         const blacklistSnapByUpi = await getDoc(blacklistRefByUpi);
@@ -91,58 +90,48 @@ async function validateScannedQr(userId, qrData, signatureFromQr) {
         }
     } catch (e) { console.error("[Scan Service Backend] Error checking blacklist:", e); }
 
-    // 3. Conceptual Watermark/Digital Signature Check
     if (qrSignature) {
-        // In a real system, this would involve cryptographic verification
-        // For simulation: assume valid if signature exists and matches a pattern
-        if (qrSignature === "VALID_SIGNATURE_XYZ" || qrSignature === "MOCK_SIGNATURE_LIVE") { // Example valid signatures
+        if (qrSignature === "VALID_SIGNATURE_XYZ" || qrSignature === "MOCK_SIGNATURE_LIVE") {
             hasValidSignature = true;
-            console.log(`[Scan Service Backend] QR Signature/Watermark for ${upiId} considered valid.`);
+            console.log(`[Scan Service Backend] QR Signature for ${upiId} considered valid.`);
         } else {
-            console.warn(`[Scan Service Backend] QR Signature/Watermark for ${upiId} is present but considered invalid: ${qrSignature}`);
-            // Optionally set a specific message if signature is invalid
+            console.warn(`[Scan Service Backend] QR Signature for ${upiId} is present but considered invalid: ${qrSignature}`);
         }
     }
 
-    // 4. Check if QR has been reported previously
     try {
         const qrHash = simpleHash(qrData);
         const reportedQrQuery = query(
             collection(db, REPORTED_QRS_COLLECTION),
-            where('qrDataHash', '==', qrHash), // Check by hash for specific QR
+            where('qrDataHash', '==', qrHash),
             limit(1)
         );
         const reportedSnap = await getDocs(reportedQrQuery);
         if (!reportedSnap.empty) {
             isReportedPreviously = true;
-            message = `Warning: This QR code has been reported previously. ${message}`; // Append to existing message
+            message = `Warning: This QR code has been reported previously. ${message}`;
             console.warn(`[Scan Service Backend] QR code ${qrHash} (UPI: ${upiId}) has been reported previously.`);
         }
     } catch(e) { console.error("[Scan Service Backend] Error checking previously reported QRs:", e); }
 
-    // Determine final message based on checks
     if (isBlacklisted) {
-        // Blacklist message already set
+        // Message already set
     } else if (isReportedPreviously) {
-        // Reported message already appended or set
+        // Message already set
     } else if (isVerifiedMerchant && hasValidSignature) {
-        message = "Verified Merchant & Authentic QR.";
+        message = "Verified Merchant &amp; Authentic QR.";
     } else if (isVerifiedMerchant) {
         message = "Verified Merchant. QR authenticity not fully confirmed.";
     } else if (hasValidSignature) {
         message = "Authentic QR (Signature Valid). Merchant not verified.";
-    } else {
-        // Default message: "Payee is not a verified merchant. Proceed with caution."
     }
 
-
-    // 5. Log the scan attempt (isDuplicateRecent is handled client-side for immediate feedback)
-    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, false /* isDuplicateRecent - client handles this */, message, parsedUpi, hasValidSignature, isReportedPreviously);
+    await logScan(userId, qrData, isVerifiedMerchant, isBlacklisted, false, message, parsedUpi, hasValidSignature, isReportedPreviously, stealthModeInitiated);
 
     return {
         isVerifiedMerchant,
         isBlacklisted,
-        isDuplicateRecent: false, // Client handles immediate duplicate feedback
+        isDuplicateRecent: false,
         merchantNameFromDb,
         message,
         upiId,
@@ -154,7 +143,7 @@ async function validateScannedQr(userId, qrData, signatureFromQr) {
 /**
  * Logs a scan attempt to Firestore.
  */
-async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRecent, validationMessage, parsedUpiDetails, hasValidSignature, isReportedPreviously) {
+async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRecent, validationMessage, parsedUpiDetails, hasValidSignature, isReportedPreviously, stealthMode) {
     try {
         const scanLogColRef = collection(db, SCAN_LOG_COLLECTION);
         await addDoc(scanLogColRef, {
@@ -167,19 +156,16 @@ async function logScan(userId, qrData, isVerified, isBlacklisted, isDuplicateRec
             timestamp: FieldValue.serverTimestamp(),
             isVerifiedMerchant: isVerified,
             isFlaggedBlacklisted: isBlacklisted,
-            // isDuplicateRecent, // This is now primarily a client-side check for immediate UI feedback
             validationMessage: validationMessage,
             hasValidSignature,
             isReportedPreviously,
+            stealthMode: stealthMode || false, // Log stealth mode
         });
     } catch (e) {
         console.error("[Scan Service Backend] Error logging scan:", e);
     }
 }
 
-/**
- * Saves a user's report about a QR code to Firestore.
- */
 async function reportQrCode(userId, qrData, reason) {
     if (!userId || !qrData || !reason) {
         throw new Error("User ID, QR Data, and Reason are required for reporting.");

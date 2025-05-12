@@ -151,10 +151,10 @@ exports.verifyUpiId = async (req, res, next) => {
         const verifiedMerchantRef = doc(firestoreDb, 'verified_merchants', upiId);
         const verifiedMerchantSnap = await getDoc(verifiedMerchantRef);
         if (verifiedMerchantSnap.exists()) {
-            res.status(200).json({
-                verifiedName: verifiedMerchantSnap.data().merchantName,
+            res.status(200).json({ 
+                verifiedName: verifiedMerchantSnap.data().merchantName, 
                 isVerifiedMerchant: true,
-                isBlacklisted: false
+                isBlacklisted: false 
             });
             return;
         }
@@ -163,17 +163,17 @@ exports.verifyUpiId = async (req, res, next) => {
         const blacklistSnapByUpi = await getDoc(blacklistRefByUpi);
         if (blacklistSnapByUpi.exists()) {
              res.status(200).json({ // Return 200 with status for client to handle warning
-                verifiedName: null,
-                isBlacklisted: true,
-                reason: blacklistSnapByUpi.data()?.reason || 'Flagged as suspicious'
+                verifiedName: null, 
+                isBlacklisted: true, 
+                reason: blacklistSnapByUpi.data()?.reason || 'Flagged as suspicious' 
             });
              return;
         }
         const verifiedName = await upiProviderService.verifyRecipient(upiId);
         res.status(200).json({ verifiedName, isBlacklisted: false, isVerifiedMerchant: false });
     } catch (error) {
-         if (error.code === 'UPI_ID_NOT_FOUND' || error.code === 'UPI_ID_NOT_REGISTERED' || error.code === 'UPI_INVALID_ID_FORMAT') {
-            res.status(404);
+         if (error.message?.includes("not found") || error.message?.includes("Invalid")) {
+            res.status(404); // 404 if UPI provider says not found
          } else {
              res.status(500);
          }
@@ -181,17 +181,10 @@ exports.verifyUpiId = async (req, res, next) => {
     }
 };
 
-const FALLBACK_ELIGIBLE_ERROR_CODES = [
-    'UPI_LIMIT_EXCEEDED',
-    'BANK_SERVER_DOWN',
-    'BANK_INSUFFICIENT_FUNDS', // Insufficient funds in the *bank account* specifically
-    'BANK_NETWORK_ERROR', // If mightBeDebited is false, or needs careful handling
-    'TRANSACTION_TIMEOUT', // If mightBeDebited is false, or needs careful handling
-];
-
 exports.processUpiPayment = async (req, res, next) => {
     const userId = req.user.uid;
-    const { recipientUpiId, amount, pin, note, sourceAccountUpiId } = req.body;
+    // Added stealthScan flag from request body
+    const { recipientUpiId, amount, pin, note, sourceAccountUpiId, stealthScan } = req.body;
     let pspTransactionId;
     let loggedTx;
 
@@ -204,8 +197,8 @@ exports.processUpiPayment = async (req, res, next) => {
         success: false,
         status: 'Failed',
         message: 'Payment processing error',
-        transactionId: null, // This will be our system's transaction ID
-        pspTransactionId: null, // This will be the PSP's transaction ID
+        transactionId: null, 
+        pspTransactionId: null, 
         usedWalletFallback: false,
         walletTransactionId: null,
         ticketId: null,
@@ -232,17 +225,18 @@ exports.processUpiPayment = async (req, res, next) => {
             status: paymentResultFromPSP.status,
             userId: userId,
             upiId: recipientUpiId,
-            originalTransactionId: pspTransactionId, // For linking, this is the PSP's ID
+            originalTransactionId: pspTransactionId, 
             paymentMethodUsed: 'UPI',
             pspTransactionId: pspTransactionId,
             failureReason: !paymentResultFromPSP.success ? paymentResultFromPSP.message : null,
+            stealthScan: stealthScan || false, // Pass stealthScan flag
         });
-        paymentResultFromPSP.transactionId = loggedTx.id; // Update with our system's ID
+        paymentResultFromPSP.transactionId = loggedTx.id; 
 
         if (paymentResultFromPSP.status === 'Completed') {
             return res.status(200).json(paymentResultFromPSP);
         } else if (paymentResultFromPSP.status === 'Pending') {
-            return res.status(202).json(paymentResultFromPSP); // Accepted but pending
+            return res.status(202).json(paymentResultFromPSP); 
         } else {
             // UPI Payment failed, consider fallback
             const canTryFallback = FALLBACK_ELIGIBLE_ERROR_CODES.includes(paymentResultFromPSP.errorCode) && !paymentResultFromPSP.mightBeDebited;
@@ -258,7 +252,7 @@ exports.processUpiPayment = async (req, res, next) => {
                         if (walletPaymentResult.success && walletPaymentResult.transactionId) {
                             await scheduleRecovery(userId, amount, recipientUpiId, sourceAccountUpiId);
                             await updateDoc(doc(db, 'transactions', loggedTx.id), {
-                                status: 'Failed', // Original UPI Tx remains failed
+                                status: 'Failed', 
                                 description: `${loggedTx.description} - Failed (${paymentResultFromPSP.errorCode}), Paid via Wallet Fallback. Wallet TxID: ${walletPaymentResult.transactionId}`,
                                 failureReason: `UPI Failed (${paymentResultFromPSP.errorCode}), then paid via Wallet.`,
                                 updatedAt: serverTimestamp()
@@ -274,16 +268,15 @@ exports.processUpiPayment = async (req, res, next) => {
                                 failureReason: paymentResultFromPSP.message,
                                 updatedAt: serverTimestamp()
                             });
-                            // Fall through to throw original error
                         }
-                    } else { // Insufficient wallet balance for fallback
+                    } else { 
                         paymentResultFromPSP.message = `UPI Failed (${paymentResultFromPSP.errorCode}). Insufficient wallet balance (₹${walletBalance}) for fallback.`;
                          await updateDoc(doc(db, 'transactions', loggedTx.id), {
                             failureReason: paymentResultFromPSP.message,
                             updatedAt: serverTimestamp()
                         });
                     }
-                } else { // Fallback not eligible or bridge disabled/limit exceeded
+                } else { 
                      const bridgeReason = !kycBridgeStatus.canUseBridge ? "Smart Wallet Bridge not active/eligible." : `Amount ₹${amount} exceeds bridge limit ₹${kycBridgeStatus.smartWalletBridgeLimit}.`;
                      paymentResultFromPSP.message = `UPI Failed (${paymentResultFromPSP.errorCode}). Wallet fallback not attempted: ${bridgeReason}`;
                       await updateDoc(doc(db, 'transactions', loggedTx.id), {
@@ -292,7 +285,6 @@ exports.processUpiPayment = async (req, res, next) => {
                      });
                 }
             }
-            // If not 'Completed', 'Pending', or a successful fallback, it's a definitive failure.
             const error = new Error(paymentResultFromPSP.message || 'UPI Payment Failed');
             if(paymentResultFromPSP.errorCode) (error).code = paymentResultFromPSP.errorCode;
             if(paymentResultFromPSP.mightBeDebited) (error).mightBeDebited = true;
@@ -310,6 +302,7 @@ exports.processUpiPayment = async (req, res, next) => {
                 loggedTx = await addTransaction({
                     type: 'Failed', name: recipientUpiId, description: `Payment to ${recipientUpiId} (UPI) - Error: ${errorMessage}`,
                     amount: -amount, status: 'Failed', userId: userId, upiId: recipientUpiId, paymentMethodUsed: 'UPI', pspTransactionId: pspTransactionId, failureReason: errorMessage,
+                    stealthScan: stealthScan || false, // Pass stealthScan flag for failed initial log
                 });
                 paymentResultFromPSP.transactionId = loggedTx.id;
             } catch (logError) {
@@ -317,7 +310,6 @@ exports.processUpiPayment = async (req, res, next) => {
                  paymentResultFromPSP.transactionId = `local-failure-${Date.now()}`;
             }
         }
-        // Fetch updated failed transaction for WS update
         if (loggedTx && loggedTx.id) {
             const updatedFailedTxSnap = await getDoc(doc(db, 'transactions', loggedTx.id));
             if (updatedFailedTxSnap.exists()) {
@@ -325,7 +317,6 @@ exports.processUpiPayment = async (req, res, next) => {
                 sendToUser(userId, { type: 'transaction_update', payload: updatedFailedTxData });
             }
         }
-
 
         paymentResultFromPSP.status = 'Failed';
         paymentResultFromPSP.message = errorMessage;
@@ -425,4 +416,10 @@ exports.disableUpiLite = async (req, res, next) => {
     }
 };
 
-```
+const FALLBACK_ELIGIBLE_ERROR_CODES = [
+    'UPI_LIMIT_EXCEEDED',
+    'BANK_SERVER_DOWN',
+    'BANK_INSUFFICIENT_FUNDS',
+    'BANK_NETWORK_ERROR',
+    'TRANSACTION_TIMEOUT',
+];

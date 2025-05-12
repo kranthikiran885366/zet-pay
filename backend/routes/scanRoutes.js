@@ -21,7 +21,8 @@ const handleValidationErrors = (req, res, next) => {
 router.post('/validate',
     authMiddleware,
     body('qrData').isString().trim().notEmpty().withMessage('qrData string is required.'),
-    body('signature').optional().isString().trim(), // Optional: For pre-extracted signature
+    body('signature').optional().isString().trim(), 
+    body('stealthModeInitiated').optional().isBoolean().withMessage('stealthModeInitiated must be a boolean.'), // Added validation
     handleValidationErrors,
     asyncHandler(scanController.validateQr)
 );
