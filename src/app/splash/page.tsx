@@ -2,9 +2,8 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Zap, Loader2 } from 'lucide-react'; // Using Zap as a placeholder logo icon
-import { auth } from '@/lib/firebase'; // Import auth to check login state
-import SplashScreenDisplay from '@/components/SplashScreenDisplay'; // Import the display component
+import { auth } from '@/lib/firebase'; 
+import SplashScreenDisplay from '@/components/SplashScreenDisplay'; 
 
 const SplashScreenRedirectPage = () => {
   const router = useRouter();
@@ -14,17 +13,24 @@ const SplashScreenRedirectPage = () => {
       const user = auth.currentUser;
       if (user) {
         console.log("Splash Page: User logged in, redirecting to /");
-        router.replace('/'); // If user is somehow logged in, redirect to home
+        router.replace('/'); 
       } else {
-        console.log("Splash Page: User not logged in, redirecting to /login");
-        router.replace('/login'); // Redirect to the new phone login page
+        // Check if onboarding has been completed
+        const onboardingCompleted = localStorage.getItem('onboardingCompleted');
+        if (onboardingCompleted === 'true') {
+          console.log("Splash Page: User not logged in, onboarding complete, redirecting to /login");
+          router.replace('/login');
+        } else {
+          console.log("Splash Page: User not logged in, onboarding not complete, redirecting to /onboarding");
+          router.replace('/onboarding');
+        }
       }
-    }, 3000); // Display splash for 3 seconds
+    }, 3000); 
 
     return () => clearTimeout(timer);
   }, [router]);
 
-  return <SplashScreenDisplay />; // Use the display component
+  return <SplashScreenDisplay />;
 };
 
 export default SplashScreenRedirectPage;
