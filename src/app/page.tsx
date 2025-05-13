@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SplashScreenDisplay from '@/components/SplashScreenDisplay'; 
-import { auth } from '@/lib/firebase';
+// import { auth } from '@/lib/firebase'; // Original import
 import { useRouter } from 'next/navigation';
 import { Loader2, QrCode, ScanLine, User, Banknote, Landmark, Smartphone, Tv, Bolt, Wifi, Bus, Ticket, Clapperboard, RadioTower, CreditCard, Gift, History, MoreHorizontal, Plane, ShoppingBag, UtensilsCrossed, Wallet as WalletIcon, Mic, HelpCircle, RefreshCw, Home as HomeIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,57 +45,72 @@ const quickLinks = [
 
 
 export default function Home() {
+  // --- TEMPORARY BYPASS FOR TESTING ---
+  const [showAppSplash, setShowAppSplash] = useState(true); // Keep splash for UI feel
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(true); // Assume logged in
+  const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(true); // Assume auth check done
+  const [isLoadingPage, setIsLoadingPage] = useState(false); // Assume page not loading
+  const router = useRouter(); // Keep router
+  const { toast } = useToast(); // Keep toast
+
+  // Simulate auth.currentUser for UI elements
+  const mockAuthUser = {
+    uid: 'mockUser123',
+    photoURL: `https://picsum.photos/seed/mockUser123/40/40`,
+    displayName: 'Dev User'
+  };
+  const auth = { currentUser: mockAuthUser };
+  // --- END TEMPORARY BYPASS ---
+
+
+  /* --- ORIGINAL AUTH LOGIC - COMMENTED OUT FOR TESTING ---
   const [showAppSplash, setShowAppSplash] = useState(true); 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(false);
-  const [isLoadingPage, setIsLoadingPage] = useState(true); // New state for page loading after splash/auth
-
+  const [isLoadingPage, setIsLoadingPage] = useState(true); 
   const router = useRouter();
   const { toast } = useToast();
+  --- END ORIGINAL AUTH LOGIC --- */
+
 
   const [walletBalance, isLoadingBalance, refreshBalance] = useRealtimeBalance();
   const [recentTransactions, isLoadingTransactions, refreshTransactions] = useRealtimeTransactions({ limit: 5 });
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands();
 
   useEffect(() => {
-    // This effect now mainly handles the initial splash screen visibility timer
-    // The redirection logic is primarily handled by the /splash page and middleware.
     const splashTimer = setTimeout(() => {
       console.log("Homepage: Minimum splash screen display time finished.");
       setShowAppSplash(false); 
-      // Auth check will run after this, or might have already run in middleware
-      // If initialAuthCheckDone is still false, it means middleware didn't run yet or we're still waiting
-      // for the client-side auth state.
-      if (!initialAuthCheckDone) {
-          console.log("Homepage: Initial auth check not yet done, client-side listener will handle it.");
-      }
-    }, 1000); // Shortened splash display on home, as /splash handles longer one
+    }, 1000); 
 
     return () => clearTimeout(splashTimer);
-  }, [initialAuthCheckDone]);
+  }, []);
 
   useEffect(() => {
-    // This effect now only runs if splash screen is hidden
-    // and focuses on client-side auth state for UI rendering
     if (showAppSplash) return;
 
+    /* --- ORIGINAL AUTH LOGIC - COMMENTED OUT FOR TESTING ---
     console.log("Homepage: Auth check initiated (or re-confirmed client-side).");
     const unsubscribe = auth.onAuthStateChanged(user => {
       console.log(`Homepage: Client auth state changed. User ${user ? 'found' : 'not found'}.`);
       setIsLoggedIn(!!user);
       setInitialAuthCheckDone(true); 
-      setIsLoadingPage(false); // Page content can now be shown
+      setIsLoadingPage(false); 
 
       if (!user) {
-        // Middleware should have already redirected to /splash -> /login.
-        // This is a fallback or for cases where client-side state changes post-middleware.
         console.log("Homepage: No user (client-side check), ensuring redirect to login if not already there.");
-        if (router.pathname !== '/login' && router.pathname !== '/splash' && router.pathname !== '/onboarding') { // Avoid redirect loops
+        if (router.pathname !== '/login' && router.pathname !== '/splash' && router.pathname !== '/onboarding') { 
           router.replace('/login');
         }
       }
     });
     return () => unsubscribe();
+     --- END ORIGINAL AUTH LOGIC --- */
+    
+    // For DEV MODE, if we assume logged in, this useEffect might not be strictly needed,
+    // but if you had other logic here that depended on `isLoggedIn`, you'd adapt it.
+    console.log("Homepage - DEV MODE: Assumed logged in. isLoadingPage set to false.");
+
   }, [showAppSplash, router]);
 
 
@@ -127,13 +142,11 @@ export default function Home() {
   }
   
   if (!isLoggedIn) {
-    // This state implies user is logged out and splash/auth checks are done.
-    // Middleware or the useEffect above should ideally handle the redirect to /login.
-    // This can be a fallback loading state or a brief message before redirect.
+    // This state should ideally not be reached in DEV MODE due to earlier bypass.
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-secondary">
             <Loader2 className="h-12 w-12 animate-spin text-primary"/>
-            <p className="mt-4 text-muted-foreground">Session expired. Redirecting...</p>
+            <p className="mt-4 text-muted-foreground">Redirecting to login...</p>
         </div>
     );
   }
@@ -353,4 +366,3 @@ export default function Home() {
       </nav>
     </div>
   );
-}

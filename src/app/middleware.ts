@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { authAdmin } from '@/lib/firebase/firebaseAdmin'; 
+// import { authAdmin } from '@/lib/firebase/firebaseAdmin'; // Original import
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // --- TEMPORARY BYPASS FOR TESTING ---
+  console.log(`[Middleware - DEV MODE] Path: ${pathname}. Allowing access.`);
+  return NextResponse.next();
+  // --- END TEMPORARY BYPASS ---
+
+  /* --- ORIGINAL AUTH LOGIC - COMMENTED OUT FOR TESTING ---
   const sessionCookie = request.cookies.get('__session')?.value;
 
   // Define public paths that do not require authentication
@@ -47,6 +54,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/splash', request.url));
     }
   }
+  --- END ORIGINAL AUTH LOGIC --- */
 }
 
 export const config = {
