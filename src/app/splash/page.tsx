@@ -12,7 +12,7 @@ const SplashScreenRedirectPage = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       // --- TEMPORARY BYPASS FOR TESTING ---
-      console.log("Splash Page - DEV MODE: Redirecting to /");
+      console.log("Splash Page - DEV MODE: Redirecting to / (Home Page).");
       router.replace('/');
       // --- END TEMPORARY BYPASS ---
 

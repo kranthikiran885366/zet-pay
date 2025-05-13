@@ -110,6 +110,7 @@ export default function Home() {
     // For DEV MODE, if we assume logged in, this useEffect might not be strictly needed,
     // but if you had other logic here that depended on `isLoggedIn`, you'd adapt it.
     console.log("Homepage - DEV MODE: Assumed logged in. isLoadingPage set to false.");
+    setIsLoadingPage(false); // Ensure loading page is false when bypassing auth for dev
 
   }, [showAppSplash, router]);
 
@@ -366,3 +367,4 @@ export default function Home() {
       </nav>
     </div>
   );
+}
