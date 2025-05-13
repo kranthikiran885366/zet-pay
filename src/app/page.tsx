@@ -45,76 +45,42 @@ const quickLinks = [
 
 
 export default function Home() {
-  // --- TEMPORARY BYPASS FOR TESTING ---
-  const [showAppSplash, setShowAppSplash] = useState(true); // Keep splash for UI feel
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(true); // Assume logged in
-  const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(true); // Assume auth check done
-  const [isLoadingPage, setIsLoadingPage] = useState(false); // Assume page not loading
-  const router = useRouter(); // Keep router
-  const { toast } = useToast(); // Keep toast
+  // --- For direct home page display ---
+  const [showAppSplash, setShowAppSplash] = useState(true); // Still show the app's own splash briefly
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true); // Assume logged in for direct display
+  const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(true); // Assume check is done
+  const [isLoadingPage, setIsLoadingPage] = useState(false); // Set to false as we are displaying home
+  const router = useRouter();
+  const { toast } = useToast();
 
-  // Simulate auth.currentUser for UI elements
+  // Simulate auth.currentUser for UI elements that might need it
   const mockAuthUser = {
     uid: 'mockUser123',
     photoURL: `https://picsum.photos/seed/mockUser123/40/40`,
     displayName: 'Dev User'
   };
   const auth = { currentUser: mockAuthUser };
-  // --- END TEMPORARY BYPASS ---
-
-
-  /* --- ORIGINAL AUTH LOGIC - COMMENTED OUT FOR TESTING ---
-  const [showAppSplash, setShowAppSplash] = useState(true); 
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-  const [initialAuthCheckDone, setInitialAuthCheckDone] = useState(false);
-  const [isLoadingPage, setIsLoadingPage] = useState(true); 
-  const router = useRouter();
-  const { toast } = useToast();
-  --- END ORIGINAL AUTH LOGIC --- */
-
+  // --- End of direct home page display setup ---
 
   const [walletBalance, isLoadingBalance, refreshBalance] = useRealtimeBalance();
-  const [recentTransactions, isLoadingTransactions, refreshTransactions] = useRealtimeTransactions({ limit: 5 });
+  const [recentTransactions, isLoadingTransactions, refreshTransactionsHome] = useRealtimeTransactions({ limit: 5 });
   const { isListening, transcript, startListening, stopListening, error: voiceError } = useVoiceCommands();
 
+  // This useEffect manages the app's internal splash screen display
   useEffect(() => {
+    console.log("Homepage: App's internal splash screen timer started.");
     const splashTimer = setTimeout(() => {
-      console.log("Homepage: Minimum splash screen display time finished.");
+      console.log("Homepage: App's internal splash screen display time finished.");
       setShowAppSplash(false); 
-    }, 1000); 
+    }, 500); // Show app's splash for a very short duration if splash page redirects immediately
 
-    return () => clearTimeout(splashTimer);
+    return () => {
+      console.log("Homepage: Clearing app's internal splash screen timer.");
+      clearTimeout(splashTimer);
+    };
   }, []);
 
-  useEffect(() => {
-    if (showAppSplash) return;
-
-    /* --- ORIGINAL AUTH LOGIC - COMMENTED OUT FOR TESTING ---
-    console.log("Homepage: Auth check initiated (or re-confirmed client-side).");
-    const unsubscribe = auth.onAuthStateChanged(user => {
-      console.log(`Homepage: Client auth state changed. User ${user ? 'found' : 'not found'}.`);
-      setIsLoggedIn(!!user);
-      setInitialAuthCheckDone(true); 
-      setIsLoadingPage(false); 
-
-      if (!user) {
-        console.log("Homepage: No user (client-side check), ensuring redirect to login if not already there.");
-        if (router.pathname !== '/login' && router.pathname !== '/splash' && router.pathname !== '/onboarding') { 
-          router.replace('/login');
-        }
-      }
-    });
-    return () => unsubscribe();
-     --- END ORIGINAL AUTH LOGIC --- */
-    
-    // For DEV MODE, if we assume logged in, this useEffect might not be strictly needed,
-    // but if you had other logic here that depended on `isLoggedIn`, you'd adapt it.
-    console.log("Homepage - DEV MODE: Assumed logged in. isLoadingPage set to false.");
-    setIsLoadingPage(false); // Ensure loading page is false when bypassing auth for dev
-
-  }, [showAppSplash, router]);
-
-
+  // Effect for voice commands
   useEffect(() => {
     if (transcript) {
       toast({ title: "Voice Command Received", description: `Processing: "${transcript}"...` });
@@ -138,21 +104,14 @@ export default function Home() {
     }
   };
 
-  if (showAppSplash || isLoadingPage || isLoggedIn === null ) { 
+  // If the app's internal splash screen should still show, render it.
+  // isLoadingPage and isLoggedIn === null checks are less relevant now for initial display logic
+  // as splash/page.tsx handles the primary redirection.
+  if (showAppSplash) { 
     return <SplashScreenDisplay />;
   }
   
-  if (!isLoggedIn) {
-    // This state should ideally not be reached in DEV MODE due to earlier bypass.
-    return (
-        <div className="flex flex-col items-center justify-center h-screen bg-secondary">
-            <Loader2 className="h-12 w-12 animate-spin text-primary"/>
-            <p className="mt-4 text-muted-foreground">Redirecting to login...</p>
-        </div>
-    );
-  }
-
-  // Main content when logged in and splash is done
+  // Main content when "logged in" (for dev) and splash is done
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
       <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center justify-between shadow-md">
@@ -368,3 +327,4 @@ export default function Home() {
     </div>
   );
 }
+
