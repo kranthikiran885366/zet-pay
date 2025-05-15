@@ -1,104 +1,11 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
-  ArrowLeft,
-  Landmark,
-  PlusCircle,
-  Trash2,
-  CheckCircle,
-  Copy,
-  Loader2,
-  Smartphone,
-  Tv,
-  Bolt,
-  Droplet,
-  ShieldCheck,
-  RadioTower,
-  Banknote,
-  Tag,
-  LifeBuoy,
-  Wifi,
-  FileText,
-  Bus,
-  Ticket,
-  Clapperboard,
-  TramFront,
-  Train,
-  MapPin,
-  UtensilsCrossed,
-  Gamepad2,
-  HardDrive,
-  Power,
-  Mailbox,
-  CreditCard,
-  Settings,
-  Info,
-  History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Use alias
-  PhoneCall,
-    Plane,
-    ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
-    Car,
-    Bike as Motorbike, // Use alias
-    CalendarCheck,
-    Video,
-    Sparkles,
-  ShoppingBasket,
-  HeartHandshake,
-  Music,
-    Map,
-    Hotel,
-    Users,
-    QrCode,
-    Clock,
-    Briefcase, // For Mutual Funds
-    Database, // For Deposits
-    Gauge, // For Credit Score
-    Coins, // For Gold
-    Building2, // For Zet Bank & Municipal
-    Zap, // For EV Charging & Game Zones
-    Siren, // For Emergency Assistance
-    Store, // For Rest Stop (placeholder)
-    HeartPulse, // For Healthcare
-    Wrench, // Electrician/Plumber
-    SprayCan, // Home Cleaning/Pest Control
-    WashingMachine, // Laundry
-    Scissors, // Tailoring
-    Package, // Courier
-    BriefcaseBusiness, // Coworking
-    Dog, // Pet Grooming/Vet
-    ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, // Added MoreHorizontal back
-    ReceiptText, // For Traffic Challan, Property Tax
-    ThermometerSnowflake, // For AC Repair
-    IndianRupee, // For Cash Withdrawal
-    Flame, // For LPG
-    HandCoins, // For Micro Loans
-    Wallet, // For Pay Later
-    ListChecks, // For Subscription Manager
-    WandSparkles, // For AI Features
-    Target, // For Savings Goals
-    BedSingle, // For Hostels
-    Play, // For Play Store Recharge & Watch Party
-    Drama, // For Comedy Shows
-    Stethoscope, // For Doctor Appointments
-    FlaskConical, // For Lab Tests
-    Pill, // For Pharmacy
-    BedDouble, // For Hospital Beds
-    Dumbbell, // For Fitness Trainers
-    FolderHeart, // For Health Wallet
-    Repeat, // For Medicine Subscription
-    FolderLock, // For Secure Vault
-    PiggyBank, // For Pocket Money
-    BellRing, // For Bill Reminders
-    Search, // For Search icon
+  ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings as SettingsIcon, Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag, Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles, ShoppingBasket, HeartHandshake, Music, Map, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins, Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog, ScissorsLineDashed, MoreHorizontal, ReceiptText, ThermometerSnowflake, IndianRupee, Flame, HandCoins, Wallet, ListChecks, WandSparkles, Target, BedSingle, Play, Drama, Stethoscope, TrendingUp, Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, BellRing, Search, GraduationCap, BadgePercent, CalendarClock
 } from "lucide-react";
 import Image from 'next/image';
 import { useState } from 'react';
@@ -150,11 +57,11 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
