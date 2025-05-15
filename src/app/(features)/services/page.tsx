@@ -5,133 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
-  ArrowLeft,
-  Landmark,
-  PlusCircle,
-  Trash2,
-  CheckCircle,
-  Copy,
-  Loader2,
-  Smartphone,
-  Tv,
-  Bolt,
-  Droplet,
-  ShieldCheck,
-  RadioTower,
-  Banknote,
-  Tag,
-  LifeBuoy,
-  Wifi,
-  FileText,
-  Bus,
-  Ticket,
-  Clapperboard,
-  TramFront,
-  Train,
-  MapPin,
-  UtensilsCrossed,
-  Gamepad2,
-  HardDrive,
-  Power,
-  Mailbox,
-  CreditCard,
-  Settings,
-  Info,
-  History,
-  ParkingMeter,
-  Fuel,
-  CarTaxiFront as TaxiIcon, // Use alias
-  PhoneCall,
-  Plane,
-  ShoppingBag,
-  Gift as GiftIcon, //Alias Gift to avoid conflict
-  Home as HomeIcon, // Added Temple icon (using Home as placeholder)
-  Car,
-  Bike as Motorbike, // Use alias
-  CalendarCheck,
-  Video,
-  Sparkles,
-  ShoppingBasket,
-  HeartHandshake,
-  Music,
-  Map as MapIcon, // Aliased Map to MapIcon
-  Hotel,
-  Users,
-  QrCode,
-  Clock,
-  Briefcase, // For Mutual Funds
-  Database, // For Deposits
-  Gauge, // For Credit Score
-  Coins, // For Gold
-  Building2, // For Zet Bank
-  Zap, // For EV Charging
-  Siren, // For Emergency Assistance
-  Store, // For Rest Stop (placeholder)
-  HeartPulse, // For Healthcare
-  Wrench, // Electrician/Plumber
-  SprayCan, // Home Cleaning/Pest Control
-  WashingMachine, // Laundry
-  Scissors, // Tailoring
-  Car as CarWashIcon, // Using Car icon for CarWash, aliased for clarity if needed
-  Package, // Courier
-  BriefcaseBusiness, // Coworking
-  Dog, // Pet Grooming/Vet
-  ScissorsLineDashed, // Barber/Salon
-  MoreHorizontal,
-  ReceiptText,
-  BadgePercent,
-  TrendingUp,
-  Drama,
-  Stethoscope,
-  FlaskConical,
-  Flame,
-  HandCoins,
-  Wallet,
-  ListChecks,
-  WandSparkles,
-  Target,
-  BedSingle,
-  Play,
-  Pill,
-  FolderHeart,
-  BedDouble,
-  Dumbbell,
-  Repeat,
-  FolderLock,
-  PiggyBank,
-  BellRing,
-  Search,
-  GraduationCap,
-  CalendarClock,
-  ThermometerSnowflake,
-  IndianRupee,
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  Armchair,
-  X,
-  ScanLine,
-  Settings as SettingsIcon,
-  Tv2,
-  Key,
-  Fingerprint,
-  MessageSquare,
-  LogOut,
-  EyeOff,
-  Eye,
-  VolumeX,
-  Volume2,
-  Minus,
-  Mic,
-  Bot,
-  CalendarDays,
-  AlarmClockOff,
-  Ban,
-  ArrowRightLeft,
-  ArrowUpDown,
-  Cable,
-  UserPlus,
-  Star,
+  ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Tv2, Bolt,
+  Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard,
+  TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings,
+  Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag,
+  Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles, ShoppingBasket,
+  HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
+  Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package,
+  BriefcaseBusiness, Dog, ScissorsLineDashed, ReceiptText, BadgePercent, TrendingUp, Drama, Stethoscope,
+  FlaskConical, Flame, HandCoins, Wallet as WalletIcon, ListChecks, WandSparkles, Target, BedSingle, Play,
+  Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, BellRing, Search as SearchIcon,
+  GraduationCap, CalendarClock, ThermometerSnowflake, IndianRupee, Filter, MoreHorizontal,
+  // Icons used on other pages but potentially imported here if consolidated:
+  // ChevronDown, ChevronUp, Armchair, X, ScanLine, Fingerprint, LogOut, EyeOff, Eye, VolumeX, Volume2, Minus, Plus,
+  // AlarmClockOff, Ban, ArrowRightLeft, ArrowUpDown, Cable, UserPlus, Star, Mic, Bot, CalendarDays, HelpCircle, RefreshCw
 } from "lucide-react";
 import Image from 'next/image';
 import { useState } from 'react';
@@ -176,7 +63,7 @@ const financialServices: Service[] = [
     { name: "Personal Loans", icon: Banknote, href: "/loans", category: "Financial Services", tags: ["borrow", "emi"] },
     { name: "Micro Loans / SNPL", icon: HandCoins, href: "/pocket-money", category: "Financial Services", tags: ["student", "small", "borrow", "education"] },
     { name: "Zet Mini Bank", icon: Building2, href: "/zet-bank", category: "Financial Services", tags: ["account", "digital", "neo"] },
-    { name: "Pay Later (BNPL)", icon: Wallet, href: "/bnpl", category: "Financial Services", tags: ["credit", "later", "emi"] },
+    { name: "Pay Later (BNPL)", icon: WalletIcon, href: "/bnpl", category: "Financial Services", tags: ["credit", "later", "emi"] },
 ];
 
 const travelServices: Service[] = [
@@ -184,11 +71,11 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
-    { name: "Car Rentals", icon: Car, href: "/rent-vehicle", category: "Travel", tags: ["self-drive", "rent"] }, // Changed href to /rent-vehicle
-    { name: "Bike Rentals", icon: Motorbike, href: "/rent-vehicle", category: "Travel", tags: ["scooter", "motorcycle", "rent"] }, // Changed href to /rent-vehicle
+    { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
+    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
@@ -259,7 +146,7 @@ const hyperlocalServicesData: Service[] = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -419,7 +306,7 @@ export default function AllServicesPage() {
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
                  <div className="relative w-full max-w-xs">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         type="search"
                         placeholder="Search services..."
@@ -434,7 +321,7 @@ export default function AllServicesPage() {
                  {Object.keys(groupedServices).length === 0 && searchTerm && (
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
-                             <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
+                             <SearchIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
                              <p className="text-muted-foreground">No services found matching "{searchTerm}".</p>
                          </CardContent>
                      </Card>
@@ -467,3 +354,5 @@ export default function AllServicesPage() {
         </div>
     );
 }
+
+    
