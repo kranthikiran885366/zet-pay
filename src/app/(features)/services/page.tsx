@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, 
-  Fuel, 
-  CarTaxiFront as TaxiIcon,
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
+  CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon, 
-    Home as HomeIcon, 
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
     Car,
-    Bike as Motorbike, 
+    Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
     Sparkles,
@@ -58,44 +58,39 @@ import {
     Users,
     QrCode,
     Clock,
-    Briefcase, 
-    Database, 
-    Gauge, 
-    Coins, 
-    Building2, 
-    Zap, 
-    Siren, 
-    Store, 
-    HeartPulse, 
-    Wrench, 
-    SprayCan, 
-    WashingMachine, 
-    Scissors, 
-    Package, 
-    BriefcaseBusiness, 
-    Dog, 
-    ScissorsLineDashed, 
-    MoreHorizontal,
-    FolderLock,
-    GraduationCap,
-    PiggyBank,
-    BellRing,
-    ListChecks,
-    WandSparkles,
-    TrendingUp,
-    Target,
-    BedSingle,
-    Tv2,
-    ThermometerSnowflake,
-    IndianRupee,
-    Search,
-    Flame,
-    HandCoins,
-    Wallet,
-    Receipt // Added Receipt icon
-} from "lucide-react"; 
+    Briefcase, // For Mutual Funds
+    Database, // For Deposits
+    Gauge, // For Credit Score
+    Coins, // For Gold
+    Building2, // For Zet Bank
+    Zap, // For EV Charging
+    Siren, // For Emergency Assistance
+    Store, // For Rest Stop (placeholder)
+    HeartPulse, // For Healthcare
+    Wrench, // Electrician/Plumber
+    SprayCan, // Home Cleaning/Pest Control
+    WashingMachine, // Laundry
+    Scissors, // Tailoring
+    Package, // Courier
+    BriefcaseBusiness, // Coworking
+    Dog, // Pet Grooming/Vet
+    ScissorsLineDashed, // Barber/Salon
+    MoreHorizontal, // Added MoreHorizontal back
+    Receipt, // Added Receipt icon
+    ThermometerSnowflake, // Added ThermometerSnowflake
+    IndianRupee, // Added IndianRupee
+    Flame, // Added Flame
+    HandCoins, // Added HandCoins
+    Wallet, // Added Wallet
+    ListChecks, // Added ListChecks
+    WandSparkles, // Added WandSparkles
+    Target, // Added Target
+    BedSingle, // Added BedSingle
+    Play, // Added Play
+    BadgePercent // Added BadgePercent
+} from "lucide-react"; // Added specific icons
 import Image from 'next/image';
-import { useState } from 'react'; 
+import { useState } from 'react'; // Import useState
 import { Input } from '@/components/ui/input';
 
 interface Service {
@@ -116,9 +111,9 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Changed Tv2 to Tv
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
-   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
+   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] }, // Maybe link to electricity?
 ];
 
 const loanRepaymentServices: Service[] = [
@@ -144,7 +139,7 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
@@ -176,8 +171,8 @@ const entertainmentGamingServices: Service[] = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming", tags: ["cinema", "tickets", "bookmyshow"] },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv2, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
+     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] }, // Using Drama icon
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Changed Tv2 to Tv
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -213,13 +208,13 @@ const healthcareServicesData: Service[] = [
     { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
 ];
 
-const hyperlocalServicesData: Service[] = [ // Renamed
+const hyperlocalServicesData: Service[] = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] }, // Changed icon
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
