@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -39,21 +40,21 @@ import {
   History,
   ParkingMeter,
   Fuel,
-  CarTaxiFront as TaxiIcon,
+  CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
   Plane,
   ShoppingBag,
-  Gift as GiftIcon,
-  Home,
+  Gift as GiftIcon, //Alias Gift to avoid conflict
+  Home as HomeIcon, // Added Temple icon (using Home as placeholder)
   Car,
-  Bike as Motorbike,
+  Bike as Motorbike, // Use alias
   CalendarCheck,
   Video,
   Sparkles,
   ShoppingBasket,
   HeartHandshake,
   Music,
-  Map,
+  Map as MapIcon, // Aliased Map to MapIcon
   Hotel,
   Users,
   QrCode,
@@ -63,7 +64,7 @@ import {
   Gauge, // For Credit Score
   Coins, // For Gold
   Building2, // For Zet Bank
-  Zap, // For EV Charging & Game Zones
+  Zap, // For EV Charging
   Siren, // For Emergency Assistance
   Store, // For Rest Stop (placeholder)
   HeartPulse, // For Healthcare
@@ -71,6 +72,7 @@ import {
   SprayCan, // Home Cleaning/Pest Control
   WashingMachine, // Laundry
   Scissors, // Tailoring
+  Car as CarWashIcon, // Using Car icon for CarWash, aliased for clarity if needed
   Package, // Courier
   BriefcaseBusiness, // Coworking
   Dog, // Pet Grooming/Vet
@@ -129,7 +131,7 @@ import {
   ArrowUpDown,
   Cable,
   UserPlus,
-  Star, // Added Star
+  Star,
 } from "lucide-react";
 import Image from 'next/image';
 import { useState } from 'react';
@@ -149,7 +151,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Mobile Postpaid", icon: Smartphone, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
    { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills", tags: ["tv", "satellite"] },
    { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills", tags: ["power", "utility"] },
-   { name: "Rent Payment", icon: Home, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
+   { name: "Rent Payment", icon: HomeIcon, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
    { name: "LPG Cylinder", icon: Flame, href: "/lpg-booking", category: "Recharge & Bills", tags: ["gas", "cooking"] },
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
@@ -182,11 +184,11 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
-    { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Car Rentals", icon: Car, href: "/rent-vehicle", category: "Travel", tags: ["self-drive", "rent"] }, // Changed href to /rent-vehicle
+    { name: "Bike Rentals", icon: Motorbike, href: "/rent-vehicle", category: "Travel", tags: ["scooter", "motorcycle", "rent"] }, // Changed href to /rent-vehicle
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
@@ -232,7 +234,7 @@ const templeServicesData: Service[] = [
   { name: "Donate to Temple", icon: HeartHandshake, href: "/temple/donate", category: "Temple Services", tags: ["charity", "support", "fund"] },
   { name: "Temple Timings & Queue", icon: Clock, href: "/temple/info", category: "Temple Services", tags: ["queue", "status", "info"] },
   { name: "Aarti & Mantras", icon: Music, href: "/temple/audio", category: "Temple Services", tags: ["play", "listen", "bhajan"] },
-  { name: "Book Events/Yatra", icon: Map, href: "/temple/events", category: "Temple Services", tags: ["pilgrimage", "tour", "festival"] },
+  { name: "Book Events/Yatra", icon: MapIcon, href: "/temple/events", category: "Temple Services", tags: ["pilgrimage", "tour", "festival"] },
   { name: "Nearby Accommodation", icon: Hotel, href: "/temple/accommodation", category: "Temple Services", tags: ["stay", "room", "guest house"] },
   { name: "Group Visit Booking", icon: Users, href: "/temple/group", category: "Temple Services", tags: ["bulk", "request", "permission"] },
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services", tags: ["entry", "qr", "digital"] },
@@ -257,7 +259,7 @@ const hyperlocalServicesData: Service[] = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
+    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -265,7 +267,7 @@ const hyperlocalServicesData: Service[] = [
 ];
 
 const municipalServicesData: Service[] = [
-    { name: "Property Tax", icon: Home, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
+    { name: "Property Tax", icon: HomeIcon, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
     { name: "Housing Society", icon: Building2, href: "/housing-society", category: "Municipal Services", tags: ["maintenance", "apartment", "dues"]},
     { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services", tags: ["local", "government", "certificates"]},
 ];
