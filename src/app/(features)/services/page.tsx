@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Use alias
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
+    Gift as GiftIcon,
+    Home as HomeIcon,
     Car,
-    Bike as Motorbike, // Use alias
+    Bike as Motorbike,
     CalendarCheck,
     Video,
     Sparkles,
@@ -58,40 +58,42 @@ import {
     Users,
     QrCode,
     Clock,
-    Briefcase, // For Mutual Funds
-    Database, // For Deposits
-    Gauge, // For Credit Score
-    Coins, // For Gold
-    Building2, // For Zet Bank
-    Zap, // For EV Charging
-    Siren, // For Emergency Assistance
-    Store, // For Rest Stop (placeholder)
-    HeartPulse, // For Healthcare
-    Wrench, // Electrician/Plumber
-    SprayCan, // Home Cleaning/Pest Control
-    WashingMachine, // Laundry
-    Scissors, // Tailoring
-    Package, // Courier
-    BriefcaseBusiness, // Coworking
-    Dog, // Pet Grooming/Vet
-    ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, // Added MoreHorizontal back
-    Receipt, // Added Receipt icon
-    ThermometerSnowflake, // Added ThermometerSnowflake
-    IndianRupee, // Added IndianRupee
-    Flame, // Added Flame
-    HandCoins, // Added HandCoins
-    Wallet, // Added Wallet
-    ListChecks, // Added ListChecks
-    WandSparkles, // Added WandSparkles
-    Target, // Added Target
-    BedSingle, // Added BedSingle
-    Play, // Added Play
-    BadgePercent, // Added BadgePercent
-    TrendingUp, // Added TrendingUp
-} from "lucide-react"; // Added specific icons
+    Briefcase,
+    Database,
+    Gauge,
+    Coins,
+    Building2,
+    Zap,
+    Siren,
+    Store,
+    HeartPulse,
+    Wrench,
+    SprayCan,
+    WashingMachine,
+    Scissors,
+    Package,
+    BriefcaseBusiness,
+    Dog,
+    ScissorsLineDashed,
+    MoreHorizontal,
+    Receipt,
+    ThermometerSnowflake,
+    IndianRupee,
+    Flame,
+    HandCoins,
+    Wallet,
+    ListChecks,
+    WandSparkles,
+    Target,
+    BedSingle,
+    Play,
+    BadgePercent,
+    TrendingUp,
+    Tv2,
+    Drama, // Added Drama icon
+} from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react'; // Import useState
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 
 interface Service {
@@ -112,7 +114,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -285,7 +287,6 @@ const allServices: Service[] = [
     ...aiAndToolsServices,
 ];
 
-// Ensure unique services in case of overlaps between categories
 const uniqueServices = Array.from(new Map(allServices.map(service => [`${service.name}-${service.href}`, service])).values());
 
 
@@ -323,13 +324,11 @@ const groupServicesByCategory = (services: Service[]) => {
               }
               grouped[category] = [];
          }
-         // Check for duplicates before pushing
          if (!grouped[category].some(s => s.name === service.name && s.href === service.href)) {
              grouped[category].push(service);
          }
     });
 
-    // Filter out empty categories from the final result
     const finalGrouped: { [key: string]: Service[] } = {};
     for (const cat of categoryOrder) {
         if (grouped[cat] && grouped[cat].length > 0) {
@@ -416,4 +415,3 @@ export default function AllServicesPage() {
         </div>
     );
 }
-
