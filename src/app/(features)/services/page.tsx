@@ -87,7 +87,8 @@ import {
     Target, // Added Target
     BedSingle, // Added BedSingle
     Play, // Added Play
-    BadgePercent // Added BadgePercent
+    BadgePercent, // Added BadgePercent
+    TrendingUp, // Added TrendingUp
 } from "lucide-react"; // Added specific icons
 import Image from 'next/image';
 import { useState } from 'react'; // Import useState
@@ -111,9 +112,9 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Changed Tv2 to Tv
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
-   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] }, // Maybe link to electricity?
+   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
 
 const loanRepaymentServices: Service[] = [
@@ -139,7 +140,7 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
@@ -171,8 +172,8 @@ const entertainmentGamingServices: Service[] = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming", tags: ["cinema", "tickets", "bookmyshow"] },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] }, // Using Drama icon
-     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Changed Tv2 to Tv
+     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -203,7 +204,7 @@ const healthcareServicesData: Service[] = [
     { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
-    { name: "Health Wallet", icon: FolderLock, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
+    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
     { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
     { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
 ];
@@ -223,7 +224,7 @@ const hyperlocalServicesData: Service[] = [
 
 const municipalServicesData: Service[] = [
     { name: "Property Tax", icon: HomeIcon, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
-    { name: "Housing Society", icon: Building, href: "/housing-society", category: "Municipal Services", tags: ["maintenance", "apartment", "dues"]},
+    { name: "Housing Society", icon: Building2, href: "/housing-society", category: "Municipal Services", tags: ["maintenance", "apartment", "dues"]},
     { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services", tags: ["local", "government", "certificates"]},
 ];
 
@@ -284,6 +285,10 @@ const allServices: Service[] = [
     ...aiAndToolsServices,
 ];
 
+// Ensure unique services in case of overlaps between categories
+const uniqueServices = Array.from(new Map(allServices.map(service => [`${service.name}-${service.href}`, service])).values());
+
+
 const groupServicesByCategory = (services: Service[]) => {
     const grouped: { [key: string]: Service[] } = {};
     const categoryOrder = [
@@ -318,11 +323,13 @@ const groupServicesByCategory = (services: Service[]) => {
               }
               grouped[category] = [];
          }
+         // Check for duplicates before pushing
          if (!grouped[category].some(s => s.name === service.name && s.href === service.href)) {
              grouped[category].push(service);
          }
     });
 
+    // Filter out empty categories from the final result
     const finalGrouped: { [key: string]: Service[] } = {};
     for (const cat of categoryOrder) {
         if (grouped[cat] && grouped[cat].length > 0) {
@@ -333,7 +340,7 @@ const groupServicesByCategory = (services: Service[]) => {
 }
 
 export default function AllServicesPage() {
-    const groupedServices = groupServicesByCategory(allServices);
+    const groupedServices = groupServicesByCategory(uniqueServices);
     const [searchTerm, setSearchTerm] = useState('');
 
     const filteredCategories = Object.keys(groupedServices).filter(category => {
@@ -409,3 +416,4 @@ export default function AllServicesPage() {
         </div>
     );
 }
+
