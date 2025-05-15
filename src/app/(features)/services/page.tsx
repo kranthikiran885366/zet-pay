@@ -5,11 +5,137 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
-  ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings as SettingsIcon, Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag, Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles, ShoppingBasket, HeartHandshake, Music, Map, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins, Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog, ScissorsLineDashed, MoreHorizontal, ReceiptText, ThermometerSnowflake, IndianRupee, Flame, HandCoins, Wallet, ListChecks, WandSparkles, Target, BedSingle, Play, Drama, Stethoscope, TrendingUp, Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, BellRing, Search, GraduationCap, BadgePercent, CalendarClock
-} from "lucide-react";
+  ArrowLeft,
+  Landmark,
+  PlusCircle,
+  Trash2,
+  CheckCircle,
+  Copy,
+  Loader2,
+  Smartphone,
+  Tv,
+  Bolt,
+  Droplet,
+  ShieldCheck,
+  RadioTower,
+  Banknote,
+  Tag,
+  LifeBuoy,
+  Wifi,
+  FileText,
+  Bus,
+  Ticket,
+  Clapperboard,
+  TramFront,
+  Train,
+  MapPin,
+  UtensilsCrossed,
+  Gamepad2,
+  HardDrive,
+  Power,
+  Mailbox,
+  CreditCard,
+  Settings,
+  Info,
+  History,
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
+  CarTaxiFront as TaxiIcon, // Use alias
+  PhoneCall,
+    Plane,
+    ShoppingBag,
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
+    Car,
+    Bike as Motorbike, // Use alias
+    CalendarCheck,
+    Video,
+    Sparkles,
+  ShoppingBasket,
+  HeartHandshake,
+  Music,
+    Map,
+    Hotel,
+    Users,
+    QrCode,
+    Clock,
+    Briefcase, // For Mutual Funds
+    Database, // For Deposits
+    Gauge, // For Credit Score
+    Coins, // For Gold
+    Building2, // For Zet Bank
+    Zap, // For EV Charging
+    Siren, // For Emergency Assistance
+    Store, // For Rest Stop (placeholder)
+    HeartPulse, // For Healthcare
+    Wrench, // Electrician/Plumber
+    SprayCan, // Home Cleaning/Pest Control
+    WashingMachine, // Laundry
+    Scissors, // Tailoring
+    Car as CarWashIcon, // Using Car as placeholder for CarWash
+    Package, // Courier
+    BriefcaseBusiness, // Coworking
+    Dog, // Pet Grooming/Vet
+    ScissorsLineDashed, // Barber/Salon
+    MoreHorizontal, // Added MoreHorizontal back
+    ReceiptText, // Corrected from Receipt
+    BadgePercent, // Added BadgePercent
+    TrendingUp, // Added TrendingUp
+    Drama, // Added Drama
+    Stethoscope, // Added Stethoscope
+    FlaskConical, // Added FlaskConical
+    Flame,
+    HandCoins,
+    Wallet,
+    ListChecks,
+    WandSparkles,
+    Target,
+    BedSingle,
+    Play,
+    Pill,
+    FolderHeart,
+    BedDouble,
+    Dumbbell,
+    Repeat,
+    FolderLock,
+    PiggyBank,
+    BellRing,
+    Search,
+    GraduationCap,
+    CalendarClock,
+    ThermometerSnowflake,
+    IndianRupee,
+    Filter,
+    ChevronDown,
+    ChevronUp,
+    Armchair,
+    X,
+    ScanLine,
+    Settings as SettingsIcon,
+    Tv2,
+    Key,
+    Fingerprint,
+    MessageSquare,
+    LogOut,
+    EyeOff,
+    Eye,
+    VolumeX,
+    Volume2,
+    Minus,
+    Mic,
+    Bot,
+    CalendarDays,
+    AlarmClockOff,
+    Ban,
+    ArrowRightLeft,
+    ArrowUpDown,
+    Cable,
+    UserPlus,
+} from "lucide-react"; // Added specific icons
 import Image from 'next/image';
-import { useState } from 'react';
+import { useState } from 'react'; // Import useState
 import { Input } from '@/components/ui/input';
+
 
 interface Service {
     name: string;
@@ -29,7 +155,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -61,7 +187,7 @@ const travelServices: Service[] = [
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
@@ -132,7 +258,7 @@ const hyperlocalServicesData: Service[] = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
+    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -230,22 +356,24 @@ const groupServicesByCategory = (services: Service[]) => {
 
     services.forEach((service) => {
         let category = service.category;
-         if (category === "Travel & Transit") category = "Travel";
+         if (category === "Travel & Transit") category = "Travel"; // Consolidate
 
          if (!grouped[category]) {
-             console.warn(`Service category "${category}" not found in defined order. Adding dynamically.`);
-              if (!categoryOrder.includes(category)) {
+             console.warn(`Service category "${category}" for "${service.name}" not found in defined order. Adding dynamically.`);
+              if (!categoryOrder.includes(category)) { // Add to order if truly new
                   categoryOrder.push(category);
               }
               grouped[category] = [];
          }
+         // Prevent duplicates within a category if service names/hrefs are identical
          if (!grouped[category].some(s => s.name === service.name && s.href === service.href)) {
              grouped[category].push(service);
          }
     });
 
+    // Filter out empty categories after grouping
     const finalGrouped: { [key: string]: Service[] } = {};
-    for (const cat of categoryOrder) {
+    for (const cat of categoryOrder) { // Iterate over the potentially modified categoryOrder
         if (grouped[cat] && grouped[cat].length > 0) {
             finalGrouped[cat] = grouped[cat];
         }
@@ -254,17 +382,32 @@ const groupServicesByCategory = (services: Service[]) => {
 }
 
 export default function AllServicesPage() {
-    const groupedServices = groupServicesByCategory(uniqueServices);
     const [searchTerm, setSearchTerm] = useState('');
+    const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
 
-    const filteredCategories = Object.keys(groupedServices).filter(category => {
-        if (!searchTerm.trim()) return true;
-        if (category.toLowerCase().includes(searchTerm.toLowerCase())) return true;
-        return groupedServices[category].some(service =>
-            service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
-        );
-    });
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const term = e.target.value.toLowerCase();
+        setSearchTerm(term);
+
+        if (!term.trim()) {
+            setGroupedServices(groupServicesByCategory(uniqueServices));
+            return;
+        }
+
+        const filtered: { [key: string]: Service[] } = {};
+        Object.keys(groupServicesByCategory(uniqueServices)).forEach(category => {
+            const servicesInCategory = groupServicesByCategory(uniqueServices)[category].filter(service =>
+                service.name.toLowerCase().includes(term) ||
+                (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
+                category.toLowerCase().includes(term)
+            );
+            if (servicesInCategory.length > 0) {
+                filtered[category] = servicesInCategory;
+            }
+        });
+        setGroupedServices(filtered);
+    };
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
@@ -282,14 +425,14 @@ export default function AllServicesPage() {
                         type="search"
                         placeholder="Search services..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={handleSearchChange}
                         className="pl-8 h-9 bg-primary/20 text-primary-foreground placeholder:text-primary-foreground/70 border-primary-foreground/30 focus:bg-background focus:text-foreground"
                     />
                 </div>
             </header>
 
             <main className="flex-grow p-4 space-y-6 pb-20">
-                 {filteredCategories.length === 0 && searchTerm && (
+                 {Object.keys(groupedServices).length === 0 && searchTerm && (
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
                              <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
@@ -297,14 +440,9 @@ export default function AllServicesPage() {
                          </CardContent>
                      </Card>
                  )}
-                 {filteredCategories.map((category) => {
-                     const servicesInCategory = groupedServices[category].filter(service => {
-                        if (!searchTerm.trim()) return true;
-                        return service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               (service.tags && service.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
-                     });
-
-                     if(servicesInCategory.length === 0 && searchTerm) return null;
+                 {Object.keys(groupedServices).map((category) => {
+                     const servicesInCategory = groupedServices[category];
+                     if(servicesInCategory.length === 0) return null; // Skip rendering empty categories from search
 
                     return (
                          <Card key={category} className="shadow-md">
@@ -313,7 +451,7 @@ export default function AllServicesPage() {
                             </CardHeader>
                             <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6 text-center">
                                 {servicesInCategory.map((service: Service) => (
-                                     <Link key={service.name} href={service.href} passHref legacyBehavior>
+                                     <Link key={`${service.name}-${service.href}`} href={service.href} passHref legacyBehavior>
                                         <a className="flex flex-col items-center space-y-1 cursor-pointer hover:opacity-80 transition-opacity">
                                             <div className="bg-primary/10 text-primary p-3 rounded-full">
                                                 <service.icon className="h-6 w-6" />
