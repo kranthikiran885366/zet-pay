@@ -37,16 +37,16 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter,
-  Fuel,
-  CarTaxiFront as TaxiIcon,
+  ParkingMeter, // Corrected icon
+  Fuel, // Corrected icon
+  CarTaxiFront as TaxiIcon, // Use alias
   PhoneCall,
     Plane,
     ShoppingBag,
-    Gift as GiftIcon,
-    Home as HomeIcon,
+    Gift as GiftIcon, //Alias Gift to avoid conflict
+    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
     Car,
-    Bike as Motorbike,
+    Bike as Motorbike, // Use alias
     CalendarCheck,
     Video,
     Sparkles,
@@ -58,39 +58,47 @@ import {
     Users,
     QrCode,
     Clock,
-    Briefcase,
-    Database,
-    Gauge,
-    Coins,
-    Building2,
-    Zap,
-    Siren,
-    Store,
-    HeartPulse,
-    Wrench,
-    SprayCan,
-    WashingMachine,
-    Scissors,
-    Package,
-    BriefcaseBusiness,
-    Dog,
-    ScissorsLineDashed,
-    MoreHorizontal,
-    Receipt,
-    ThermometerSnowflake,
-    IndianRupee,
-    Flame,
-    HandCoins,
-    Wallet,
-    ListChecks,
-    WandSparkles,
-    Target,
-    BedSingle,
-    Play,
-    BadgePercent,
-    TrendingUp,
-    Tv2,
-    Drama, // Added Drama icon
+    Briefcase, // For Mutual Funds
+    Database, // For Deposits
+    Gauge, // For Credit Score
+    Coins, // For Gold
+    Building2, // For Zet Bank & Municipal
+    Zap, // For EV Charging & Game Zones
+    Siren, // For Emergency Assistance
+    Store, // For Rest Stop (placeholder)
+    HeartPulse, // For Healthcare
+    Wrench, // Electrician/Plumber
+    SprayCan, // Home Cleaning/Pest Control
+    WashingMachine, // Laundry
+    Scissors, // Tailoring
+    Package, // Courier
+    BriefcaseBusiness, // Coworking
+    Dog, // Pet Grooming/Vet
+    ScissorsLineDashed, // Barber/Salon
+    MoreHorizontal, // Added MoreHorizontal back
+    ReceiptText, // For Traffic Challan, Property Tax
+    ThermometerSnowflake, // For AC Repair
+    IndianRupee, // For Cash Withdrawal
+    Flame, // For LPG
+    HandCoins, // For Micro Loans
+    Wallet, // For Pay Later
+    ListChecks, // For Subscription Manager
+    WandSparkles, // For AI Features
+    Target, // For Savings Goals
+    BedSingle, // For Hostels
+    Play, // For Play Store Recharge & Watch Party
+    Drama, // For Comedy Shows
+    Stethoscope, // For Doctor Appointments
+    FlaskConical, // For Lab Tests
+    Pill, // For Pharmacy
+    BedDouble, // For Hospital Beds
+    Dumbbell, // For Fitness Trainers
+    FolderHeart, // For Health Wallet
+    Repeat, // For Medicine Subscription
+    FolderLock, // For Secure Vault
+    PiggyBank, // For Pocket Money
+    BellRing, // For Bill Reminders
+    Search, // For Search icon
 } from "lucide-react";
 import Image from 'next/image';
 import { useState } from 'react';
@@ -114,7 +122,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv2, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -157,7 +165,7 @@ const travelServices: Service[] = [
 const transitTollServices: Service[] = [
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Transit & Toll", tags: ["card", "delhi", "mumbai", "bangalore"]},
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Transit & Toll", tags: ["toll", "highway", "nhai"] },
-    { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
+    { name: "Traffic Challan", icon: ReceiptText, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Transit & Toll", tags: ["car", "spot", "smart"] },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Transit & Toll", tags: ["apply", "monthly", "student"]},
     { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Transit & Toll", tags: ["view", "qr", "active"]},
@@ -208,7 +216,7 @@ const healthcareServicesData: Service[] = [
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
     { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
     { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
-    { name: "Ambulance", icon: Ambulance, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
+    { name: "Ambulance", icon: Siren, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
 ];
 
 const hyperlocalServicesData: Service[] = [
