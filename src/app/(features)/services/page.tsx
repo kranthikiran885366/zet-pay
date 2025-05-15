@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -38,102 +37,102 @@ import {
   Settings,
   Info,
   History,
-  ParkingMeter, // Corrected icon
-  Fuel, // Corrected icon
-  CarTaxiFront as TaxiIcon, // Use alias
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
   PhoneCall,
-    Plane,
-    ShoppingBag,
-    Gift as GiftIcon, //Alias Gift to avoid conflict
-    Home as HomeIcon, // Added Temple icon (using Home as placeholder)
-    Car,
-    Bike as Motorbike, // Use alias
-    CalendarCheck,
-    Video,
-    Sparkles,
+  Plane,
+  ShoppingBag,
+  Gift as GiftIcon,
+  Home,
+  Car,
+  Bike as Motorbike,
+  CalendarCheck,
+  Video,
+  Sparkles,
   ShoppingBasket,
   HeartHandshake,
   Music,
-    Map,
-    Hotel,
-    Users,
-    QrCode,
-    Clock,
-    Briefcase, // For Mutual Funds
-    Database, // For Deposits
-    Gauge, // For Credit Score
-    Coins, // For Gold
-    Building2, // For Zet Bank
-    Zap, // For EV Charging
-    Siren, // For Emergency Assistance
-    Store, // For Rest Stop (placeholder)
-    HeartPulse, // For Healthcare
-    Wrench, // Electrician/Plumber
-    SprayCan, // Home Cleaning/Pest Control
-    WashingMachine, // Laundry
-    Scissors, // Tailoring
-    Car as CarWashIcon, // Using Car as placeholder for CarWash
-    Package, // Courier
-    BriefcaseBusiness, // Coworking
-    Dog, // Pet Grooming/Vet
-    ScissorsLineDashed, // Barber/Salon
-    MoreHorizontal, // Added MoreHorizontal back
-    ReceiptText, // Corrected from Receipt
-    BadgePercent, // Added BadgePercent
-    TrendingUp, // Added TrendingUp
-    Drama, // Added Drama
-    Stethoscope, // Added Stethoscope
-    FlaskConical, // Added FlaskConical
-    Flame,
-    HandCoins,
-    Wallet,
-    ListChecks,
-    WandSparkles,
-    Target,
-    BedSingle,
-    Play,
-    Pill,
-    FolderHeart,
-    BedDouble,
-    Dumbbell,
-    Repeat,
-    FolderLock,
-    PiggyBank,
-    BellRing,
-    Search,
-    GraduationCap,
-    CalendarClock,
-    ThermometerSnowflake,
-    IndianRupee,
-    Filter,
-    ChevronDown,
-    ChevronUp,
-    Armchair,
-    X,
-    ScanLine,
-    Settings as SettingsIcon,
-    Tv2,
-    Key,
-    Fingerprint,
-    MessageSquare,
-    LogOut,
-    EyeOff,
-    Eye,
-    VolumeX,
-    Volume2,
-    Minus,
-    Mic,
-    Bot,
-    CalendarDays,
-    AlarmClockOff,
-    Ban,
-    ArrowRightLeft,
-    ArrowUpDown,
-    Cable,
-    UserPlus,
-} from "lucide-react"; // Added specific icons
+  Map,
+  Hotel,
+  Users,
+  QrCode,
+  Clock,
+  Briefcase, // For Mutual Funds
+  Database, // For Deposits
+  Gauge, // For Credit Score
+  Coins, // For Gold
+  Building2, // For Zet Bank
+  Zap, // For EV Charging & Game Zones
+  Siren, // For Emergency Assistance
+  Store, // For Rest Stop (placeholder)
+  HeartPulse, // For Healthcare
+  Wrench, // Electrician/Plumber
+  SprayCan, // Home Cleaning/Pest Control
+  WashingMachine, // Laundry
+  Scissors, // Tailoring
+  Package, // Courier
+  BriefcaseBusiness, // Coworking
+  Dog, // Pet Grooming/Vet
+  ScissorsLineDashed, // Barber/Salon
+  MoreHorizontal,
+  ReceiptText,
+  BadgePercent,
+  TrendingUp,
+  Drama,
+  Stethoscope,
+  FlaskConical,
+  Flame,
+  HandCoins,
+  Wallet,
+  ListChecks,
+  WandSparkles,
+  Target,
+  BedSingle,
+  Play,
+  Pill,
+  FolderHeart,
+  BedDouble,
+  Dumbbell,
+  Repeat,
+  FolderLock,
+  PiggyBank,
+  BellRing,
+  Search,
+  GraduationCap,
+  CalendarClock,
+  ThermometerSnowflake,
+  IndianRupee,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Armchair,
+  X,
+  ScanLine,
+  Settings as SettingsIcon,
+  Tv2,
+  Key,
+  Fingerprint,
+  MessageSquare,
+  LogOut,
+  EyeOff,
+  Eye,
+  VolumeX,
+  Volume2,
+  Minus,
+  Mic,
+  Bot,
+  CalendarDays,
+  AlarmClockOff,
+  Ban,
+  ArrowRightLeft,
+  ArrowUpDown,
+  Cable,
+  UserPlus,
+  Star, // Added Star
+} from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react'; // Import useState
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 
 
@@ -150,7 +149,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Mobile Postpaid", icon: Smartphone, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
    { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills", tags: ["tv", "satellite"] },
    { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills", tags: ["power", "utility"] },
-   { name: "Rent Payment", icon: HomeIcon, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
+   { name: "Rent Payment", icon: Home, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
    { name: "LPG Cylinder", icon: Flame, href: "/lpg-booking", category: "Recharge & Bills", tags: ["gas", "cooking"] },
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
@@ -258,7 +257,7 @@ const hyperlocalServicesData: Service[] = [
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: CarWashIcon, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -266,7 +265,7 @@ const hyperlocalServicesData: Service[] = [
 ];
 
 const municipalServicesData: Service[] = [
-    { name: "Property Tax", icon: HomeIcon, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
+    { name: "Property Tax", icon: Home, href: "/property-tax", category: "Municipal Services", tags: ["house", "tax", "bbmp", "mcgm"]},
     { name: "Housing Society", icon: Building2, href: "/housing-society", category: "Municipal Services", tags: ["maintenance", "apartment", "dues"]},
     { name: "Municipal Services", icon: Building2, href: "/municipal-services", category: "Municipal Services", tags: ["local", "government", "certificates"]},
 ];
@@ -360,20 +359,18 @@ const groupServicesByCategory = (services: Service[]) => {
 
          if (!grouped[category]) {
              console.warn(`Service category "${category}" for "${service.name}" not found in defined order. Adding dynamically.`);
-              if (!categoryOrder.includes(category)) { // Add to order if truly new
+              if (!categoryOrder.includes(category)) {
                   categoryOrder.push(category);
               }
               grouped[category] = [];
          }
-         // Prevent duplicates within a category if service names/hrefs are identical
          if (!grouped[category].some(s => s.name === service.name && s.href === service.href)) {
              grouped[category].push(service);
          }
     });
 
-    // Filter out empty categories after grouping
     const finalGrouped: { [key: string]: Service[] } = {};
-    for (const cat of categoryOrder) { // Iterate over the potentially modified categoryOrder
+    for (const cat of categoryOrder) {
         if (grouped[cat] && grouped[cat].length > 0) {
             finalGrouped[cat] = grouped[cat];
         }
@@ -442,7 +439,7 @@ export default function AllServicesPage() {
                  )}
                  {Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
-                     if(servicesInCategory.length === 0) return null; // Skip rendering empty categories from search
+                     if(servicesInCategory.length === 0) return null;
 
                     return (
                          <Card key={category} className="shadow-md">
