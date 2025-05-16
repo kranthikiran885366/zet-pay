@@ -5,109 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
-  ArrowLeft,
-  Landmark,
-  PlusCircle,
-  Trash2,
-  CheckCircle,
-  Copy,
-  Loader2,
-  Smartphone,
-  Tv,
-  Bolt,
-  Droplet,
-  ShieldCheck,
-  RadioTower,
-  Banknote,
-  Tag,
-  LifeBuoy,
-  Wifi,
-  FileText,
-  Bus,
-  Ticket,
-  Clapperboard,
-  TramFront,
-  Train,
-  MapPin,
-  UtensilsCrossed,
-  Gamepad2,
-  HardDrive,
-  Power,
-  Mailbox,
-  CreditCard,
-  Settings,
-  Info,
-  History,
-  ParkingMeter,
-  Fuel,
-  CarTaxiFront as TaxiIcon,
-  PhoneCall,
-  Plane,
-  ShoppingBag,
-  Gift as GiftIcon,
-  Home as HomeIcon,
-  Car,
-  Bike as Motorbike,
-  CalendarCheck,
-  Video,
-  Sparkles,
-  ShoppingBasket,
-  HeartHandshake,
-  Music,
-  Map as MapIcon,
-  Hotel,
-  Users,
-  QrCode,
-  Clock,
-  Briefcase,
-  Database,
-  Gauge,
-  Coins,
-  Building2,
-  Zap, // For EV Charging & Game Zones
-  Siren, // For Emergency Assistance
-  Store, // For Rest Stop (placeholder)
-  HeartPulse, // For Healthcare
-  Wrench, // Electrician/Plumber
-  SprayCan, // Home Cleaning/Pest Control
-  WashingMachine, // Laundry
-  Scissors, // Tailoring
-  // CarWash icon from lucide-react is just 'Car'. Using Car for now, or replace with a more specific one if available/needed.
-  Package, // Courier
-  BriefcaseBusiness, // Coworking
-  Dog, // Pet Grooming/Vet
-  ScissorsLineDashed, // Barber/Salon
-  MoreHorizontal, // Added MoreHorizontal back
-  ReceiptText,
-  BellRing,
-  Target,
-  CalendarClock,
-  ListChecks,
-  WandSparkles,
-  Pill,
-  FolderHeart,
-  BedDouble,
-  Dumbbell,
-  Repeat,
-  FolderLock,
-  PiggyBank,
-  Search as SearchIcon,
-  GraduationCap,
-  Play,
-  ThermometerSnowflake,
-  Flame,
-  HandCoins,
-  Wallet as WalletIcon,
-  Star,
-  Drama,
-  TrendingUp,
-  FlaskConical, // Added FlaskConical
-  Stethoscope // Added Stethoscope
+  ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower,
+  Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2,
+  HardDrive, Power, Mailbox, CreditCard, Settings, Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall,
+  Plane, ShoppingBag, Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles,
+  ShoppingBasket, HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
+  Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog,
+  ScissorsLineDashed, MoreHorizontal, ReceiptText, BellRing, Target, CalendarClock, ListChecks, WandSparkles, Pill,
+  FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon, GraduationCap, Play,
+  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, Stethoscope, FlaskConical, BedSingle
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-
 
 interface Service {
     name: string;
@@ -140,7 +50,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Changed Tv2 to Tv
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -155,11 +65,11 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
@@ -188,7 +98,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
      { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Changed Tv2 to Tv
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
@@ -224,13 +134,13 @@ const templeServicesData: Service[] = [
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services", tags: ["entry", "qr", "digital"] },
 ];
 
-const hyperlocalServicesData: Service[] = [ // Renamed
+const hyperlocalServicesData: Service[] = [
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] }, // Used Car icon
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -342,7 +252,6 @@ const groupServicesByCategory = (services: Service[]) => {
          }
     });
 
-    // Filter out empty categories from the ordered list
     const finalGrouped: { [key: string]: Service[] } = {};
     for (const cat of categoryOrder) {
         if (grouped[cat] && grouped[cat].length > 0) {
@@ -355,10 +264,10 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // Simulating loading state for search
 
     useEffect(() => {
-        setIsLoading(true);
+        setIsLoading(true); // Indicate loading when search term changes
         const handleSearchChange = () => {
             const term = searchTerm.toLowerCase();
             if (!term.trim()) {
@@ -368,12 +277,12 @@ export default function AllServicesPage() {
             }
 
             const filtered: { [key: string]: Service[] } = {};
-            const initialGroupedServices = groupServicesByCategory(uniqueServices);
+            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Start with original grouping
             Object.keys(initialGroupedServices).forEach(category => {
                 const servicesInCategory = initialGroupedServices[category].filter(service =>
                     service.name.toLowerCase().includes(term) ||
                     (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
-                    category.toLowerCase().includes(term)
+                    category.toLowerCase().includes(term) // Include category name in search
                 );
                 if (servicesInCategory.length > 0) {
                     filtered[category] = servicesInCategory;
@@ -383,14 +292,17 @@ export default function AllServicesPage() {
             setIsLoading(false);
         };
 
-        const timerId = setTimeout(handleSearchChange, 300);
-        return () => clearTimeout(timerId);
+        // Debounce the search to avoid excessive re-renders
+        const timerId = setTimeout(handleSearchChange, 300); // Adjust delay as needed
+
+        return () => clearTimeout(timerId); // Cleanup timer
 
     }, [searchTerm]);
 
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
+            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-2 shadow-md">
                 <Link href="/" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -399,6 +311,7 @@ export default function AllServicesPage() {
                 </Link>
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
+                 {/* Search Bar in Header */}
                  <div className="relative w-full max-w-xs">
                     <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -411,6 +324,7 @@ export default function AllServicesPage() {
                 </div>
             </header>
 
+            {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                  {isLoading && (
                     <div className="flex justify-center items-center py-10">
@@ -425,7 +339,7 @@ export default function AllServicesPage() {
                          </CardContent>
                      </Card>
                  )}
-                  {!isLoading && Object.keys(groupedServices).length === 0 && !searchTerm && (
+                  {!isLoading && Object.keys(groupedServices).length === 0 && !searchTerm && ( // Handle case where all services are empty initially (unlikely but safe)
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
                               <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
@@ -436,6 +350,7 @@ export default function AllServicesPage() {
                  {!isLoading && Object.keys(groupedServices).length > 0 &&
                     Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
+                     // Only render the category card if there are services in it (after filtering)
                      if(servicesInCategory.length === 0) return null;
 
                     return (
