@@ -1,25 +1,108 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
-  ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Bolt,
-  Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard,
-  TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings,
-  Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag,
-  Gift as GiftIcon, Home as HomeIcon, Car, Bike as Motorbike, CalendarCheck, Video, Sparkles, ShoppingBasket,
-  HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
-  Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package,
-  BriefcaseBusiness, Dog, ScissorsLineDashed, ReceiptText, BellRing, Target, CalendarClock, ListChecks,
-  WandSparkles, Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon,
-  GraduationCap, Play, MoreHorizontal, ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star,
-  Drama, TrendingUp, // Added TrendingUp
-  Bike, // Added Bike if it's different from Motorbike alias
-  BedSingle, // Added BedSingle
+  ArrowLeft,
+  Landmark,
+  PlusCircle,
+  Trash2,
+  CheckCircle,
+  Copy,
+  Loader2,
+  Smartphone,
+  Tv,
+  Bolt,
+  Droplet,
+  ShieldCheck,
+  RadioTower,
+  Banknote,
+  Tag,
+  LifeBuoy,
+  Wifi,
+  FileText,
+  Bus,
+  Ticket,
+  Clapperboard,
+  TramFront,
+  Train,
+  MapPin,
+  UtensilsCrossed,
+  Gamepad2,
+  HardDrive,
+  Power,
+  Mailbox,
+  CreditCard,
+  Settings,
+  Info,
+  History,
+  ParkingMeter,
+  Fuel,
+  CarTaxiFront as TaxiIcon,
+  PhoneCall,
+  Plane,
+  ShoppingBag,
+  Gift as GiftIcon,
+  Home as HomeIcon,
+  Car,
+  Bike as Motorbike,
+  CalendarCheck,
+  Video,
+  Sparkles,
+  ShoppingBasket,
+  HeartHandshake,
+  Music,
+  Map as MapIcon,
+  Hotel,
+  Users,
+  QrCode,
+  Clock,
+  Briefcase,
+  Database,
+  Gauge,
+  Coins,
+  Building2,
+  Zap, // For EV Charging & Game Zones
+  Siren, // For Emergency Assistance
+  Store, // For Rest Stop (placeholder)
+  HeartPulse, // For Healthcare
+  Wrench, // Electrician/Plumber
+  SprayCan, // Home Cleaning/Pest Control
+  WashingMachine, // Laundry
+  Scissors, // Tailoring
+  // CarWash icon from lucide-react is just 'Car'. Using Car for now, or replace with a more specific one if available/needed.
+  Package, // Courier
+  BriefcaseBusiness, // Coworking
+  Dog, // Pet Grooming/Vet
+  ScissorsLineDashed, // Barber/Salon
+  MoreHorizontal, // Added MoreHorizontal back
+  ReceiptText,
+  BellRing,
+  Target,
+  CalendarClock,
+  ListChecks,
+  WandSparkles,
+  Pill,
+  FolderHeart,
+  BedDouble,
+  Dumbbell,
+  Repeat,
+  FolderLock,
+  PiggyBank,
+  Search as SearchIcon,
+  GraduationCap,
+  Play,
+  ThermometerSnowflake,
+  Flame,
+  HandCoins,
+  Wallet as WalletIcon,
+  Star,
+  Drama,
+  TrendingUp,
   FlaskConical, // Added FlaskConical
-  Receipt, // Added Receipt
-  BadgePercent // Added BadgePercent
+  Stethoscope // Added Stethoscope
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -57,7 +140,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Changed Tv2 to Tv
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -72,7 +155,7 @@ const travelServices: Service[] = [
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
-    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
+    { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]}, // Link to hostels page for now
     { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
@@ -87,7 +170,7 @@ const travelServices: Service[] = [
 const transitTollServices: Service[] = [
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Transit & Toll", tags: ["card", "delhi", "mumbai", "bangalore"]},
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Transit & Toll", tags: ["toll", "highway", "nhai"] },
-    { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
+    { name: "Traffic Challan", icon: ReceiptText, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Transit & Toll", tags: ["car", "spot", "smart"] },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Transit & Toll", tags: ["apply", "monthly", "student"]},
     { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Transit & Toll", tags: ["view", "qr", "active"]},
@@ -105,13 +188,26 @@ const entertainmentGamingServices: Service[] = [
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
      { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
-     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
+     { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] }, // Changed Tv2 to Tv
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
      { name: "Game Zones", icon: Zap, href: "/entertainment/gamezone", category: "Entertainment & Gaming", tags: ["arcade", "amusement", "park"] },
      { name: "AR/VR Events", icon: Sparkles, href: "/entertainment/arvr", category: "Entertainment & Gaming", tags: ["virtual", "augmented", "reality", "metaverse"] },
      { name: "Group Booking", icon: Users, href: "/entertainment/group", category: "Entertainment & Gaming", tags: ["movie", "split", "invite"] },
      { name: "Watch Party", icon: Play, href: "/entertainment/watchparty", category: "Entertainment & Gaming", tags: ["sync", "online", "friends"] },
+];
+
+const healthcareServicesData: Service[] = [
+    { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
+    { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
+    { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
+    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
+    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
+    { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
+    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
+    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
+    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
+    { name: "Ambulance", icon: Siren, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
 ];
 
 const templeServicesData: Service[] = [
@@ -128,26 +224,13 @@ const templeServicesData: Service[] = [
   { name: "Smart Access Pass", icon: QrCode, href: "/temple/access", category: "Temple Services", tags: ["entry", "qr", "digital"] },
 ];
 
-const healthcareServicesData: Service[] = [
-    { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
-    { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
-    { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
-    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
-    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
-    { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
-    { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
-    { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
-    { name: "Health Packages", icon: BadgePercent, href: "/healthcare/offers", category: "Healthcare & Wellness", tags: ["checkup", "preventive", "discount"] },
-    { name: "Ambulance", icon: Siren, href: "/healthcare/ambulance", category: "Healthcare & Wellness", tags: ["emergency", "sos", "medical", "transport"]},
-];
-
-const hyperlocalServicesData: Service[] = [
+const hyperlocalServicesData: Service[] = [ // Renamed
     { name: "Electrician/Plumber", icon: Wrench, href: "/hyperlocal/repair", category: "Hyperlocal Services", tags: ["home", "repair", "fix"] },
     { name: "AC Repair", icon: ThermometerSnowflake, href: "/hyperlocal/ac-repair", category: "Hyperlocal Services", tags: ["air conditioner", "service", "fix"] },
     { name: "Home Cleaning", icon: SprayCan, href: "/hyperlocal/cleaning", category: "Hyperlocal Services", tags: ["deep", "pest control", "sanitize"] },
     { name: "Laundry", icon: WashingMachine, href: "/hyperlocal/laundry", category: "Hyperlocal Services", tags: ["wash", "iron", "dry clean"] },
     { name: "Tailoring", icon: Scissors, href: "/hyperlocal/tailor", category: "Hyperlocal Services", tags: ["stitch", "alteration", "clothes"] },
-    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] },
+    { name: "Car Wash", icon: Car, href: "/hyperlocal/carwash", category: "Hyperlocal Services", tags: ["doorstep", "clean", "vehicle"] }, // Used Car icon
     { name: "Courier", icon: Package, href: "/hyperlocal/courier", category: "Hyperlocal Services", tags: ["send", "parcel", "delivery", "instant"] },
     { name: "Coworking Space", icon: BriefcaseBusiness, href: "/hyperlocal/coworking", category: "Hyperlocal Services", tags: ["desk", "office", "rent"] },
     { name: "Pet Services", icon: Dog, href: "/hyperlocal/petcare", category: "Hyperlocal Services", tags: ["grooming", "vet", "dog", "cat"] },
@@ -250,7 +333,7 @@ const groupServicesByCategory = (services: Service[]) => {
          if (!grouped[category]) {
              console.warn(`Service category "${category}" for "${service.name}" not found in defined order. Adding dynamically.`);
               if (!categoryOrder.includes(category)) {
-                  categoryOrder.push(category);
+                  categoryOrder.push(category); // Add to order if truly new
               }
               grouped[category] = [];
          }
@@ -259,6 +342,7 @@ const groupServicesByCategory = (services: Service[]) => {
          }
     });
 
+    // Filter out empty categories from the ordered list
     const finalGrouped: { [key: string]: Service[] } = {};
     for (const cat of categoryOrder) {
         if (grouped[cat] && grouped[cat].length > 0) {
@@ -271,10 +355,8 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
-    const [isLoading, setIsLoading] = useState(false); // Added loading state
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Simulate fetching or processing delay, if any.
-    // For now, it's just client-side filtering.
     useEffect(() => {
         setIsLoading(true);
         const handleSearchChange = () => {
@@ -286,7 +368,7 @@ export default function AllServicesPage() {
             }
 
             const filtered: { [key: string]: Service[] } = {};
-            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Recalculate initial groups
+            const initialGroupedServices = groupServicesByCategory(uniqueServices);
             Object.keys(initialGroupedServices).forEach(category => {
                 const servicesInCategory = initialGroupedServices[category].filter(service =>
                     service.name.toLowerCase().includes(term) ||
@@ -301,8 +383,7 @@ export default function AllServicesPage() {
             setIsLoading(false);
         };
 
-        // Debounce search if needed, or apply directly
-        const timerId = setTimeout(handleSearchChange, 300); // Example debounce
+        const timerId = setTimeout(handleSearchChange, 300);
         return () => clearTimeout(timerId);
 
     }, [searchTerm]);
@@ -381,4 +462,3 @@ export default function AllServicesPage() {
         </div>
     );
 }
-
