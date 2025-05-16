@@ -9,16 +9,16 @@ import {
   Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard,
   TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings,
   Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag,
-  Gift as GiftIcon, Home as HomeIcon, Car, Bike as Motorbike, CalendarCheck, Video, Sparkles, ShoppingBasket,
+  Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles, ShoppingBasket,
   HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package,
   BriefcaseBusiness, Dog, ScissorsLineDashed, ReceiptText, BellRing, Target, CalendarClock, ListChecks,
   WandSparkles, Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon,
   GraduationCap, Play, MoreHorizontal, ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star,
-  Drama // Added Drama icon
+  Drama // Ensured Drama is imported
 } from "lucide-react";
 import Image from 'next/image';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 
 
@@ -40,7 +40,7 @@ const rechargeBillPayServices: Service[] = [
    { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
    { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
    { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Using Tv as Tv2 not standard
    { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
    { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
 ];
@@ -72,7 +72,7 @@ const travelServices: Service[] = [
     { name: "Hostels", icon: BedDouble, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
