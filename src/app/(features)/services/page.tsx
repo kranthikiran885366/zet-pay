@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -9,13 +8,18 @@ import {
   Droplet, ShieldCheck, RadioTower, Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard,
   TramFront, Train, MapPin, UtensilsCrossed, Gamepad2, HardDrive, Power, Mailbox, CreditCard, Settings,
   Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall, Plane, ShoppingBag,
-  Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles, ShoppingBasket,
+  Gift as GiftIcon, Home as HomeIcon, Car, Bike as Motorbike, CalendarCheck, Video, Sparkles, ShoppingBasket,
   HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package,
   BriefcaseBusiness, Dog, ScissorsLineDashed, ReceiptText, BellRing, Target, CalendarClock, ListChecks,
   WandSparkles, Pill, FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon,
   GraduationCap, Play, MoreHorizontal, ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star,
-  Drama // Ensured Drama is imported
+  Drama, TrendingUp, // Added TrendingUp
+  Bike, // Added Bike if it's different from Motorbike alias
+  BedSingle, // Added BedSingle
+  FlaskConical, // Added FlaskConical
+  Receipt, // Added Receipt
+  BadgePercent // Added BadgePercent
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -30,26 +34,6 @@ interface Service {
     tags?: string[];
 }
 
-const rechargeBillPayServices: Service[] = [
-   { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills", tags: ["phone", "topup"] },
-   { name: "Mobile Postpaid", icon: Smartphone, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
-   { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills", tags: ["tv", "satellite"] },
-   { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills", tags: ["power", "utility"] },
-   { name: "Rent Payment", icon: HomeIcon, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
-   { name: "LPG Cylinder", icon: Flame, href: "/lpg-booking", category: "Recharge & Bills", tags: ["gas", "cooking"] },
-   { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
-   { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
-   { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
-   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] }, // Using Tv as Tv2 not standard
-   { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
-   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
-];
-
-const loanRepaymentServices: Service[] = [
-    { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Loan Repayment", tags: ["emi", "finance"]},
-    { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Loan Repayment", tags: ["cc", "finance"] },
-];
-
 const financialServices: Service[] = [
     { name: "Insurance Premium", icon: ShieldCheck, href: "/insurance/life", category: "Financial Services", tags: ["lic", "health", "car", "bike"]},
     { name: "Mutual Funds", icon: Briefcase, href: "/mutual-funds", category: "Financial Services", tags: ["invest", "sip"] },
@@ -63,16 +47,36 @@ const financialServices: Service[] = [
     { name: "Pay Later (BNPL)", icon: WalletIcon, href: "/bnpl", category: "Financial Services", tags: ["credit", "later", "emi"] },
 ];
 
+const rechargeBillPayServices: Service[] = [
+   { name: "Mobile Recharge", icon: Smartphone, href: "/recharge/mobile", category: "Recharge & Bills", tags: ["phone", "topup"] },
+   { name: "Mobile Postpaid", icon: Smartphone, href: "/bills/mobile-postpaid", category: "Recharge & Bills", tags: ["phone", "bill"] },
+   { name: "DTH Recharge", icon: Tv, href: "/recharge/dth", category: "Recharge & Bills", tags: ["tv", "satellite"] },
+   { name: "Electricity Bill", icon: Bolt, href: "/bills/electricity", category: "Recharge & Bills", tags: ["power", "utility"] },
+   { name: "Rent Payment", icon: HomeIcon, href: "/rent-payment", category: "Recharge & Bills", tags: ["house", "emi"] },
+   { name: "LPG Cylinder", icon: Flame, href: "/lpg-booking", category: "Recharge & Bills", tags: ["gas", "cooking"] },
+   { name: "Broadband Bill", icon: Wifi, href: "/bills/broadband", category: "Recharge & Bills", tags: ["internet", "wifi", "landline"] },
+   { name: "Water Bill", icon: Droplet, href: "/bills/water", category: "Recharge & Bills", tags: ["utility"] },
+   { name: "Piped Gas", icon: Bolt, href: "/bills/gas", category: "Recharge & Bills", tags: ["utility", "cooking"] },
+   { name: "Cable TV", icon: Tv, href: "/cable-tv", category: "Recharge & Bills", tags: ["television"] },
+   { name: "Data Card", icon: HardDrive, href: "/recharge/datacard", category: "Recharge & Bills", tags: ["internet", "dongle"] },
+   { name: "Prepaid Electricity", icon: Power, href: "/recharge/electricity", category: "Recharge & Bills", tags: ["meter", "power"] },
+];
+
+const loanRepaymentServices: Service[] = [
+    { name: "Pay Loan EMI", icon: Landmark, href: "/bills/loan", category: "Loan Repayment", tags: ["emi", "finance"]},
+    { name: "Credit Card Bill", icon: CreditCard, href: "/bills/credit-card", category: "Loan Repayment", tags: ["cc", "finance"] },
+];
+
 const travelServices: Service[] = [
     { name: "AI Travel Assistant", icon: WandSparkles, href: "/travels/assistant", category: "Travel", tags: ["plan", "book", "itinerary", "ask"] },
     { name: "Flights", icon: Plane, href: "/travels/flight", category: "Travel", tags: ["air", "ticket", "booking"]},
     { name: "Buses", icon: Bus, href: "/travels/bus", category: "Travel", tags: ["road", "ticket", "booking"]},
     { name: "Trains", icon: Train, href: "/travels/train", category: "Travel", tags: ["railway", "irctc", "ticket", "booking"]},
     { name: "Hotels", icon: Hotel, href: "/hostels", category: "Travel", tags: ["stay", "room", "booking"]},
-    { name: "Hostels", icon: BedDouble, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
+    { name: "Hostels", icon: BedSingle, href: "/hostels", category: "Travel", tags: ["stay", "budget", "backpack"]},
     { name: "Cab Booking", icon: TaxiIcon, href: "/cab", category: "Travel", tags: ["taxi", "ola", "uber"]},
     { name: "Car Rentals", icon: Car, href: "/travels/car", category: "Travel", tags: ["self-drive", "rent"] },
-    { name: "Bike Rentals", icon: MotorbikeIcon, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
+    { name: "Bike Rentals", icon: Motorbike, href: "/travels/bike", category: "Travel", tags: ["scooter", "motorcycle", "rent"] },
     { name: "EV Charging", icon: Zap, href: "/travels/ev-charging", category: "Travel", tags: ["electric", "vehicle", "station"] },
     { name: "Rest Stop Info", icon: Store, href: "/travels/rest-stop", category: "Travel", tags: ["highway", "food", "amenities"] },
     { name: "Live Bus Tracking", icon: MapPin, href: "/live/bus", category: "Travel", tags: ["eta", "status", "gps"] },
@@ -83,7 +87,7 @@ const travelServices: Service[] = [
 const transitTollServices: Service[] = [
     { name: "Metro Recharge", icon: TramFront, href: "/recharge/metro", category: "Transit & Toll", tags: ["card", "delhi", "mumbai", "bangalore"]},
     { name: "FASTag Recharge", icon: RadioTower, href: "/recharge/fastag", category: "Transit & Toll", tags: ["toll", "highway", "nhai"] },
-    { name: "Traffic Challan", icon: ReceiptText, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
+    { name: "Traffic Challan", icon: Receipt, href: "/challan", category: "Transit & Toll", tags: ["fine", "police", "rta"]},
     { name: "Parking Payments", icon: ParkingMeter, href: "/parking", category: "Transit & Toll", tags: ["car", "spot", "smart"] },
     { name: "Bus Pass", icon: Ticket, href: "/passes/bus", category: "Transit & Toll", tags: ["apply", "monthly", "student"]},
     { name: "My Passes", icon: Ticket, href: "/passes/my-passes", category: "Transit & Toll", tags: ["view", "qr", "active"]},
@@ -267,30 +271,42 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
+    const [isLoading, setIsLoading] = useState(false); // Added loading state
 
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const term = e.target.value.toLowerCase();
-        setSearchTerm(term);
-
-        if (!term.trim()) {
-            setGroupedServices(groupServicesByCategory(uniqueServices));
-            return;
-        }
-
-        const filtered: { [key: string]: Service[] } = {};
-        Object.keys(groupServicesByCategory(uniqueServices)).forEach(category => {
-            const servicesInCategory = groupServicesByCategory(uniqueServices)[category].filter(service =>
-                service.name.toLowerCase().includes(term) ||
-                (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
-                category.toLowerCase().includes(term)
-            );
-            if (servicesInCategory.length > 0) {
-                filtered[category] = servicesInCategory;
+    // Simulate fetching or processing delay, if any.
+    // For now, it's just client-side filtering.
+    useEffect(() => {
+        setIsLoading(true);
+        const handleSearchChange = () => {
+            const term = searchTerm.toLowerCase();
+            if (!term.trim()) {
+                setGroupedServices(groupServicesByCategory(uniqueServices));
+                setIsLoading(false);
+                return;
             }
-        });
-        setGroupedServices(filtered);
-    };
+
+            const filtered: { [key: string]: Service[] } = {};
+            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Recalculate initial groups
+            Object.keys(initialGroupedServices).forEach(category => {
+                const servicesInCategory = initialGroupedServices[category].filter(service =>
+                    service.name.toLowerCase().includes(term) ||
+                    (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
+                    category.toLowerCase().includes(term)
+                );
+                if (servicesInCategory.length > 0) {
+                    filtered[category] = servicesInCategory;
+                }
+            });
+            setGroupedServices(filtered);
+            setIsLoading(false);
+        };
+
+        // Debounce search if needed, or apply directly
+        const timerId = setTimeout(handleSearchChange, 300); // Example debounce
+        return () => clearTimeout(timerId);
+
+    }, [searchTerm]);
+
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
@@ -308,14 +324,19 @@ export default function AllServicesPage() {
                         type="search"
                         placeholder="Search services..."
                         value={searchTerm}
-                        onChange={handleSearchChange}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-8 h-9 bg-primary/20 text-primary-foreground placeholder:text-primary-foreground/70 border-primary-foreground/30 focus:bg-background focus:text-foreground"
                     />
                 </div>
             </header>
 
             <main className="flex-grow p-4 space-y-6 pb-20">
-                 {Object.keys(groupedServices).length === 0 && searchTerm && (
+                 {isLoading && (
+                    <div className="flex justify-center items-center py-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                 )}
+                 {!isLoading && Object.keys(groupedServices).length === 0 && searchTerm && (
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
                              <SearchIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
@@ -323,7 +344,16 @@ export default function AllServicesPage() {
                          </CardContent>
                      </Card>
                  )}
-                 {Object.keys(groupedServices).map((category) => {
+                  {!isLoading && Object.keys(groupedServices).length === 0 && !searchTerm && (
+                     <Card className="shadow-md text-center">
+                         <CardContent className="p-6">
+                              <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
+                             <p className="text-muted-foreground">No services available at the moment.</p>
+                         </CardContent>
+                     </Card>
+                 )}
+                 {!isLoading && Object.keys(groupedServices).length > 0 &&
+                    Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
                      if(servicesInCategory.length === 0) return null;
 
@@ -351,3 +381,4 @@ export default function AllServicesPage() {
         </div>
     );
 }
+
