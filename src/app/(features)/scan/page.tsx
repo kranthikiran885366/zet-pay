@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -6,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet, Fingerprint, MessageSquare, EyeOff, Eye, VolumeX, Volume2, Check, Minus, Plus, Search, Star, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Upload, QrCode as QrCodeIcon, AlertTriangle, Zap, Loader2, CameraOff, Camera, ShieldCheck, ShieldAlert, Flag, UserPlus, RefreshCw, ShieldQuestion, Wallet, Fingerprint, MessageSquare, EyeOff, Eye, VolumeX, Volume2, Check, Minus, Plus, Search, Star, Edit, Trash2, Share2 } from 'lucide-react'; // Added Share2
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -132,27 +131,30 @@ export default function ScanPage() {
       const currentUser = auth.currentUser;
       let nameToUse = "Your Name";
       let upiIdToUse = "defaultuser@payfriend";
+      let finalUserQRCodeUrl = '';
 
       if (currentUser) {
         try {
           const profile = await getCurrentUserProfile();
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
-          upiIdToUse = profile?.upiId || (currentUser.uid ? `${currentUser.uid.substring(0,5)}@payfriend` : `guest@payfriend`);
+          upiIdToUse = profile?.upiId || (currentUser.uid ? `${currentUser.uid.substring(0,10)}@payfriend` : `guest@payfriend`);
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
-          if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0,5)}@payfriend`;
+          if (currentUser.uid) upiIdToUse = `${currentUser.uid.substring(0,10)}@payfriend`;
         }
       }
       setUserName(nameToUse);
       setUserUpiId(upiIdToUse);
-      setUserQRCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(nameToUse)}&mc=0000`);
+      // Ensure upiIdToUse and nameToUse are defined before encoding
+      finalUserQRCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiIdToUse || '')}&pn=${encodeURIComponent(nameToUse || '')}&mc=0000`;
+      setUserQRCodeUrl(finalUserQRCodeUrl);
       setIsQrLoading(false);
     };
 
     if (activeTab === 'myQR') {
       fetchUserDataForQR();
     } else {
-      setIsQrLoading(false);
+      setIsQrLoading(false); // Ensure loading is false if not on myQR tab
     }
   }, [activeTab]);
 
@@ -195,7 +197,7 @@ export default function ScanPage() {
   const stopCameraStream = useCallback(async (turnOffTorchIfOn = true) => {
     setIsScanningActive(false);
     if (videoRef.current && videoRef.current.srcObject) {
-        videoRef.current.pause(); 
+        videoRef.current.pause();
         videoRef.current.srcObject = null; // Release the stream
     }
     if (streamRef.current) {
@@ -220,8 +222,7 @@ export default function ScanPage() {
     }
     if (isProcessingScan) return;
 
-    // Stop camera before processing to avoid multiple scans and save resources
-    await stopCameraStream(false); // Keep torch as is if it was on
+    await stopCameraStream(false);
     setIsProcessingScan(true);
     setRawScannedText(data);
     if (!isStealthSilentMode) toast({ title: "QR Code Scanned", description: "Validating details..." });
@@ -289,7 +290,7 @@ export default function ScanPage() {
   const getCameraStream = useCallback(async () => {
     setHasCameraPermission(null);
     setTorchSupported(false);
-    setIsScanningActive(false); // Ensure scanning is not active until stream is ready
+    setIsScanningActive(false);
 
     if (streamRef.current) await stopCameraStream(false);
 
@@ -299,26 +300,26 @@ export default function ScanPage() {
       setHasCameraPermission(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // Use a promise for play() and ensure it's called only after metadata loaded
         videoRef.current.onloadedmetadata = () => {
             if (videoRef.current) {
                 videoRef.current.play().then(() => {
                     console.log("[Client Scan] Video play started.");
-                    setIsScanningActive(true); // Start scanning loop only after play is successful
+                    setIsScanningActive(true); 
                 }).catch(e => {
                     console.error("Error playing video:", e);
                     toast({variant: "destructive", title: "Camera Play Error", description: "Could not start camera preview."});
+                    setIsScanningActive(false);
                 });
             }
         };
-         // Handle cases where metadata might already be loaded
-         if (videoRef.current.readyState >= videoRef.current.HAVE_METADATA) {
+         if (videoRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) { // Use HTMLMediaElement constants
              videoRef.current.play().then(() => {
                  console.log("[Client Scan] Video play started (readyState).");
                  setIsScanningActive(true);
              }).catch(e => {
                  console.error("Error playing video (readyState):", e);
                  toast({variant: "destructive", title: "Camera Play Error", description: "Could not start camera preview on readyState."});
+                 setIsScanningActive(false);
              });
          }
       }
@@ -339,7 +340,6 @@ export default function ScanPage() {
             } catch(e) { console.warn("Error auto-activating torch:", e); }
         }
       }
-      // setIsScanningActive(true); // Moved inside play().then()
 
       const scanInterval = setInterval(async () => {
         if (!auth.currentUser) {
@@ -352,7 +352,7 @@ export default function ScanPage() {
                     ? "upi://pay?pa=demomerchant@okbank&pn=Demo%20Store&am=100&tn=TestPayment&sign=MOCK_SIGNATURE_VALID"
                     : "upi://pay?pa=anotheruser@okupi&pn=Another%20User";
                  await handleScannedData(mockQrData);
-                 clearInterval(scanInterval); // Stop interval after a scan
+                 clearInterval(scanInterval); 
             }
         } else if (!isScanningActive || !streamRef.current) {
             clearInterval(scanInterval);
@@ -459,6 +459,7 @@ export default function ScanPage() {
 
     if (scannedUpiData.note) query.set('tn', scannedUpiData.note);
     query.set('qrData', scannedUpiData.originalData);
+    if (validationResult?.scanLogId) query.set('scanLogId', validationResult.scanLogId); // Pass scanLogId
     if (isStealthMode) query.set('stealth', 'true');
     router.push(`/pay?${query.toString()}`);
   };
@@ -601,15 +602,16 @@ export default function ScanPage() {
           setRawScannedText(fav.qrData);
           setScannedUpiData(parsed);
           setValidationResult({
-              isVerifiedMerchant: true, // Assume favorite is somewhat verified, or fetch fresh validation
-              isBlacklisted: false, // Assume not blacklisted if favorite, or re-validate
+              scanLogId: undefined, // No direct scan log for paying from favorite
+              isVerifiedMerchant: true, 
+              isBlacklisted: false, 
               isReportedPreviously: false,
               merchantNameFromDb: fav.payeeName,
               upiId: fav.payeeUpi,
               isFavorite: true,
               customTagName: fav.customTagName,
               pastPaymentSuggestions: fav.defaultAmount ? [fav.defaultAmount] : [],
-              hasValidSignature: true, // Assume valid if saved, or re-validate
+              hasValidSignature: true, 
           });
            const amountToPay = fav.defaultAmount || (parsed.amount ? Number(parsed.amount) : undefined);
            proceedToPayment(amountToPay);
@@ -617,6 +619,55 @@ export default function ScanPage() {
           toast({variant: "destructive", title: "Invalid Favorite QR Data"});
       }
   }
+
+  const handleShareQrCode = async () => {
+    if (!userUpiId || !userName || !userQRCodeUrl) {
+        toast({ title: "QR Not Loaded", description: "Please wait for QR code to load.", variant: "destructive" });
+        return;
+    }
+
+    const shareText = `Pay me using my UPI ID: ${userUpiId}\nOr scan my QR code.`;
+    const shareTitle = `My Zet Pay UPI QR Code - ${userName}`;
+
+    if (navigator.share) {
+        try {
+            const response = await fetch(userQRCodeUrl);
+            if (!response.ok) throw new Error(`Failed to fetch QR image: ${response.statusText}`);
+            const blob = await response.blob();
+            const file = new File([blob], `${userName.replace(/\s+/g, '_')}_UPI_QR.png`, { type: blob.type });
+
+            await navigator.share({
+                title: shareTitle,
+                text: shareText,
+                files: [file],
+            });
+            toast({ title: "QR Code Shared", description: "Successfully opened share dialog." });
+        } catch (error: any) {
+            console.warn("Sharing with file failed, falling back to text/URL share:", error);
+            try {
+                 await navigator.share({
+                    title: shareTitle,
+                    text: shareText,
+                    url: userQRCodeUrl,
+                });
+                toast({ title: "QR Code Link Shared", description: "Successfully opened share dialog." });
+            } catch (fallbackError: any) {
+                 console.error("Error sharing QR code (text/URL fallback):", fallbackError);
+                if (fallbackError.name !== 'AbortError') { 
+                    toast({ title: "Share Failed", description: "Could not share QR code.", variant: "destructive" });
+                }
+            }
+        }
+    } else {
+        navigator.clipboard.writeText(`My UPI ID is ${userUpiId}. You can also scan my QR: ${userQRCodeUrl}`)
+            .then(() => {
+                toast({ title: "UPI ID &amp; QR Link Copied!", description: "Share it with your contacts." });
+            })
+            .catch(() => {
+                toast({ title: "Copy Failed", description: "Could not copy UPI ID to clipboard.", variant: "destructive" });
+            });
+    }
+};
 
 
   const scanAreaClasses = cn(
@@ -839,10 +890,9 @@ export default function ScanPage() {
                  )}
                  <p className="text-base font-medium">{userName}</p>
                  <p className="text-sm text-muted-foreground">{userUpiId}</p>
-                 <Button variant="outline" onClick={() => {
-                     if(userQRCodeUrl) navigator.clipboard.writeText(userUpiId).then(()=>toast({title:"UPI ID Copied!"})).catch(()=>toast({title:"Copy Failed", variant:"destructive"}));
-                     else toast({title: "QR not loaded", variant:"destructive"});
-                 }}>Share QR Code</Button>
+                 <Button variant="outline" onClick={handleShareQrCode} disabled={isQrLoading || !userQRCodeUrl}>
+                    <Share2 className="mr-2 h-4 w-4" /> Share QR / UPI ID
+                 </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -935,6 +985,3 @@ export default function ScanPage() {
     </div>
   );
 }
-
-
-    
