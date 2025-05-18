@@ -6,8 +6,8 @@ import { format, addMinutes, addHours } from 'date-fns';
 export interface BusRoute {
     id: string;
     operator: string;
-    type: string; // e.g., 'AC Sleeper', 'Non-AC Seater' - kept generic
-    serviceType?: string; // More specific: 'Volvo AC Sleeper', 'BharatBenz Non-AC Seater'
+    type: string; 
+    serviceType?: string; 
     from: string;
     to: string;
     departureTime: string;
@@ -19,13 +19,13 @@ export interface BusRoute {
     amenities?: string[];
     boardingPoints: string[];
     droppingPoints: string[];
-    hasLiveTracking?: boolean; // New field
+    hasLiveTracking?: boolean; 
 }
 
 
-// Existing Mock Data for Bus Live Status
+// Updated Mock Data for Bus Live Status
 export const mockBusLiveStatusData: BusLiveStatus = {
-    busNumber: 'KA01F1234',
+    busNumber: 'KA01F1234', // Default example
     routeName: 'Route 500D - Majestic to Silk Board',
     operatorName: 'BMTC',
     vehicleType: 'Volvo AC',
@@ -35,16 +35,19 @@ export const mockBusLiveStatusData: BusLiveStatus = {
     delayMinutes: 2,
     stops: [
         { name: "Majestic", eta: "Departed", status: 'Departed', scheduledTime: '09:00 AM' },
+        { name: "Town Hall", eta: "Departed", status: 'Departed', scheduledTime: '09:10 AM' },
         { name: "Richmond Circle", eta: "Departed", status: 'Departed', scheduledTime: '09:15 AM' },
         { name: "Forum Mall", eta: "Arriving Now", status: 'Arriving', scheduledTime: '09:30 AM' },
         { name: "St. John's Hospital", eta: "3 mins", status: 'Upcoming', scheduledTime: '09:35 AM' },
+        { name: "Koramangala Water Tank", eta: "8 mins", status: 'Upcoming', scheduledTime: '09:42 AM' },
         { name: "Silk Board", eta: "15 mins", status: 'Upcoming', scheduledTime: '09:50 AM' },
+        { name: "Central Silk Board", eta: "20 mins", status: 'Upcoming', scheduledTime: '09:55 AM' },
     ],
-    mapUrlPlaceholder: `https://picsum.photos/seed/KA01F1234/600/300`,
+    mapUrlPlaceholder: `https://placehold.co/600x300.png`,
     lastUpdated: new Date(),
 };
 
-// Existing Mock Data for Train Live Status (can be expanded)
+
 export const mockTrainLiveStatusData: TrainLiveStatus = {
     trainNumber: "12658",
     trainName: "Bengaluru Mail",
@@ -57,17 +60,17 @@ export const mockTrainLiveStatusData: TrainLiveStatus = {
     etaNextStation: "10:57 AM",
     delayMinutes: 12,
     route: [
-        { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "22:40", actualDeparture: "22:45", status: 'Departed', platform: 1, dayOfJourney: 1 },
-        { stationName: "Katpadi Jn", stationCode: "KPD", scheduledArrival: "02:23", actualArrival: "02:35", scheduledDeparture: "02:25", actualDeparture: "02:40", status: 'Departed', platform: 2, dayOfJourney: 2 },
-        { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", status: 'Upcoming', platform: 1, dayOfJourney: 2 },
+        { stationName: "KSR Bengaluru City Jn", stationCode: "SBC", scheduledDeparture: "22:40", actualDeparture: "22:45", status: 'Departed', platform: 1, dayOfJourney: 1, delayMinutes: 5 },
+        { stationName: "Bengaluru Cantt.", stationCode: "BNC", scheduledArrival: "22:50", actualArrival: "22:56", scheduledDeparture: "22:52", actualDeparture: "22:58", status: 'Departed', delayMinutes: 6, platform: 2, dayOfJourney: 1 },
+        { stationName: "Jolarpettai Jn", stationCode: "JTJ", scheduledArrival: "01:08", actualArrival: "01:15", scheduledDeparture: "01:10", actualDeparture: "01:18", status: 'Departed', delayMinutes: 8, platform: 3, dayOfJourney: 2 },
+        { stationName: "Katpadi Jn", stationCode: "KPD", scheduledArrival: "02:23", actualArrival: "02:35", scheduledDeparture: "02:25", actualDeparture: "02:40", status: 'Departed', delayMinutes: 15, platform: 2, dayOfJourney: 2 },
+        { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", status: 'Upcoming', delayMinutes: 12, platform: 1, dayOfJourney: 2 },
+        { stationName: "Perambur", stationCode: "PER", scheduledArrival: "04:08", status: 'Upcoming', platform: 3, dayOfJourney: 2 },
         { stationName: "MGR Chennai Central", stationCode: "MAS", scheduledArrival: "04:30", status: 'Upcoming', platform: 5, dayOfJourney: 2 },
     ],
-    mapUrlPlaceholder: `https://picsum.photos/seed/12658/600/300`,
+    mapUrlPlaceholder: `https://placehold.co/600x300.png`,
     lastUpdated: new Date(),
 };
-
-
-// --- New Mock Data for NBS Features ---
 
 
 export const mockBusRoutesData: BusRoute[] = [
@@ -83,7 +86,7 @@ export interface NearbyBusStop {
     name: string;
     distance: string;
     city: string;
-    services?: string[]; // e.g. ['APSRTC', 'Local City Bus']
+    services?: string[]; 
 }
 export const mockNearbyBusStopsData: NearbyBusStop[] = [
     { id: 'stop1', name: 'Majestic Bus Station', distance: '0.5 km', city: 'Bangalore', services: ['BMTC', 'KSRTC'] },
@@ -97,10 +100,10 @@ export interface ReservationStatus {
     operator: string;
     from: string;
     to: string;
-    journeyDate: string; // YYYY-MM-DD
-    currentStatus: string; // e.g., 'Bus departed from starting point'
-    liveLocation: string; // e.g., 'Passing through Electronic City Toll'
-    etaDestination: string; // e.g., '05:30 AM'
+    journeyDate: string; 
+    currentStatus: string; 
+    liveLocation: string; 
+    etaDestination: string; 
     busNumber?: string;
 }
 
@@ -110,18 +113,18 @@ export const mockReservationStatusData: { [key: string]: ReservationStatus } = {
 };
 
 export interface FavoriteRoute {
-    id: string; // e.g., 'route_from_to' or 'stop_id'
+    id: string; 
     type: 'route' | 'stop';
-    name: string; // e.g., "Home to Office" or "Majestic Bus Stop"
-    details: { from?: string; to?: string; address?: string }; // Store route (from/to) or stop info
+    name: string; 
+    details: { from?: string; to?: string; address?: string }; 
 }
 
 export const mockNbsEmergencyContacts = [
     { name: 'National Emergency Helpline', number: '112' },
     { name: 'Ambulance', number: '108' },
     { name: 'Police', number: '100' },
-    { name: 'APSRTC Helpline', number: '0866-2570005' }, // Example
-    { name: 'TSRTC Helpline', number: '040-69440000' }, // Example
+    { name: 'APSRTC Helpline', number: '0866-2570005' }, 
+    { name: 'TSRTC Helpline', number: '040-69440000' }, 
 ];
 
 export const mockFeedbackCategories = ['Bus Condition', 'Driver Behavior', 'Punctuality', 'App Experience', 'Safety', 'Other'];
@@ -156,7 +159,7 @@ Email: support@nationalbus.zet (Example)
 Phone: 1800-ZET-NBUS (Toll-Free Example)
 Website: www.zetpay.app/nbs (Example)`;
 
-// Mock data for city/station selection (can be expanded or fetched)
+
 export const mockNbsCities: {id: string, name: string, state: string}[] = [
     {id: 'BLR', name: 'Bangalore', state: 'Karnataka'},
     {id: 'CHE', name: 'Chennai', state: 'Tamil Nadu'},
@@ -169,18 +172,14 @@ export const mockNbsCities: {id: string, name: string, state: string}[] = [
 ];
 export const mockNbsStates: string[] = ["Andhra Pradesh", "Telangana", "Karnataka", "Maharashtra", "Tamil Nadu", "Delhi"];
 
-
-// Helper function to get live status (re-exported from services/liveTracking.ts if used there)
 export const getMockBusLiveStatus = async (identifier: string): Promise<BusLiveStatus | null> => {
     await new Promise(resolve => setTimeout(resolve, 1000));
-    if (identifier.toUpperCase() === 'KA01F1234' || identifier === '500D') {
+    if (identifier.toUpperCase() === 'KA01F1234' || identifier === '500D' || identifier.toUpperCase() === 'AP28Z5566') {
         return { ...mockBusLiveStatusData, busNumber: identifier.toUpperCase(), lastUpdated: new Date() };
     }
-    // Add more mock cases based on other identifiers if needed
     return null;
 };
 
-// Function to simulate fetching bus routes
 export const searchMockBusRoutes = async (from: string, to: string, date: string): Promise<BusRoute[]> => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     return mockBusRoutesData.filter(
@@ -189,14 +188,11 @@ export const searchMockBusRoutes = async (from: string, to: string, date: string
     );
 };
 
-// Function to simulate fetching nearby stops
 export const findMockNearbyStops = async (lat: number, lon: number): Promise<NearbyBusStop[]> => {
     await new Promise(resolve => setTimeout(resolve, 800));
-    // Simulate some logic based on lat/lon if needed, or just return all
     return mockNearbyBusStopsData.map(stop => ({...stop, distance: `${(Math.random() * 5).toFixed(1)} km`}));
 };
 
-// Function to simulate fetching reservation status
 export const getMockReservationStatus = async (resId: string): Promise<ReservationStatus | null> => {
     await new Promise(resolve => setTimeout(resolve, 700));
     return mockReservationStatusData[resId] || null;

@@ -51,7 +51,7 @@ export default function TrackBusByVehiclePage() {
         }
     };
 
-    const getEtaText = (eta: string, status: BusStopStatus['status']) => {
+     const getEtaText = (eta: string, status: BusStopStatus['status']) => {
          if (status === 'Arriving') return 'Arriving Now';
          if (status === 'Departed') return 'Departed';
          if (status === 'Skipped') return 'Skipped';
@@ -116,13 +116,22 @@ export default function TrackBusByVehiclePage() {
                             <p className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-muted-foreground"/><strong>Current:</strong> {vehicleStatusResult.currentLocationDescription}</p>
                             <p className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-muted-foreground"/><strong>Next Stop:</strong> {vehicleStatusResult.nextStop} (ETA: {vehicleStatusResult.etaNextStop})</p>
                             <p className="text-xs text-muted-foreground">Last updated: {format(vehicleStatusResult.lastUpdated, 'p')}</p>
+                            
+                            <div className="w-full h-40 bg-muted rounded-md flex items-center justify-center text-muted-foreground border my-3">
+                                <MapPin className="h-6 w-6 mr-2" /> Map View (Coming Soon)
+                            </div>
+
                             <ScrollArea className="h-60 mt-3 border rounded-md p-3 bg-background">
+                                <h4 className="font-semibold text-xs mb-2 text-muted-foreground">ROUTE STOPS:</h4>
                                 <ul className="space-y-3">
                                     {vehicleStatusResult.stops.map((stop, index) => (
                                         <li key={index} className="flex items-center gap-3 text-xs relative pl-6">
-                                            {!(index === vehicleStatusResult.stops.length -1) && <div className="absolute left-[10px] top-[18px] bottom-[-12px] w-px bg-border"></div>}
+                                            {!(index === vehicleStatusResult.stops.length -1) && <div className="absolute left-[7px] top-[18px] bottom-[-12px] w-px bg-border"></div>}
                                              <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5 border border-border">{getStatusIcon(stop.status)}</div>
-                                            <span className={cn("font-medium", stop.status === 'Departed' ? 'text-gray-500 line-through' : '')}>{stop.name}</span>
+                                            <div className="flex-grow">
+                                                <span className={cn("font-medium", stop.status === 'Departed' ? 'text-gray-500 line-through' : '')}>{stop.name}</span>
+                                                {stop.scheduledTime && <span className="text-muted-foreground text-[10px] ml-1">(Sch: {stop.scheduledTime})</span>}
+                                            </div>
                                             <span className="ml-auto font-semibold text-muted-foreground">{getEtaText(stop.eta, stop.status)}</span>
                                         </li>
                                     ))}
