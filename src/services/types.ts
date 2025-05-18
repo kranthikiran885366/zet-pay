@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Shared type definitions for data structures used across services.
  */
@@ -40,7 +41,7 @@ export interface Transaction {
   upiId?: string;
   billerId?: string;
   loanId?: string;
-  ticketId?: string;
+  ticketId?: string; // Booking ID / PNR / Support Ticket ID / Order ID
   refundEta?: string;
   blockchainHash?: string;
   paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking';
@@ -55,6 +56,7 @@ export interface Transaction {
   pspTransactionId?: string; 
   refundTransactionId?: string; 
   failureReason?: string; 
+  stealthScan?: boolean;
 }
 
 
@@ -103,7 +105,7 @@ export interface Payee {
   updatedAt?: Timestamp | Date | string;
 }
 
-export interface PayeeClient extends Omit&lt;Payee, 'createdAt' | 'updatedAt'&gt; {
+export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
     isVerified?: boolean; 
     createdAt?: Date;
     updatedAt?: Date;
@@ -337,16 +339,33 @@ export interface BookingConfirmation {
         pnr?: string;
         seatNumbers?: string;
         providerMessage?: string;
-        flightDetails?: Pick&lt;FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime' | 'departureAirport' | 'arrivalAirport'&gt;;
+        flightDetails?: Pick<FlightListing, 'airline' | 'flightNumber' | 'departureTime' | 'arrivalTime' | 'departureAirport' | 'arrivalAirport'>;
         providerConfirmationId?: string; 
     } | null;
+}
+
+interface AddonServiceOption {
+    id: string;
+    name: string;
+    price: number;
+    description?: string;
 }
 
 export interface MarriageVenue extends BookingSearchResult {
     city: string;
     requiresApproval?: boolean;
     bookingFee?: number;
-    contact?: string; 
+    contact?: string;
+    hallType?: 'Banquet' | 'Outdoor' | 'Convention Center' | 'Garden';
+    hasParking?: boolean;
+    parkingCapacity?: number;
+    nearMetro?: boolean;
+    cateringOptions?: AddonServiceOption[];
+    decorationPackages?: AddonServiceOption[];
+    rulesAndPolicies?: string;
+    reviews?: Array<{ reviewer: string; rating: number; comment: string; date: string }>;
+    cancellationPolicy?: string;
+    simulatedBookedDates?: string[]; // Array of "YYYY-MM-DD"
 }
 
 export interface MarriageBookingDetails { 
@@ -364,6 +383,11 @@ export interface MarriageBookingDetails {
     paymentTransactionId?: string; 
     status?: 'Pending Approval' | 'Confirmed' | 'Cancelled' | 'Completed'; 
     createdAt?: Timestamp | Date | string; 
+    selectedAddons?: {
+        catering?: string; // ID of selected catering option
+        decor?: string; // ID of selected decor package
+    };
+    appliedPromoCode?: string;
 }
 
 
@@ -474,5 +498,7 @@ export interface ChatSession {
     lastMessage?: ChatMessage; // Snippet of the last message
     updatedAt: Timestamp | Date | string;
     unreadCounts?: { [userId: string]: number }; // Unread count for each participant
-    isZetChatVerified?: boolean; // If chat involves a verified merchant
+    isZetChatUser?: boolean; // If chat involves a verified merchant
 }
+
+    

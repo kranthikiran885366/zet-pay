@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for interacting with the booking backend API.
  */
@@ -14,24 +15,33 @@ export interface BookingSearchResult {
     // Common fields for any search result type
     id: string;
     name: string; // Movie title, Bus operator, Train name etc.
-    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage'; // Added marriage
+    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage' | 'car' | 'bike';
     // Type-specific details
     imageUrl?: string;
     priceRange?: string; // e.g., "₹500 - ₹1200"
     rating?: number;
     location?: string; // For venues
     capacity?: number; // For venues
-    description?: string; // Added for venues
-    amenities?: string[]; // Added for venues
-    price?: number; // Added for venues base price
-    // ... other relevant summary fields
+    description?: string;
+    amenities?: string[];
+    price?: number;
+    transmission?: string;
+    fuelType?: string;
+    seats?: number;
+    pricePerDay?: number; 
+    pricePerHour?: number; 
+    kmsLimit?: string;
+    isAvailable?: boolean; 
+    availability?: 'Available' | 'In Use' | 'Low Battery'; 
+    batteryPercent?: number; 
+    requiresHelmet?: boolean; 
 }
 
 export interface BookingDetails {
     // Common fields
     id: string;
     name: string;
-    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage'; // Added marriage
+    type: 'movie' | 'bus' | 'train' | 'flight' | 'event' | 'marriage' | 'car' | 'bike';
     // Type-specific details
     // Movie:
     movieDetails?: any; // Replace 'any' with specific Movie interface
@@ -42,21 +52,25 @@ export interface BookingDetails {
     // Train:
     trainDetails?: any; // Replace 'any' with specific TrainAvailability interface
     // Marriage Venue:
-    venueDetails?: MarriageVenue; // Use the specific MarriageVenue interface
+    venueDetails?: MarriageVenue;
     // Flight:
-    flightDetails?: FlightListing; // Add flight details
+    flightDetails?: FlightListing; 
+    // Car:
+    carDetails?: CarListing;
+    // Bike:
+    bikeDetails?: BikeListing;
     // ... add details for event
 }
 
 // Re-export for convenience
-export type { BookingConfirmation, FlightListing, MarriageVenue, MarriageBookingDetails };
+export type { BookingConfirmation, FlightListing, MarriageVenue, MarriageBookingDetails, CarListing, BikeListing };
 
 
 export interface CancellationResult {
     success: boolean;
     message?: string;
     refundAmount?: number;
-    originalPaymentTxId?: string; // Added for refunds
+    originalPaymentTxId?: string; 
 }
 
 
@@ -120,18 +134,12 @@ export async function getBookingDetails(type: string, id: string, params?: Recor
  */
 export async function confirmBooking(type: string, bookingData: any): Promise<BookingConfirmation> {
     console.log(`[Client Service] Confirming ${type} booking via API:`, bookingData);
-    // The venueId or item ID might be part of bookingData or path.
-    // Backend route needs to handle this consistently. Generic :type route is for some, specific for others like marriage.
-    const idForPath = bookingData.venueId || bookingData.providerId || bookingData.selection?.movieId || bookingData.selection?.busId || bookingData.selection?.flightId || bookingData.selection?.vehicleId || bookingData.selection?.eventId;
-    let endpoint = `/bookings/${type}`; // Default generic endpoint
+    const idForPath = bookingData.venueId || bookingData.providerId || bookingData.selection?.movieId || bookingData.selection?.busId || bookingData.selection?.flightId || bookingData.selection?.vehicleId || bookingData.selection?.eventId || bookingData.id; // Added bookingData.id as fallback
+    let endpoint = `/bookings/${type}`; 
 
     if (type === 'marriage' && idForPath) {
         endpoint = `/bookings/marriage/${idForPath}/book`;
     }
-    // Add specific endpoint logic for other types if needed, e.g., flights might have a different structure
-    // else if (type === 'flight' && idForPath) {
-    //    endpoint = `/bookings/flight/${idForPath}/confirm`; // Example if different
-    // }
 
 
     try {
@@ -142,7 +150,6 @@ export async function confirmBooking(type: string, bookingData: any): Promise<Bo
         return result;
     } catch (error: any) {
         console.error(`Error confirming ${type} booking via API:`, error);
-        // Ensure a BookingConfirmation compatible error structure is returned
         return {
             status: 'Failed',
             message: error.message || `Failed to confirm ${type} booking.`,
@@ -162,7 +169,7 @@ export async function cancelBooking(type: string, bookingId: string): Promise<Ca
     const endpoint = `/bookings/${type}/${bookingId}/cancel`;
     try {
         const result = await apiClient<CancellationResult>(endpoint, {
-            method: 'POST', // Or DELETE, depending on backend
+            method: 'POST', 
         });
         return result;
     } catch (error: any) {
@@ -179,11 +186,18 @@ export async function cancelBooking(type: string, bookingId: string): Promise<Ca
 
 /**
  * Searches for marriage venues via the backend API.
- * @param params Search parameters (city, date, guests).
+ * @param params Search parameters (city, date, guests, hallType, hasParking, etc.).
  * @returns A promise resolving to an array of MarriageVenue objects.
  */
-export async function searchMarriageVenues(params: { city: string; date: string; guests?: string }): Promise<MarriageVenue[]> {
-    // Casting the result of searchBookings, ensure backend returns compatible structure for 'marriage' type
+export async function searchMarriageVenues(params: { 
+    city: string; 
+    date: string; 
+    guests?: string;
+    hallType?: string;
+    hasParking?: boolean;
+    cateringAvailable?: boolean;
+    decorationIncluded?: boolean;
+}): Promise<MarriageVenue[]> {
     return searchBookings('marriage', params) as Promise<MarriageVenue[]>;
 }
 
@@ -194,21 +208,18 @@ export async function searchMarriageVenues(params: { city: string; date: string;
  */
 export async function getMarriageVenueDetails(venueId: string): Promise<MarriageVenue | null> {
     const result = await getBookingDetails('marriage', venueId);
-    // Assuming backend returns the venue data directly or nested under 'venueDetails'
     return result ? (result.venueDetails || result as unknown as MarriageVenue) : null;
 }
 
 /**
  * Confirms a marriage venue booking via the backend API.
- * @param venueId The ID of the venue (will be passed in URL by confirmBooking).
+ * @param venueIdFromPath The ID of the venue (will be passed in URL by confirmBooking).
  * @param bookingData Data for the booking request (as MarriageBookingDetails).
  * @returns A promise resolving to the booking confirmation result.
  */
 export async function confirmMarriageVenueBooking(venueIdFromPath: string, bookingData: MarriageBookingDetails): Promise<BookingConfirmation> {
-    // Ensure the bookingData includes venueId if the generic confirmBooking needs it in payload,
-    // or rely on venueIdFromPath if the backend route uses it.
-    // The current generic confirmBooking logic will construct endpoint like /bookings/marriage/:venueId/book
-    // So bookingData should contain other fields.
-    const payloadToSend = { ...bookingData, venueId: venueIdFromPath }; // Ensure venueId is in payload for consistency if needed by generic backend
+    const payloadToSend = { ...bookingData, venueId: venueIdFromPath }; 
     return confirmBooking('marriage', payloadToSend);
 }
+
+    
