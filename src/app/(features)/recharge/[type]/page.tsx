@@ -8,19 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2 as TvIcon, Lock, AlarmClockOff, Ban, HardDrive, Ticket, TramFront, Train, Play } from 'lucide-react';
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Tv2, Lock, AlarmClockOff, Ban, HardDrive, Ticket, TramFront, Train, Play } from 'lucide-react'; // Added Lock, AlarmClockOff, Ban
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge';
-import { getContacts, Payee } from '@/services/contacts';
+import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge'; // Use service functions and Plan interface, import cancelRechargeService, removed getRechargeHistory, RechargeHistoryEntry
+import { getContacts, Payee } from '@/services/contacts'; // For saved contacts
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, addDays, isBefore, differenceInMinutes } from "date-fns";
+import { format, addDays, isBefore, differenceInMinutes, differenceInDays, isValid } from "date-fns"; // Added isValid
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import Image from 'next/image';
@@ -84,12 +84,12 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 export default function RechargePage() {
   const params = useParams();
   const router = useRouter();
-  
+
   let rechargePageType = 'mobile';
   if (typeof params.type === 'string' && rechargeTypeDetails[params.type]) {
     rechargePageType = params.type;
   } else if (Array.isArray(params.type) && rechargeTypeDetails[params.type[0]]) {
-    rechargePageType = params.type[0]; 
+    rechargePageType = params.type[0];
   }
 
 
@@ -802,7 +802,7 @@ export default function RechargePage() {
                                 ))}
                                 <button className="flex flex-col items-center justify-center w-16 text-center text-muted-foreground hover:text-primary transition-colors" onClick={() => alert(rechargePageType === 'mobile' ? "Add New Contact flow" : "Add New Provider flow")}>
                                     <div className="h-10 w-10 mb-1 border-2 border-dashed border-muted-foreground rounded-full flex items-center justify-center bg-secondary">
-                                        {rechargePageType === 'mobile' ? <UserPlus className="h-5 w-5"/> : <TvIcon className="h-5 w-5"/>}
+                                        {rechargePageType === 'mobile' ? <UserPlus className="h-5 w-5"/> : <Tv2 className="h-5 w-5"/>}
                                     </div>
                                     <span className="text-xs font-medium">Add New</span>
                                 </button>
@@ -981,7 +981,7 @@ export default function RechargePage() {
                                                <div>
                                                     <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
                                                      {rechargePageType === 'mobile' && plan.data && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
-                                                     {rechargePageType === 'dth' && plan.channels && <div className="flex items-center gap-1"><TvIcon className="h-3 w-3"/> Channels: {plan.channels}</div>}
+                                                     {rechargePageType === 'dth' && plan.channels && <div className="flex items-center gap-1"><Tv2 className="h-3 w-3"/> Channels: {plan.channels}</div>}
                                                </div>
                                                 <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
                                           </div>
