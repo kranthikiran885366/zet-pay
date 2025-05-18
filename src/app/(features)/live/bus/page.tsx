@@ -25,9 +25,9 @@ import {
     mockBusRoutesData,
     mockNearbyBusStopsData,
     mockReservationStatusData,
-    mockBusRoute,
-    mockNearbyBusStop,
-    mockReservationStatus,
+    // mockBusRoute, // Not used directly
+    // mockNearbyBusStop, // Not used directly
+    // mockReservationStatus, // Not used directly
     mockNbsEmergencyContacts,
     mockFeedbackCategories,
     nbsAboutText,
@@ -243,7 +243,7 @@ export default function NationalBusServicesPage() {
             {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center justify-between shadow-md">
                 <div className="flex items-center gap-2">
-                    <Link href="/" passHref>
+                    <Link href="/travels" passHref>
                         <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
@@ -259,57 +259,58 @@ export default function NationalBusServicesPage() {
 
             <main className="flex-grow p-4 space-y-4 pb-20">
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
-                        <TabsTrigger value="trackVehicle">Track Vehicle</TabsTrigger>
-                        <TabsTrigger value="searchBuses">Search Buses</TabsTrigger>
-                        <TabsTrigger value="trackReservation">Track Reservation</TabsTrigger>
-                        <TabsTrigger value="nearbyStops">Nearby Stops</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto py-1">
+                        <TabsTrigger value="trackVehicle" className="text-xs px-2 py-1.5 h-full">Track Vehicle</TabsTrigger>
+                        <TabsTrigger value="searchBuses" className="text-xs px-2 py-1.5 h-full">Search Buses</TabsTrigger>
+                        <TabsTrigger value="trackReservation" className="text-xs px-2 py-1.5 h-full">Track Reservation</TabsTrigger>
+                        <TabsTrigger value="nearbyStops" className="text-xs px-2 py-1.5 h-full">Nearby Stops</TabsTrigger>
                     </TabsList>
 
                     {/* Track by Vehicle Number Tab */}
                     <TabsContent value="trackVehicle" className="mt-4">
-                        <Card>
+                        <Card className="shadow-lg rounded-xl">
                             <CardHeader>
-                                <CardTitle>Track Bus by Vehicle Number</CardTitle>
+                                <CardTitle className="flex items-center gap-2 text-lg"><Search className="h-5 w-5 text-primary"/>Track Bus by Vehicle Number</CardTitle>
                                 <CardDescription>Enter the bus registration number (e.g., AP28Z5566).</CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <form onSubmit={handleTrackVehicle} className="flex gap-2 mb-4">
+                            <CardContent className="space-y-4">
+                                <form onSubmit={handleTrackVehicle} className="flex gap-2">
                                     <Input
                                         type="text"
                                         placeholder="Enter Vehicle Number"
                                         value={vehicleNumber}
                                         onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                                         required
+                                        className="h-10"
                                     />
-                                    <Button type="submit" disabled={isLoadingVehicleStatus}>
-                                        {isLoadingVehicleStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                                    <Button type="submit" disabled={isLoadingVehicleStatus} className="h-10">
+                                        {isLoadingVehicleStatus ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                                     </Button>
                                 </form>
-                                {isLoadingVehicleStatus && <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                                {isLoadingVehicleStatus && <div className="flex justify-center py-4"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
                                 {vehicleStatusResult && (
-                                    <Card className="shadow-inner">
-                                        <CardHeader className="bg-muted/50 border-b p-3">
-                                            <CardTitle className="text-base flex justify-between items-center">
-                                                <span>{vehicleStatusResult.operatorName || 'Bus'}: {vehicleStatusResult.busNumber}</span>
-                                                <Badge variant={vehicleStatusResult.delayMinutes && vehicleStatusResult.delayMinutes > 0 ? "destructive" : "default"} className={cn("text-xs", vehicleStatusResult.delayMinutes && vehicleStatusResult.delayMinutes > 0 ? "" : "bg-green-100 text-green-700")}>
+                                    <Card className="shadow-md rounded-lg border border-border overflow-hidden">
+                                        <CardHeader className="bg-muted/30 border-b p-4">
+                                            <CardTitle className="text-md flex justify-between items-center">
+                                                <span className="flex items-center gap-2"><Bus className="h-5 w-5"/>{vehicleStatusResult.operatorName || 'Bus'}: {vehicleStatusResult.busNumber}</span>
+                                                <Badge variant={vehicleStatusResult.delayMinutes && vehicleStatusResult.delayMinutes > 0 ? "destructive" : "default"} className={cn("text-xs px-2 py-1", vehicleStatusResult.delayMinutes && vehicleStatusResult.delayMinutes > 0 ? "" : "bg-green-100 text-green-700")}>
                                                     {vehicleStatusResult.delayMinutes && vehicleStatusResult.delayMinutes > 0 ? `Delayed ${vehicleStatusResult.delayMinutes} min` : 'On Time'}
                                                 </Badge>
                                             </CardTitle>
-                                            <CardDescription className="text-xs">{vehicleStatusResult.routeName}</CardDescription>
+                                            <CardDescription className="text-xs pt-1">{vehicleStatusResult.routeName}</CardDescription>
                                         </CardHeader>
-                                        <CardContent className="p-3 text-sm space-y-1">
-                                            <p><strong>Current:</strong> {vehicleStatusResult.currentLocationDescription}</p>
-                                            <p><strong>Next Stop:</strong> {vehicleStatusResult.nextStop} (ETA: {vehicleStatusResult.etaNextStop})</p>
+                                        <CardContent className="p-4 text-sm space-y-2">
+                                            <p className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-muted-foreground"/><strong>Current:</strong> {vehicleStatusResult.currentLocationDescription}</p>
+                                            <p className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-muted-foreground"/><strong>Next Stop:</strong> {vehicleStatusResult.nextStop} (ETA: {vehicleStatusResult.etaNextStop})</p>
                                             <p className="text-xs text-muted-foreground">Last updated: {format(vehicleStatusResult.lastUpdated, 'p')}</p>
-                                            <ScrollArea className="h-40 mt-2 border rounded-md p-2">
-                                                <ul className="space-y-2">
+                                            <ScrollArea className="h-48 mt-3 border rounded-md p-3 bg-background">
+                                                <ul className="space-y-3">
                                                     {vehicleStatusResult.stops.map((stop, index) => (
-                                                        <li key={index} className="flex items-center gap-2 text-xs relative pl-5">
-                                                            {! (index === vehicleStatusResult.stops.length -1) && <div className="absolute left-[7px] top-[14px] bottom-[-8px] w-px bg-border"></div>}
-                                                             <div className="absolute left-0 top-0.5 z-10 bg-card rounded-full p-0.5">{getStatusIcon(stop.status)}</div>
-                                                            <span className={cn(stop.status === 'Departed' ? 'text-gray-400 line-through' : '')}>{stop.name}</span>
-                                                            <span className="ml-auto font-medium">{getEtaText(stop.eta, stop.status)}</span>
+                                                        <li key={index} className="flex items-center gap-3 text-xs relative pl-6">
+                                                            {! (index === vehicleStatusResult.stops.length -1) && <div className="absolute left-[10px] top-[18px] bottom-[-12px] w-px bg-border"></div>}
+                                                             <div className="absolute left-0 top-1 z-10 bg-background rounded-full p-0.5 border border-border">{getStatusIcon(stop.status)}</div>
+                                                            <span className={cn("font-medium", stop.status === 'Departed' ? 'text-gray-500 line-through' : '')}>{stop.name}</span>
+                                                            <span className="ml-auto font-semibold text-muted-foreground">{getEtaText(stop.eta, stop.status)}</span>
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -321,19 +322,19 @@ export default function NationalBusServicesPage() {
                         </Card>
                     </TabsContent>
 
-                    {/* Search Buses (From-To) Tab */}
+                     {/* Search Buses (From-To) Tab */}
                     <TabsContent value="searchBuses" className="mt-4">
-                         <Card>
+                         <Card className="shadow-lg rounded-xl">
                             <CardHeader>
-                                <CardTitle>Search Buses Between Locations</CardTitle>
+                                <CardTitle className="flex items-center gap-2 text-lg"><Search className="h-5 w-5 text-primary"/>Search Buses Between Locations</CardTitle>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="space-y-4">
                                 <form onSubmit={handleSearchBuses} className="space-y-4">
                                     <div className="flex items-center gap-2">
                                         <div className="flex-1 space-y-1">
-                                            <Label htmlFor="fromCity">From</Label>
+                                            <Label htmlFor="fromCity" className="text-xs">From</Label>
                                             <Select value={fromCity} onValueChange={setFromCity} required>
-                                                <SelectTrigger id="fromCity"><SelectValue placeholder="Origin" /></SelectTrigger>
+                                                <SelectTrigger id="fromCity" className="h-10"><SelectValue placeholder="Origin" /></SelectTrigger>
                                                 <SelectContent>{mockNbsCities.map(c => <SelectItem key={`from-${c.id}`} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
                                             </Select>
                                         </div>
@@ -341,49 +342,58 @@ export default function NationalBusServicesPage() {
                                             <ArrowRightLeft className="h-4 w-4 text-primary"/>
                                         </Button>
                                         <div className="flex-1 space-y-1">
-                                            <Label htmlFor="toCity">To</Label>
+                                            <Label htmlFor="toCity" className="text-xs">To</Label>
                                             <Select value={toCity} onValueChange={setToCity} required>
-                                                <SelectTrigger id="toCity"><SelectValue placeholder="Destination" /></SelectTrigger>
+                                                <SelectTrigger id="toCity" className="h-10"><SelectValue placeholder="Destination" /></SelectTrigger>
                                                 <SelectContent>{mockNbsCities.map(c => <SelectItem key={`to-${c.id}`} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
                                             </Select>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label htmlFor="journeyDateSearch">Date</Label>
+                                        <Label htmlFor="journeyDateSearch" className="text-xs">Date</Label>
                                         <Popover>
                                             <PopoverTrigger asChild>
-                                                <Button id="journeyDateSearch" variant="outline" className={cn("w-full justify-start text-left font-normal", !journeyDate && "text-muted-foreground")}>
+                                                <Button id="journeyDateSearch" variant="outline" className={cn("w-full justify-start text-left font-normal h-10", !journeyDate && "text-muted-foreground")}>
                                                     <CalendarIconLucide className="mr-2 h-4 w-4"/>{journeyDate ? format(journeyDate, "PPP") : <span>Pick a date</span>}
                                                 </Button>
                                             </PopoverTrigger>
                                             <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={journeyDate} onSelect={setJourneyDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}/></PopoverContent>
                                         </Popover>
                                     </div>
-                                    <Button type="submit" className="w-full" disabled={isLoadingBusSearch}>
-                                        {isLoadingBusSearch ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4"/>} Search Buses
+                                    <Button type="submit" className="w-full h-10" disabled={isLoadingBusSearch}>
+                                        {isLoadingBusSearch ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <Search className="mr-2 h-5 w-5"/>} Search Buses
                                     </Button>
                                 </form>
-                                {isLoadingBusSearch && <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                                {isLoadingBusSearch && <div className="flex justify-center py-4"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
                                 {busSearchResults.length > 0 && (
-                                    <div className="mt-4 space-y-2">
-                                        <h3 className="font-semibold text-sm">Available Buses ({busSearchResults.length})</h3>
+                                    <div className="mt-4 space-y-3">
+                                        <h3 className="font-semibold text-md">Available Buses ({busSearchResults.length})</h3>
                                         {busSearchResults.map(route => (
-                                            <Card key={route.id} className="p-3 shadow-sm">
+                                            <Card key={route.id} className="p-4 shadow-sm rounded-lg border hover:shadow-md transition-shadow">
                                                 <div className="flex justify-between items-start">
                                                     <div>
-                                                        <p className="font-medium text-primary">{route.operator}</p>
+                                                        <p className="font-semibold text-primary">{route.operator}</p>
                                                         <p className="text-xs text-muted-foreground">{route.type}</p>
                                                     </div>
-                                                    <Badge variant="outline" className="text-xs">{route.rating} ★</Badge>
+                                                    <Badge variant="outline" className="text-xs px-2 py-0.5">{route.rating} ★</Badge>
                                                 </div>
-                                                <div className="text-xs flex justify-between mt-1">
-                                                    <span>Dep: {route.departureTime}</span>
-                                                    <span>Arr: {route.arrivalTime}</span>
-                                                    <span>{route.duration}</span>
+                                                <div className="text-xs flex justify-between mt-2 items-center">
+                                                    <div className="flex flex-col">
+                                                        <span>Dep: <span className="font-medium">{route.departureTime}</span></span>
+                                                        <span className="text-muted-foreground text-[10px]">{route.from}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-center text-muted-foreground">
+                                                        <Timer className="h-3 w-3 mb-0.5"/>
+                                                        <span>{route.duration}</span>
+                                                    </div>
+                                                    <div className="flex flex-col text-right">
+                                                        <span>Arr: <span className="font-medium">{route.arrivalTime}</span></span>
+                                                         <span className="text-muted-foreground text-[10px]">{route.to}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex justify-between items-center mt-2">
-                                                    <p className="text-sm font-bold">₹{route.price}</p>
-                                                    <Button size="xs" variant="secondary" onClick={() => alert(`Booking ${route.operator}...`)}>Book Seats</Button>
+                                                <div className="flex justify-between items-center mt-3">
+                                                    <p className="text-md font-bold">₹{route.price.toLocaleString()}</p>
+                                                    <Button size="sm" className="h-8" onClick={() => alert(`Booking ${route.operator}...`)}>Book Seats</Button>
                                                 </div>
                                             </Card>
                                         ))}
@@ -393,18 +403,21 @@ export default function NationalBusServicesPage() {
                          </Card>
                     </TabsContent>
 
+
                     {/* Track by Reservation ID Tab */}
                     <TabsContent value="trackReservation" className="mt-4">
-                        <Card>
-                            <CardHeader><CardTitle>Track Bus by Reservation ID</CardTitle></CardHeader>
-                            <CardContent>
-                                <form onSubmit={handleTrackReservation} className="flex gap-2 mb-4">
-                                    <Input type="text" placeholder="Enter Reservation/Ticket ID" value={reservationId} onChange={e => setReservationId(e.target.value)} required/>
-                                    <Button type="submit" disabled={isLoadingReservationStatus}>{isLoadingReservationStatus ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>}</Button>
+                        <Card className="shadow-lg rounded-xl">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-lg"><Timer className="h-5 w-5 text-primary"/>Track Bus by Reservation ID</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <form onSubmit={handleTrackReservation} className="flex gap-2">
+                                    <Input type="text" placeholder="Enter Reservation/Ticket ID" value={reservationId} onChange={e => setReservationId(e.target.value)} required className="h-10"/>
+                                    <Button type="submit" disabled={isLoadingReservationStatus} className="h-10">{isLoadingReservationStatus ? <Loader2 className="h-5 w-5 animate-spin"/> : <Search className="h-5 w-5"/>}</Button>
                                 </form>
-                                {isLoadingReservationStatus && <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                                {isLoadingReservationStatus && <div className="flex justify-center py-4"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
                                 {reservationStatusResult && (
-                                    <Card className="shadow-inner p-3 text-sm space-y-1 bg-muted/30">
+                                    <Card className="shadow-inner p-4 text-sm space-y-2 bg-muted/30 rounded-lg border">
                                         <p><strong>Operator:</strong> {reservationStatusResult.operator}</p>
                                         <p><strong>Route:</strong> {reservationStatusResult.from} to {reservationStatusResult.to}</p>
                                         <p><strong>Status:</strong> <span className="font-semibold">{reservationStatusResult.currentStatus}</span></p>
@@ -418,23 +431,26 @@ export default function NationalBusServicesPage() {
 
                     {/* Nearby Bus Stops Tab */}
                     <TabsContent value="nearbyStops" className="mt-4">
-                        <Card>
-                            <CardHeader><CardTitle>Nearby Bus Stops</CardTitle></CardHeader>
-                            <CardContent>
-                                <Button onClick={handleFindNearbyStops} className="w-full mb-4" disabled={isLoadingNearbyStops}>
-                                    {isLoadingNearbyStops ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4"/>} Find Stops Near Me (GPS)
+                        <Card className="shadow-lg rounded-xl">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-lg"><MapPin className="h-5 w-5 text-primary"/>Nearby Bus Stops</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <Button onClick={handleFindNearbyStops} className="w-full mb-4 h-10" disabled={isLoadingNearbyStops}>
+                                    {isLoadingNearbyStops ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <MapPin className="mr-2 h-5 w-5"/>} Find Stops Near Me (GPS)
                                 </Button>
-                                <div className="w-full h-40 bg-muted rounded-md flex items-center justify-center text-muted-foreground border mb-4">
-                                    <MapPin className="h-8 w-8 mr-2" /> Map View (Coming Soon)
+                                <div className="w-full h-52 bg-muted rounded-lg flex items-center justify-center text-muted-foreground border mb-4">
+                                    <MapIconLucide className="h-10 w-10 mr-2" /> Map View (Coming Soon)
                                 </div>
-                                {isLoadingNearbyStops && <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                                {isLoadingNearbyStops && <div className="flex justify-center py-4"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>}
                                 {nearbyStops.length > 0 && (
-                                    <div className="space-y-2">
+                                    <div className="space-y-3">
                                         {nearbyStops.map(stop => (
-                                            <div key={stop.id} className="p-2 border rounded-md text-sm">
-                                                <p className="font-medium">{stop.name}</p>
+                                            <Card key={stop.id} className="p-3 border rounded-lg shadow-sm">
+                                                <p className="font-semibold text-primary">{stop.name}</p>
                                                 <p className="text-xs text-muted-foreground">{stop.distance}, {stop.city}</p>
-                                            </div>
+                                                {stop.services && <p className="text-xs text-muted-foreground">Services: {stop.services.join(', ')}</p>}
+                                            </Card>
                                         ))}
                                     </div>
                                 )}
@@ -444,46 +460,57 @@ export default function NationalBusServicesPage() {
                 </Tabs>
 
                 {/* Action Buttons: Feedback & About */}
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                    <Button variant="outline" onClick={() => setShowFeedbackDialog(true)}><MessageCircle className="mr-2 h-4 w-4"/>Customer Feedback</Button>
-                    <Button variant="outline" onClick={() => setShowAboutDialog(true)}><BadgeInfo className="mr-2 h-4 w-4"/>About NBS</Button>
-                </div>
+                 <Card className="shadow-md mt-6 rounded-xl">
+                    <CardContent className="p-3 grid grid-cols-2 gap-3">
+                        <Button variant="outline" className="w-full h-10 text-sm" onClick={() => setShowFeedbackDialog(true)}><MessageCircle className="mr-2 h-4 w-4"/>Customer Feedback</Button>
+                        <Button variant="outline" className="w-full h-10 text-sm" onClick={() => setShowAboutDialog(true)}><BadgeInfo className="mr-2 h-4 w-4"/>About NBS</Button>
+                    </CardContent>
+                </Card>
 
                 {/* Favorites Dialog */}
                 <Dialog open={showFavoritesDialog} onOpenChange={setShowFavoritesDialog}>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>My Favourite Routes/Stops</DialogTitle></DialogHeader>
-                        {favorites.length === 0 ? <p className="text-sm text-muted-foreground py-4">No favorites saved yet.</p> : (
-                            <ScrollArea className="max-h-60">
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader><DialogTitle className="text-lg">My Favourite Routes/Stops</DialogTitle></DialogHeader>
+                        {favorites.length === 0 ? <p className="text-sm text-muted-foreground py-4 text-center">No favorites saved yet.</p> : (
+                            <ScrollArea className="max-h-72 mt-2 pr-3">
                                 {favorites.map(fav => (
-                                    <div key={fav.id} className="flex justify-between items-center p-2 border-b">
+                                    <div key={fav.id} className="flex justify-between items-center p-3 border-b last:border-none hover:bg-accent rounded-md">
                                         <div>
-                                            <p className="text-sm font-medium">{fav.name}</p>
+                                            <p className="text-sm font-semibold">{fav.name}</p>
                                             <p className="text-xs text-muted-foreground">{fav.type === 'route' ? `${fav.details.from} to ${fav.details.to}` : fav.details.address}</p>
                                         </div>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleFavorite(fav)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleFavorite(fav)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                     </div>
                                 ))}
                             </ScrollArea>
                         )}
-                        <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
+                        <DialogFooter className="mt-4"><DialogClose asChild><Button variant="outline" className="w-full">Close</Button></DialogClose></DialogFooter>
                     </DialogContent>
                 </Dialog>
 
                 {/* Feedback Dialog */}
                 <Dialog open={showFeedbackDialog} onOpenChange={setShowFeedbackDialog}>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>Submit Feedback</DialogTitle><DialogDescription>Help us improve National Bus Services.</DialogDescription></DialogHeader>
-                        <form onSubmit={handleSubmitFeedback} className="space-y-3 py-2">
-                            <Select value={feedbackCategory} onValueChange={setFeedbackCategory} required>
-                                <SelectTrigger><SelectValue placeholder="Select Category"/></SelectTrigger>
-                                <SelectContent>{mockFeedbackCategories.map(cat=><SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
-                            </Select>
-                            <div className="flex items-center justify-center space-x-1">{[1,2,3,4,5].map(r=><StarIcon key={r} className={cn("h-6 w-6 cursor-pointer", feedbackRating >=r ? "text-yellow-400 fill-yellow-400":"text-muted-foreground")} onClick={()=>setFeedbackRating(r)}/>)}</div>
-                            <Textarea placeholder="Enter your comments or suggestions (max 500 chars)" value={feedbackComment} onChange={e=>setFeedbackComment(e.target.value)} required maxLength={500}/>
-                            <DialogFooter>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader><DialogTitle className="text-lg">Submit Feedback</DialogTitle><DialogDescription>Help us improve National Bus Services.</DialogDescription></DialogHeader>
+                        <form onSubmit={handleSubmitFeedback} className="space-y-4 py-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="feedback-category">Category</Label>
+                                <Select value={feedbackCategory} onValueChange={setFeedbackCategory} required>
+                                    <SelectTrigger id="feedback-category"><SelectValue placeholder="Select Feedback Category"/></SelectTrigger>
+                                    <SelectContent>{mockFeedbackCategories.map(cat=><SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Rating</Label>
+                                <div className="flex items-center justify-center space-x-1.5 py-1">{[1,2,3,4,5].map(r=><StarIcon key={r} className={cn("h-7 w-7 cursor-pointer", feedbackRating >=r ? "text-yellow-400 fill-yellow-400":"text-muted-foreground hover:text-yellow-300")} onClick={()=>setFeedbackRating(r)}/>)}</div>
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="feedback-comment">Comments/Suggestions</Label>
+                                <Textarea id="feedback-comment" placeholder="Enter your comments or suggestions (max 500 chars)" value={feedbackComment} onChange={e=>setFeedbackComment(e.target.value)} required maxLength={500} rows={4}/>
+                            </div>
+                            <DialogFooter className="pt-2">
                                 <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
-                                <Button type="submit" disabled={isSubmittingFeedback}>{isSubmittingFeedback ? <Loader2 className="h-4 w-4 animate-spin"/> : "Submit Feedback"}</Button>
+                                <Button type="submit" disabled={isSubmittingFeedback}>{isSubmittingFeedback ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null} Submit Feedback</Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
@@ -491,12 +518,12 @@ export default function NationalBusServicesPage() {
 
                 {/* About Dialog */}
                 <Dialog open={showAboutDialog} onOpenChange={setShowAboutDialog}>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader><DialogTitle className="text-lg">About National Bus Services (NBS)</DialogTitle></DialogHeader>
-                        <ScrollArea className="max-h-[60vh] pr-3">
-                            <div className="text-sm text-muted-foreground whitespace-pre-line" dangerouslySetInnerHTML={{ __html: nbsAboutText.replace(/\n/g, '<br />') }} />
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader><DialogTitle className="text-xl">About National Bus Services (NBS)</DialogTitle></DialogHeader>
+                        <ScrollArea className="max-h-[70vh] pr-4 py-2">
+                            <div className="text-sm text-muted-foreground whitespace-pre-line" dangerouslySetInnerHTML={{ __html: nbsAboutText.replace(/\n\n/g, '<br/><br/>').replace(/\n- /g, '<br/>- ') }} />
                         </ScrollArea>
-                        <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
+                        <DialogFooter className="pt-2"><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
                     </DialogContent>
                 </Dialog>
 
@@ -509,8 +536,8 @@ export default function NationalBusServicesPage() {
                         </DialogHeader>
                         <div className="py-4 space-y-3">
                             {mockNbsEmergencyContacts.map(contact => (
-                                <Button key={contact.name} variant="destructive" className="w-full justify-start gap-2" onClick={() => window.location.href = `tel:${contact.number}`}>
-                                    <Phone className="h-4 w-4"/> Call {contact.name} ({contact.number})
+                                <Button key={contact.name} variant="destructive" className="w-full justify-start gap-2 text-base h-11" onClick={() => window.location.href = `tel:${contact.number}`}>
+                                    <Phone className="h-5 w-5"/> Call {contact.name} ({contact.number})
                                 </Button>
                             ))}
                             <p className="text-xs text-muted-foreground text-center pt-2">For app-related issues, use Customer Feedback.</p>
