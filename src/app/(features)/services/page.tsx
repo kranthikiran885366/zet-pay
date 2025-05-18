@@ -12,8 +12,9 @@ import {
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog,
   ScissorsLineDashed, MoreHorizontal, ReceiptText, BellRing, Target, CalendarClock, ListChecks, WandSparkles, Pill,
   FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon, GraduationCap, Play,
-  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, PillIcon, Stethoscope, FlaskConical,
-  BedSingle, RepeatIcon, LightbulbIcon, MessageSquare // Ensured all icons are here
+  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, BadgePercent, // Added BadgePercent
+  PillIcon, Stethoscope, FlaskConical,
+  BedSingle, RepeatIcon, LightbulbIcon, MessageSquare
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -263,38 +264,39 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // Added isLoading state
 
     useEffect(() => {
-        setIsLoading(true);
+        setIsLoading(true); // Set loading true at the start of the search
         const handleSearchChange = () => {
             const term = searchTerm.toLowerCase();
             if (!term.trim()) {
                 setGroupedServices(groupServicesByCategory(uniqueServices));
-                setIsLoading(false);
+                setIsLoading(false); // Set loading false when search is cleared
                 return;
             }
 
             const filtered: { [key: string]: Service[] } = {};
-            const initialGroupedServices = groupServicesByCategory(uniqueServices);
+            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Get the base grouping
             Object.keys(initialGroupedServices).forEach(category => {
                 const servicesInCategory = initialGroupedServices[category].filter(service =>
                     service.name.toLowerCase().includes(term) ||
                     (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
-                    category.toLowerCase().includes(term)
+                    category.toLowerCase().includes(term) // Also search by category name
                 );
                 if (servicesInCategory.length > 0) {
                     filtered[category] = servicesInCategory;
                 }
             });
             setGroupedServices(filtered);
-            setIsLoading(false);
+            setIsLoading(false); // Set loading false after filtering
         };
 
-        const timerId = setTimeout(handleSearchChange, 300);
-        return () => clearTimeout(timerId);
+        // Debounce search
+        const timerId = setTimeout(handleSearchChange, 300); // Debounce for 300ms
+        return () => clearTimeout(timerId); // Cleanup timer
 
-    }, [searchTerm]);
+    }, [searchTerm]); // Re-run on searchTerm change
 
 
     return (
@@ -305,8 +307,10 @@ export default function AllServicesPage() {
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                 </Link>
+                {/* Using Sparkles as a generic 'all services' icon */}
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
+                 {/* Search Input directly in header */}
                  <div className="relative w-full max-w-xs">
                     <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -344,7 +348,7 @@ export default function AllServicesPage() {
                  {!isLoading && Object.keys(groupedServices).length > 0 &&
                     Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
-                     if(servicesInCategory.length === 0) return null;
+                     if(servicesInCategory.length === 0) return null; // Don't render empty categories
 
                     return (
                          <Card key={category} className="shadow-md">
