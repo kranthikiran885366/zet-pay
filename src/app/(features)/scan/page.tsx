@@ -137,7 +137,6 @@ export default function ScanPage() {
         try {
           const profile = await getCurrentUserProfile();
           nameToUse = profile?.name || currentUser.displayName || "PayFriend User";
-          // Ensure upiId is fetched or generated safely
           upiIdToUse = profile?.upiId || (currentUser.uid ? `${currentUser.uid.substring(0,5)}@payfriend` : `guest@payfriend`);
         } catch (error) {
           console.error("Failed to fetch user data for QR:", error);
@@ -196,7 +195,7 @@ export default function ScanPage() {
   const stopCameraStream = useCallback(async (turnOffTorchIfOn = true) => {
     setIsScanningActive(false);
     if (videoRef.current && videoRef.current.srcObject) {
-        videoRef.current.pause(); // Pause before stopping tracks
+        videoRef.current.pause(); 
     }
     if (streamRef.current) {
       const tracks = streamRef.current.getTracks();
@@ -279,7 +278,7 @@ export default function ScanPage() {
     } catch (error: any) {
       console.error("QR Validation Error:", error);
       if (!isStealthSilentMode) toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
-      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, hasValidSignature: false, isReportedPreviously: false});
+      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, hasValidSignature: false, isReportedPreviously: false, upiId: parsedData.payeeAddress}); // Add upiId here
     } finally {
       setIsProcessingScan(false);
       if(auth.currentUser) fetchRecentScans();
@@ -298,12 +297,15 @@ export default function ScanPage() {
       setHasCameraPermission(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // Wait for metadata to load before playing
         videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
+            if (videoRef.current && !videoRef.current.paused) { // Check if already playing
                 videoRef.current.play().catch(e => console.error("Video play error after loadedmetadata:", e));
             }
         };
+        // Attempt to play if metadata is already loaded (e.g. switching tabs back)
+        if (videoRef.current.readyState >= videoRef.current.HAVE_METADATA && !videoRef.current.paused) {
+            videoRef.current.play().catch(e => console.error("Video play error on readyState:", e));
+        }
       }
 
       const videoTrack = stream.getVideoTracks()[0];
@@ -330,7 +332,7 @@ export default function ScanPage() {
             return;
         }
         if (isScanningActive && streamRef.current && !isProcessingScan && document.visibilityState === 'visible') {
-            if (Math.random() < 0.03) {
+            if (Math.random() < 0.03) { // Reduced frequency for mock scan
                  const mockQrData = Math.random() > 0.5
                     ? "upi://pay?pa=demomerchant@okbank&pn=Demo%20Store&am=100&tn=TestPayment&sign=MOCK_SIGNATURE_VALID"
                     : "upi://pay?pa=anotheruser@okupi&pn=Another%20User";
@@ -363,10 +365,10 @@ export default function ScanPage() {
     if (activeTab === 'scan' && !scannedUpiData && !isProcessingScan) {
         getCameraStream().then(cleanup => { cleanupScanInterval = cleanup; });
     } else {
-        stopCameraStream();
+        stopCameraStream(); 
     }
     return () => {
-        stopCameraStream();
+        stopCameraStream(true); // Ensure torch turns off when component unmounts
         if (cleanupScanInterval) cleanupScanInterval();
     };
   }, [activeTab, stopCameraStream, scannedUpiData, isProcessingScan, getCameraStream]);
@@ -910,7 +912,7 @@ export default function ScanPage() {
                     </Button>
                 </div>
                  <DialogFooter>
-                     <Button variant="ghost" onClick={() => setShowRepeatSuggestionModal(false)}>Close</Button>
+                     <DialogClose asChild><Button variant="ghost">Close</Button></DialogClose>
                  </DialogFooter>
             </DialogContent>
         </Dialog>
