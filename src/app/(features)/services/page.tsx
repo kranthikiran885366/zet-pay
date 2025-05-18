@@ -1,6 +1,7 @@
+
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Corrected import for Button
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
@@ -12,9 +13,8 @@ import {
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog,
   ScissorsLineDashed, MoreHorizontal, ReceiptText, BellRing, Target, CalendarClock, ListChecks, WandSparkles, Pill,
   FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon, GraduationCap, Play,
-  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, BadgePercent, // Added BadgePercent
-  PillIcon, Stethoscope, FlaskConical,
-  BedSingle, RepeatIcon, LightbulbIcon, MessageSquare
+  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama as DramaIcon, TrendingUp, BadgePercent, // Added all potentially missing icons with aliases if needed
+  PillIcon, Stethoscope, FlaskConical, BedSingle, RepeatIcon, LightbulbIcon, MessageSquare
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -98,7 +98,7 @@ const entertainmentGamingServices: Service[] = [
      { name: "Movies", icon: Clapperboard, href: "/movies", category: "Entertainment & Gaming", tags: ["cinema", "tickets", "bookmyshow"] },
      { name: "Events", icon: Ticket, href: "/entertainment/events", category: "Entertainment & Gaming", tags: ["concert", "show", "tickets"] },
      { name: "Sports Tickets", icon: Gamepad2, href: "/entertainment/sports", category: "Entertainment & Gaming", tags: ["ipl", "isl", "cricket", "football"] },
-     { name: "Comedy Shows", icon: Drama, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
+     { name: "Comedy Shows", icon: DramaIcon, href: "/entertainment/comedy", category: "Entertainment & Gaming", tags: ["standup", "tickets"] },
      { name: "OTT Subscriptions", icon: Tv, href: "/bills/subscription", category: "Entertainment & Gaming", tags: ["netflix", "hotstar", "prime"] },
      { name: "Gaming Vouchers", icon: Gamepad2, href: "/vouchers/gaming", category: "Entertainment & Gaming", tags: ["freefire", "pubg", "uc", "diamonds"] },
      { name: "Play Store Recharge", icon: Play, href: "/vouchers/digital", category: "Entertainment & Gaming", tags: ["google", "topup", "code"] },
@@ -174,7 +174,7 @@ const vouchersMoreServices: Service[] = [
 
 const paymentsServicesData: Service[] = [
     { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
-    { name: "Cash Withdrawal", icon: IndianRupee, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
+    { name: "Cash Withdrawal", icon: Banknote, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
     { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
 ];
@@ -264,39 +264,38 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
-    const [isLoading, setIsLoading] = useState(false); // Added isLoading state
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        setIsLoading(true); // Set loading true at the start of the search
+        setIsLoading(true);
         const handleSearchChange = () => {
             const term = searchTerm.toLowerCase();
             if (!term.trim()) {
                 setGroupedServices(groupServicesByCategory(uniqueServices));
-                setIsLoading(false); // Set loading false when search is cleared
+                setIsLoading(false);
                 return;
             }
 
             const filtered: { [key: string]: Service[] } = {};
-            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Get the base grouping
+            const initialGroupedServices = groupServicesByCategory(uniqueServices);
             Object.keys(initialGroupedServices).forEach(category => {
                 const servicesInCategory = initialGroupedServices[category].filter(service =>
                     service.name.toLowerCase().includes(term) ||
                     (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
-                    category.toLowerCase().includes(term) // Also search by category name
+                    category.toLowerCase().includes(term)
                 );
                 if (servicesInCategory.length > 0) {
                     filtered[category] = servicesInCategory;
                 }
             });
             setGroupedServices(filtered);
-            setIsLoading(false); // Set loading false after filtering
+            setIsLoading(false);
         };
 
-        // Debounce search
-        const timerId = setTimeout(handleSearchChange, 300); // Debounce for 300ms
-        return () => clearTimeout(timerId); // Cleanup timer
+        const timerId = setTimeout(handleSearchChange, 300);
+        return () => clearTimeout(timerId);
 
-    }, [searchTerm]); // Re-run on searchTerm change
+    }, [searchTerm]);
 
 
     return (
@@ -307,10 +306,8 @@ export default function AllServicesPage() {
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                 </Link>
-                {/* Using Sparkles as a generic 'all services' icon */}
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
-                 {/* Search Input directly in header */}
                  <div className="relative w-full max-w-xs">
                     <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -348,7 +345,7 @@ export default function AllServicesPage() {
                  {!isLoading && Object.keys(groupedServices).length > 0 &&
                     Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
-                     if(servicesInCategory.length === 0) return null; // Don't render empty categories
+                     if(servicesInCategory.length === 0) return null;
 
                     return (
                          <Card key={category} className="shadow-md">
