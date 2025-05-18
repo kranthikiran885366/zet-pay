@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,8 @@ import {
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog,
   ScissorsLineDashed, MoreHorizontal, ReceiptText, BellRing, Target, CalendarClock, ListChecks, WandSparkles, Pill,
   FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon, GraduationCap, Play,
-  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, Stethoscope, FlaskConical, BedSingle
+  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama, TrendingUp, PillIcon, Stethoscope, FlaskConical,
+  BedSingle, RepeatIcon, LightbulbIcon, MessageSquare // Ensured all icons are here
 } from "lucide-react";
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -111,8 +111,8 @@ const healthcareServicesData: Service[] = [
     { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
     { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
     { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
-    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
-    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
+    { name: "Order Medicines", icon: PillIcon, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
+    { name: "Medicine Subscription", icon: RepeatIcon, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
     { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
@@ -241,9 +241,8 @@ const groupServicesByCategory = (services: Service[]) => {
          if (category === "Travel & Transit") category = "Travel"; // Consolidate
 
          if (!grouped[category]) {
-             console.warn(`Service category "${category}" for "${service.name}" not found in defined order. Adding dynamically.`);
               if (!categoryOrder.includes(category)) {
-                  categoryOrder.push(category); // Add to order if truly new
+                  categoryOrder.push(category);
               }
               grouped[category] = [];
          }
@@ -264,10 +263,10 @@ const groupServicesByCategory = (services: Service[]) => {
 export default function AllServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [groupedServices, setGroupedServices] = useState(groupServicesByCategory(uniqueServices));
-    const [isLoading, setIsLoading] = useState(false); // Simulating loading state for search
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        setIsLoading(true); // Indicate loading when search term changes
+        setIsLoading(true);
         const handleSearchChange = () => {
             const term = searchTerm.toLowerCase();
             if (!term.trim()) {
@@ -277,12 +276,12 @@ export default function AllServicesPage() {
             }
 
             const filtered: { [key: string]: Service[] } = {};
-            const initialGroupedServices = groupServicesByCategory(uniqueServices); // Start with original grouping
+            const initialGroupedServices = groupServicesByCategory(uniqueServices);
             Object.keys(initialGroupedServices).forEach(category => {
                 const servicesInCategory = initialGroupedServices[category].filter(service =>
                     service.name.toLowerCase().includes(term) ||
                     (service.tags && service.tags.some(tag => tag.toLowerCase().includes(term))) ||
-                    category.toLowerCase().includes(term) // Include category name in search
+                    category.toLowerCase().includes(term)
                 );
                 if (servicesInCategory.length > 0) {
                     filtered[category] = servicesInCategory;
@@ -292,17 +291,14 @@ export default function AllServicesPage() {
             setIsLoading(false);
         };
 
-        // Debounce the search to avoid excessive re-renders
-        const timerId = setTimeout(handleSearchChange, 300); // Adjust delay as needed
-
-        return () => clearTimeout(timerId); // Cleanup timer
+        const timerId = setTimeout(handleSearchChange, 300);
+        return () => clearTimeout(timerId);
 
     }, [searchTerm]);
 
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-2 shadow-md">
                 <Link href="/" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -311,7 +307,6 @@ export default function AllServicesPage() {
                 </Link>
                 <Sparkles className="h-6 w-6" />
                 <h1 className="text-lg font-semibold flex-grow">All Services</h1>
-                 {/* Search Bar in Header */}
                  <div className="relative w-full max-w-xs">
                     <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -324,7 +319,6 @@ export default function AllServicesPage() {
                 </div>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
                  {isLoading && (
                     <div className="flex justify-center items-center py-10">
@@ -339,7 +333,7 @@ export default function AllServicesPage() {
                          </CardContent>
                      </Card>
                  )}
-                  {!isLoading && Object.keys(groupedServices).length === 0 && !searchTerm && ( // Handle case where all services are empty initially (unlikely but safe)
+                  {!isLoading && Object.keys(groupedServices).length === 0 && !searchTerm && (
                      <Card className="shadow-md text-center">
                          <CardContent className="p-6">
                               <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4"/>
@@ -350,7 +344,6 @@ export default function AllServicesPage() {
                  {!isLoading && Object.keys(groupedServices).length > 0 &&
                     Object.keys(groupedServices).map((category) => {
                      const servicesInCategory = groupedServices[category];
-                     // Only render the category card if there are services in it (after filtering)
                      if(servicesInCategory.length === 0) return null;
 
                     return (
