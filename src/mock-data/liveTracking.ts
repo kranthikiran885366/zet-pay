@@ -7,7 +7,7 @@ export interface BusRoute {
     id: string;
     operator: string;
     type: string; 
-    serviceType?: string; 
+    serviceType?: string; // e.g., 'Volvo AC', 'Non-AC Seater', 'AC Sleeper'
     from: string;
     to: string;
     departureTime: string;
@@ -27,7 +27,7 @@ export interface BusRoute {
 export const mockBusLiveStatusData: BusLiveStatus = {
     busNumber: 'KA01F1234', // Default example
     routeName: 'Route 500D - Majestic to Silk Board',
-    operatorName: 'BMTC',
+    operatorName: 'BMTC (Example)',
     vehicleType: 'Volvo AC',
     currentLocationDescription: `Near Forum Mall, Koramangala (${format(new Date(), 'p')})`,
     nextStop: "St. John's Hospital",
@@ -64,7 +64,7 @@ export const mockTrainLiveStatusData: TrainLiveStatus = {
         { stationName: "Bengaluru Cantt.", stationCode: "BNC", scheduledArrival: "22:50", actualArrival: "22:56", scheduledDeparture: "22:52", actualDeparture: "22:58", status: 'Departed', delayMinutes: 6, platform: 2, dayOfJourney: 1 },
         { stationName: "Jolarpettai Jn", stationCode: "JTJ", scheduledArrival: "01:08", actualArrival: "01:15", scheduledDeparture: "01:10", actualDeparture: "01:18", status: 'Departed', delayMinutes: 8, platform: 3, dayOfJourney: 2 },
         { stationName: "Katpadi Jn", stationCode: "KPD", scheduledArrival: "02:23", actualArrival: "02:35", scheduledDeparture: "02:25", actualDeparture: "02:40", status: 'Departed', delayMinutes: 15, platform: 2, dayOfJourney: 2 },
-        { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", status: 'Upcoming', delayMinutes: 12, platform: 1, dayOfJourney: 2 },
+        { stationName: "Arakkonam Jn", stationCode: "AJJ", scheduledArrival: "03:18", status: 'Upcoming', delayMinutes: 12, platform: 1, dayOfJourney: 2 }, 
         { stationName: "Perambur", stationCode: "PER", scheduledArrival: "04:08", status: 'Upcoming', platform: 3, dayOfJourney: 2 },
         { stationName: "MGR Chennai Central", stationCode: "MAS", scheduledArrival: "04:30", status: 'Upcoming', platform: 5, dayOfJourney: 2 },
     ],
@@ -87,12 +87,38 @@ export interface NearbyBusStop {
     distance: string;
     city: string;
     services?: string[]; 
+    latitude?: number;
+    longitude?: number;
+    amenities?: string[]; // Added amenities
 }
 export const mockNearbyBusStopsData: NearbyBusStop[] = [
-    { id: 'stop1', name: 'Majestic Bus Station', distance: '0.5 km', city: 'Bangalore', services: ['BMTC', 'KSRTC'] },
-    { id: 'stop2', name: 'Koyambedu Omni Bus Stand', distance: '1.2 km', city: 'Chennai', services: ['SETC', 'Private Omni'] },
-    { id: 'stop3', name: 'MGBS Hyderabad', distance: '0.8 km', city: 'Hyderabad', services: ['TSRTC', 'Interstate'] },
+    { id: 'stop1', name: 'Majestic Bus Station', distance: '0.5 km', city: 'Bangalore', services: ['BMTC', 'KSRTC'], latitude: 12.9767, longitude: 77.5713, amenities: ['Shelter', 'Ticket Counter'] },
+    { id: 'stop2', name: 'Koyambedu Omni Bus Stand', distance: '1.2 km', city: 'Chennai', services: ['SETC', 'Private Omni'], latitude: 13.0713, longitude: 80.1911, amenities: ['Shelter', 'Restroom'] },
+    { id: 'stop3', name: 'MGBS Hyderabad', distance: '0.8 km', city: 'Hyderabad', services: ['TSRTC', 'Interstate'], latitude: 17.3700, longitude: 78.4800, amenities: ['Shelter', 'Food Stalls', 'Ticket Counter'] },
+    { id: 'stop4', name: 'Indiranagar Bus Stop', distance: '0.3 km', city: 'Bangalore', services: ['BMTC'], latitude: 12.9719, longitude: 77.6412, amenities: ['Shelter'] },
+    { id: 'stop5', name: 'Shivaji Nagar Bus Terminal', distance: '2.1 km', city: 'Pune', services: ['PMPML'], latitude: 18.5308, longitude: 73.8533, amenities: ['Shelter', 'Ticket Counter', 'Enquiry'] },
 ];
+
+export interface UpcomingBusArrival {
+    routeNo: string;
+    destination: string;
+    eta: string; // e.g., "5 mins", "10:30 AM", "Due"
+    type?: string; // e.g., "AC Volvo", "Express"
+    vehicleNo?: string;
+    isLive?: boolean; // Is live tracking available for this bus
+}
+export const mockUpcomingBusArrivalsData: { [stopId: string]: UpcomingBusArrival[] } = {
+    'stop1': [
+        { routeNo: '500D', destination: 'Silk Board', eta: '5 mins', type: 'AC Volvo', vehicleNo: 'KA01F1234', isLive: true },
+        { routeNo: '335E', destination: 'KR Market', eta: '12 mins', type: 'Ordinary', vehicleNo: 'KA05G5678', isLive: false },
+        { routeNo: '201R', destination: 'Yeshwantpur', eta: 'Due', type: 'Express', vehicleNo: 'KA02H9101', isLive: true },
+    ],
+    'stop4': [
+        { routeNo: '138', destination: 'Shivajinagar', eta: '2 mins', type: 'AC Volvo', vehicleNo: 'KA01F9876', isLive: true },
+        { routeNo: 'G3', destination: 'Domlur', eta: '10 mins', type: 'Ordinary', vehicleNo: 'KA03M1122', isLive: false },
+    ],
+};
+
 
 export interface ReservationStatus {
     reservationId: string;
@@ -188,7 +214,7 @@ export const searchMockBusRoutes = async (from: string, to: string, date: string
     );
 };
 
-export const findMockNearbyStops = async (lat: number, lon: number): Promise<NearbyBusStop[]> => {
+export const findMockNearbyStops = async (lat: number, lon: number): Promise<DisplayBusStop[]> => {
     await new Promise(resolve => setTimeout(resolve, 800));
     return mockNearbyBusStopsData.map(stop => ({...stop, distance: `${(Math.random() * 5).toFixed(1)} km`}));
 };
