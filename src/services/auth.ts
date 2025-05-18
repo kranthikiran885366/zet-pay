@@ -45,8 +45,8 @@ export async function sendOtpToPhoneNumber(phoneNumber: string, appVerifier: Fir
         } else if (error.code === 'auth/too-many-requests') {
             errorMessage = "Too many OTP requests. Please try again later.";
         } else if (error.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') {
-            errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration in src/lib/firebase.ts and ensure it matches your Firebase project.";
-        } else if (error.code === 'auth/operation-not-allowed' || error.message.includes('PHONE_NUMBER_SIGN_IN_NOT_ENABLED')) {
+             errorMessage = "Firebase API Key is invalid. Please check your Firebase configuration in src/lib/firebase.ts and ensure it matches your Firebase project.";
+        } else if (error.code === 'auth/operation-not-allowed' || error.message?.includes('PHONE_NUMBER_SIGN_IN_NOT_ENABLED') || error.message?.includes('MISSING_PHONE_AUTH_PERMISSION')) {
             errorMessage = "Phone number sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication -> Sign-in method).";
         }
         throw new Error(errorMessage);
