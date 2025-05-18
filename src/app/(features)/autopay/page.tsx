@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Repeat, PlusCircle, Trash2, Loader2, Info, Banknote, CalendarDays, AlertCircle, UserLock } from 'lucide-react'; // Added UserLock
+import { ArrowLeft, Repeat, PlusCircle, Trash2, Loader2, Info, Banknote, CalendarDays, AlertCircle, LogIn } from 'lucide-react'; // Changed UserLock to LogIn
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from '@/hooks/use-toast';
@@ -12,6 +13,7 @@ import { getMandates, cancelMandate, Mandate } from '@/services/autopay'; // Imp
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { auth } from '@/lib/firebase'; // Import auth
+import { useRouter } from 'next/navigation'; // Import useRouter for redirect
 
 export default function AutopayPage() {
     const [mandates, setMandates] = useState<Mandate[]>([]);
@@ -19,6 +21,7 @@ export default function AutopayPage() {
     const [isCancelling, setIsCancelling] = useState<string | null>(null); // Track which mandate is being cancelled
     const [authError, setAuthError] = useState<string | null>(null); // State for auth-specific errors
     const { toast } = useToast();
+    const router = useRouter();
 
     // Fetch mandates on mount
     useEffect(() => {
@@ -36,11 +39,18 @@ export default function AutopayPage() {
 
             try {
                 const fetchedMandates = await getMandates();
-                setMandates(fetchedMandates);
+                setMandates(fetchedMandates.map(m => ({
+                    ...m,
+                    startDate: new Date(m.startDate),
+                    validUntil: new Date(m.validUntil),
+                    createdAt: m.createdAt ? new Date(m.createdAt) : undefined,
+                    updatedAt: m.updatedAt ? new Date(m.updatedAt) : undefined,
+                })));
             } catch (error: any) {
                 console.error("Failed to fetch mandates:", error);
                 if (error.message === "User not authenticated.") {
                     setAuthError("Authentication error. Please log in again.");
+                    // router.push('/login?redirect=/autopay'); // Optional redirect
                 } else {
                     toast({ variant: "destructive", title: "Error Loading Mandates", description: error.message || "Could not load autopay mandates." });
                 }
@@ -49,19 +59,28 @@ export default function AutopayPage() {
                 setIsLoading(false);
             }
         };
-        fetchMandates();
+        // Listen for auth state changes to refetch mandates if user logs in/out
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) {
+                fetchMandates();
+            } else {
+                setAuthError("Please log in to view your Autopay mandates.");
+                setIsLoading(false);
+                setMandates([]);
+            }
+        });
+
+        return () => unsubscribe(); // Cleanup the listener
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toast]);
 
     const handleCancelMandate = async (mandateId: string) => {
+        if (!mandateId) return;
         setIsCancelling(mandateId);
         try {
-            // No need to call cancelMandate from service if it's just a placeholder
-            // const success = await cancelMandate(mandateId); 
-            // Simulate backend call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const success = true; // Assume success for mock
+            const success = await cancelMandate(mandateId);
 
-            if (success) {
+            if (success) { // Check if service call was successful
                 setMandates(prev => prev.map(m => m.id === mandateId ? { ...m, status: 'Cancelled' } : m));
                 toast({ title: "Mandate Cancelled", description: `Mandate ID ${mandateId} has been cancelled.` });
             } else {
@@ -81,6 +100,7 @@ export default function AutopayPage() {
             case 'Paused': return 'secondary';
             case 'Cancelled': return 'outline';
             case 'Failed': return 'destructive';
+            case 'Pending Approval': return 'secondary';
             default: return 'secondary';
         }
     }
@@ -112,7 +132,7 @@ export default function AutopayPage() {
 
             {/* Main Content */}
             <main className="flex-grow p-4 space-y-6 pb-20">
-                 <Button className="w-full" variant="outline" onClick={() => alert("Setup New Mandate Flow (Not Implemented)")}>
+                 <Button className="w-full" variant="outline" onClick={() => router.push('/autopay/setup')}>
                     <PlusCircle className="mr-2 h-4 w-4" /> Setup New Autopay
                 </Button>
 
@@ -129,7 +149,7 @@ export default function AutopayPage() {
 
                         {!isLoading && authError && (
                             <div className="text-center py-6 text-muted-foreground">
-                                <UserLock className="h-12 w-12 mx-auto mb-3 text-destructive" />
+                                <LogIn className="h-12 w-12 mx-auto mb-3 text-destructive" />
                                 <p>{authError}</p>
                                 <Link href="/login" passHref>
                                     <Button variant="link" className="mt-2">Login Now</Button>
