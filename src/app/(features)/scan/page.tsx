@@ -64,7 +64,7 @@ const parseUpiUrl = (url: string): ParsedUpiData => {
 
 const RECENT_SCANS_KEY = 'payfriend_recent_scans_local';
 const RECENT_SCANS_MAX_LOCAL = 5;
-const RECENT_SCAN_COOLDOWN_MS = 15000;
+const RECENT_SCAN_COOLDOWN_MS = 15000; // 15 seconds
 
 interface RecentScanEntry {
     qrDataHash: string;
@@ -196,6 +196,7 @@ export default function ScanPage() {
     setIsScanningActive(false);
     if (videoRef.current && videoRef.current.srcObject) {
         videoRef.current.pause(); 
+        videoRef.current.srcObject = null; // Release the stream
     }
     if (streamRef.current) {
       const tracks = streamRef.current.getTracks();
@@ -206,7 +207,6 @@ export default function ScanPage() {
         track.stop();
       }
       streamRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
       if (turnOffTorchIfOn) setTorchOn(false);
       console.log("[Client Scan] Camera stream stopped.");
     }
@@ -220,7 +220,8 @@ export default function ScanPage() {
     }
     if (isProcessingScan) return;
 
-    await stopCameraStream(false);
+    // Stop camera before processing to avoid multiple scans and save resources
+    await stopCameraStream(false); // Keep torch as is if it was on
     setIsProcessingScan(true);
     setRawScannedText(data);
     if (!isStealthSilentMode) toast({ title: "QR Code Scanned", description: "Validating details..." });
@@ -278,7 +279,7 @@ export default function ScanPage() {
     } catch (error: any) {
       console.error("QR Validation Error:", error);
       if (!isStealthSilentMode) toast({ variant: "destructive", title: "Validation Error", description: error.message || "Could not validate QR code." });
-      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, hasValidSignature: false, isReportedPreviously: false, upiId: parsedData.payeeAddress}); // Add upiId here
+      setValidationResult({isBlacklisted: false, isVerifiedMerchant: false, hasValidSignature: false, isReportedPreviously: false, upiId: parsedData.payeeAddress}); 
     } finally {
       setIsProcessingScan(false);
       if(auth.currentUser) fetchRecentScans();
@@ -288,6 +289,7 @@ export default function ScanPage() {
   const getCameraStream = useCallback(async () => {
     setHasCameraPermission(null);
     setTorchSupported(false);
+    setIsScanningActive(false); // Ensure scanning is not active until stream is ready
 
     if (streamRef.current) await stopCameraStream(false);
 
@@ -297,15 +299,28 @@ export default function ScanPage() {
       setHasCameraPermission(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Use a promise for play() and ensure it's called only after metadata loaded
         videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current && !videoRef.current.paused) { // Check if already playing
-                videoRef.current.play().catch(e => console.error("Video play error after loadedmetadata:", e));
+            if (videoRef.current) {
+                videoRef.current.play().then(() => {
+                    console.log("[Client Scan] Video play started.");
+                    setIsScanningActive(true); // Start scanning loop only after play is successful
+                }).catch(e => {
+                    console.error("Error playing video:", e);
+                    toast({variant: "destructive", title: "Camera Play Error", description: "Could not start camera preview."});
+                });
             }
         };
-        // Attempt to play if metadata is already loaded (e.g. switching tabs back)
-        if (videoRef.current.readyState >= videoRef.current.HAVE_METADATA && !videoRef.current.paused) {
-            videoRef.current.play().catch(e => console.error("Video play error on readyState:", e));
-        }
+         // Handle cases where metadata might already be loaded
+         if (videoRef.current.readyState >= videoRef.current.HAVE_METADATA) {
+             videoRef.current.play().then(() => {
+                 console.log("[Client Scan] Video play started (readyState).");
+                 setIsScanningActive(true);
+             }).catch(e => {
+                 console.error("Error playing video (readyState):", e);
+                 toast({variant: "destructive", title: "Camera Play Error", description: "Could not start camera preview on readyState."});
+             });
+         }
       }
 
       const videoTrack = stream.getVideoTracks()[0];
@@ -324,7 +339,7 @@ export default function ScanPage() {
             } catch(e) { console.warn("Error auto-activating torch:", e); }
         }
       }
-      setIsScanningActive(true);
+      // setIsScanningActive(true); // Moved inside play().then()
 
       const scanInterval = setInterval(async () => {
         if (!auth.currentUser) {
@@ -332,12 +347,12 @@ export default function ScanPage() {
             return;
         }
         if (isScanningActive && streamRef.current && !isProcessingScan && document.visibilityState === 'visible') {
-            if (Math.random() < 0.03) { // Reduced frequency for mock scan
+            if (Math.random() < 0.03) { 
                  const mockQrData = Math.random() > 0.5
                     ? "upi://pay?pa=demomerchant@okbank&pn=Demo%20Store&am=100&tn=TestPayment&sign=MOCK_SIGNATURE_VALID"
                     : "upi://pay?pa=anotheruser@okupi&pn=Another%20User";
                  await handleScannedData(mockQrData);
-                 clearInterval(scanInterval);
+                 clearInterval(scanInterval); // Stop interval after a scan
             }
         } else if (!isScanningActive || !streamRef.current) {
             clearInterval(scanInterval);
@@ -368,7 +383,7 @@ export default function ScanPage() {
         stopCameraStream(); 
     }
     return () => {
-        stopCameraStream(true); // Ensure torch turns off when component unmounts
+        stopCameraStream(true); 
         if (cleanupScanInterval) cleanupScanInterval();
     };
   }, [activeTab, stopCameraStream, scannedUpiData, isProcessingScan, getCameraStream]);
@@ -586,14 +601,15 @@ export default function ScanPage() {
           setRawScannedText(fav.qrData);
           setScannedUpiData(parsed);
           setValidationResult({
-              isVerifiedMerchant: true,
-              isBlacklisted: false,
+              isVerifiedMerchant: true, // Assume favorite is somewhat verified, or fetch fresh validation
+              isBlacklisted: false, // Assume not blacklisted if favorite, or re-validate
               isReportedPreviously: false,
               merchantNameFromDb: fav.payeeName,
               upiId: fav.payeeUpi,
               isFavorite: true,
               customTagName: fav.customTagName,
               pastPaymentSuggestions: fav.defaultAmount ? [fav.defaultAmount] : [],
+              hasValidSignature: true, // Assume valid if saved, or re-validate
           });
            const amountToPay = fav.defaultAmount || (parsed.amount ? Number(parsed.amount) : undefined);
            proceedToPayment(amountToPay);
@@ -919,3 +935,6 @@ export default function ScanPage() {
     </div>
   );
 }
+
+
+    
