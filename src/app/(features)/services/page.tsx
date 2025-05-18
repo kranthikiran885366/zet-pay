@@ -1,19 +1,19 @@
 
 'use client';
 
-import { Button } from "@/components/ui/button"; // Corrected import for Button
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
 import {
   ArrowLeft, Landmark, PlusCircle, Trash2, CheckCircle, Copy, Loader2, Smartphone, Tv, Bolt, Droplet, ShieldCheck, RadioTower,
   Banknote, Tag, LifeBuoy, Wifi, FileText, Bus, Ticket, Clapperboard, TramFront, Train, MapPin, UtensilsCrossed, Gamepad2,
-  HardDrive, Power, Mailbox, CreditCard, Settings, Info, History, ParkingMeter, Fuel, CarTaxiFront as TaxiIcon, PhoneCall,
+  HardDrive, Power, Mailbox, CreditCard, Settings, Info, History, ParkingMeter, Fuel as FuelIconLucide, CarTaxiFront as TaxiIcon, PhoneCall, // Renamed Fuel to FuelIconLucide
   Plane, ShoppingBag, Gift as GiftIcon, Home as HomeIcon, Car, Bike as MotorbikeIcon, CalendarCheck, Video, Sparkles,
   ShoppingBasket, HeartHandshake, Music, Map as MapIcon, Hotel, Users, QrCode, Clock, Briefcase, Database, Gauge, Coins,
   Building2, Zap, Siren, Store, HeartPulse, Wrench, SprayCan, WashingMachine, Scissors, Package, BriefcaseBusiness, Dog,
   ScissorsLineDashed, MoreHorizontal, ReceiptText, BellRing, Target, CalendarClock, ListChecks, WandSparkles, Pill,
   FolderHeart, BedDouble, Dumbbell, Repeat, FolderLock, PiggyBank, Search as SearchIcon, GraduationCap, Play,
-  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama as DramaIcon, TrendingUp, BadgePercent, // Added all potentially missing icons with aliases if needed
+  ThermometerSnowflake, Flame, HandCoins, Wallet as WalletIcon, Star, Drama as DramaIcon, TrendingUp, BadgePercent,
   PillIcon, Stethoscope, FlaskConical, BedSingle, RepeatIcon, LightbulbIcon, MessageSquare
 } from "lucide-react";
 import Image from 'next/image';
@@ -112,8 +112,8 @@ const healthcareServicesData: Service[] = [
     { name: "Doctor Appointments", icon: Stethoscope, href: "/healthcare/doctor", category: "Healthcare & Wellness", tags: ["consult", "clinic", "hospital"] },
     { name: "Video Consultation", icon: Video, href: "/healthcare/video-consult", category: "Healthcare & Wellness", tags: ["online", "telemedicine", "doctor"] },
     { name: "Lab Tests", icon: FlaskConical, href: "/healthcare/lab", category: "Healthcare & Wellness", tags: ["blood", "sample", "diagnostic", "report"] },
-    { name: "Order Medicines", icon: PillIcon, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
-    { name: "Medicine Subscription", icon: RepeatIcon, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
+    { name: "Order Medicines", icon: Pill, href: "/healthcare/pharmacy", category: "Healthcare & Wellness", tags: ["pharmacy", "delivery", "prescription"] },
+    { name: "Medicine Subscription", icon: Repeat, href: "/healthcare/med-subscription", category: "Healthcare & Wellness", tags: ["refill", "auto", "repeat"] },
     { name: "Hospital Beds/OPD", icon: BedDouble, href: "/healthcare/hospital", category: "Healthcare & Wellness", tags: ["admission", "emergency", "appointment"] },
     { name: "Fitness Trainers", icon: Dumbbell, href: "/healthcare/fitness", category: "Healthcare & Wellness", tags: ["gym", "yoga", "coach", "personal"] },
     { name: "Health Wallet", icon: FolderHeart, href: "/healthcare/wallet", category: "Healthcare & Wellness", tags: ["records", "report", "prescription", "digital"] },
@@ -173,7 +173,7 @@ const vouchersMoreServices: Service[] = [
 ];
 
 const paymentsServicesData: Service[] = [
-    { name: "Fuel Payment", icon: Fuel, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
+    { name: "Fuel Payment", icon: FuelIconLucide, href: "/fuel", category: "Payments", tags: ["petrol", "diesel", "bunk", "station"] },
     { name: "Cash Withdrawal", icon: Banknote, href: "/cash-withdrawal", category: "Payments", tags: ["atm", "cardless", "agent"] },
     { name: "Cab/Taxi Bill Pay", icon: TaxiIcon, href: "/cab", category: "Payments", tags: ["ola", "uber", "ride"] },
     { name: "Autopay (Mandates)", icon: Repeat, href: "/autopay", category: "Payments", tags: ["recurring", "subscription", "emi", "sip"]},
@@ -204,10 +204,10 @@ const allServices: Service[] = [
     ...healthcareServicesData,
     ...hyperlocalServicesData,
     ...municipalServicesData,
+    ...eventsCelebrationsServices,
     ...utilityToolsServices,
     ...vouchersMoreServices,
     ...paymentsServicesData,
-    ...eventsCelebrationsServices,
     ...aiAndToolsServices,
 ];
 
