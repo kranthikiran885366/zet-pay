@@ -15,11 +15,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, addDays, differenceInMinutes, differenceInDays, isValid, isBefore } from "date-fns"; // Added isBefore
+import { format, addDays, differenceInMinutes, differenceInDays, isValid, isBefore } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import Image from 'next/image';
@@ -100,7 +100,7 @@ export default function RechargePage() {
   const [detectedOperator, setDetectedOperator] = useState<Biller | null>(null);
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false); 
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoadingBillers, setIsLoadingBillers] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isManualOperatorSelect, setIsManualOperatorSelect] = useState(false);
@@ -130,12 +130,131 @@ export default function RechargePage() {
   const details = rechargeTypeDetails[rechargePageType] || rechargeTypeDetails.mobile;
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Moved Callback Definitions Up
+  const fetchHistory = useCallback(async (num: string) => {
+    if (!num || !isLoggedIn) return;
+    setIsHistoryLoading(true);
+    try {
+        console.log(`Fetching history for ${rechargePageType}: ${num}`);
+        const filters: TransactionFilters = {
+             type: 'Recharge',
+             searchTerm: num,
+             limit: 5
+        };
+        const history = await getTransactionHistory(filters);
+        setRechargeHistory(history);
+        setShowHistory(history.length > 0);
+    } catch (error) {
+        console.error("Failed to fetch recharge history:", error);
+        setShowHistory(false);
+    } finally {
+        setIsHistoryLoading(false);
+    }
+  }, [isLoggedIn, rechargePageType]);
+
+  const detectMobileOperator = useCallback(async () => {
+    if (!identifier || !identifier.match(/^[6-9]\d{9}$/)) return;
+    setIsDetecting(true);
+    setDetectedOperator(null);
+    setDetectedRegion(null);
+    setIsManualOperatorSelect(false);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      let mockOperator: Biller | undefined;
+      if (identifier.startsWith('98') || identifier.startsWith('99')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('airtel'));
+      else if (identifier.startsWith('70') || identifier.startsWith('80')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio'));
+      else if (identifier.startsWith('91') || identifier.startsWith('92')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('vi'));
+      else mockOperator = billers[0];
+
+      const mockRegion = "Karnataka";
+
+      if (mockOperator) {
+        setDetectedOperator(mockOperator);
+        setDetectedRegion(mockRegion);
+        setSelectedBiller(mockOperator.billerId);
+        toast({ title: "Operator & Region Detected", description: `${mockOperator.billerName} - ${mockRegion}` });
+      } else {
+        throw new Error("Could not determine operator from current biller list.");
+      }
+    } catch (error) {
+      console.error("Failed to detect mobile operator/region:", error);
+      toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect operator/region. Please select manually." });
+      setIsManualOperatorSelect(true);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [identifier, billers, toast]);
+
+  const detectDthOperator = useCallback(async () => {
+    if (!identifier || identifier.length <= 5) return;
+    setIsDetecting(true);
+    setDetectedOperator(null);
+    setDetectedRegion(null);
+    setIsManualOperatorSelect(false);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      let mockOperator: Biller | undefined;
+      if (identifier.startsWith('1')) mockOperator = billers.find(b => b.billerId === 'tata-play');
+      else if (identifier.startsWith('2')) mockOperator = billers.find(b => b.billerId === 'dish-tv');
+      else if (identifier.startsWith('3')) mockOperator = billers.find(b => b.billerId === 'airtel-dth');
+      else mockOperator = billers.find(b => b.billerId === 'd2h');
+
+      if (mockOperator) {
+        setDetectedOperator(mockOperator);
+        setSelectedBiller(mockOperator.billerId);
+        toast({ title: "DTH Operator Detected", description: `${mockOperator.billerName}` });
+      } else {
+        throw new Error("Could not determine DTH operator from current biller list.");
+      }
+    } catch (error) {
+      console.error("Failed to detect DTH operator:", error);
+      toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect DTH operator. Please select manually." });
+      setIsManualOperatorSelect(true);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [identifier, billers, toast]);
+
+  const detectFastagOperator = useCallback(async () => {
+     if (!identifier || identifier.length <= 10) return;
+     setIsDetecting(true);
+     setDetectedOperator(null);
+     setIsManualOperatorSelect(false);
+     try {
+       await new Promise(resolve => setTimeout(resolve, 900));
+       let mockOperator: Biller | undefined;
+       if (identifier.toUpperCase().startsWith('KA')) {
+            mockOperator = billers.find(b => b.billerId === 'icici-fastag') || billers.find(b => b.billerId === 'axis-fastag');
+       } else if (identifier.toUpperCase().startsWith('MH')) {
+            mockOperator = billers.find(b => b.billerId === 'hdfc-fastag');
+       } else {
+            mockOperator = billers.find(b => b.billerId === 'paytm-fastag');
+       }
+        if (!mockOperator && billers.length > 0) mockOperator = billers[0];
+
+       if (mockOperator) {
+           setDetectedOperator(mockOperator);
+           setSelectedBiller(mockOperator.billerId);
+           toast({ title: "FASTag Issuer Detected", description: `${mockOperator.billerName}` });
+       } else {
+           throw new Error("Could not determine FASTag issuer bank from current biller list.");
+       }
+     } catch (error) {
+         console.error("Failed to detect FASTag issuer:", error);
+         toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect FASTag issuer. Please select manually." });
+         setIsManualOperatorSelect(true);
+     } finally {
+         setIsDetecting(false);
+     }
+ }, [identifier, billers, toast]);
+
+
   // Check login status
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
       setIsLoggedIn(!!user);
       if (!user) {
-        setIsLoadingBillers(false); 
+        setIsLoadingBillers(false);
         setIsBalanceLoading(false);
       }
     });
@@ -143,7 +262,7 @@ export default function RechargePage() {
   }, []);
 
    useEffect(() => {
-    if (isLoggedIn === null) return; 
+    if (isLoggedIn === null) return;
 
     const fetchBalance = async () => {
       if (!isLoggedIn) {
@@ -157,7 +276,7 @@ export default function RechargePage() {
          setAccountBalance(balance);
       } catch (err) {
         console.error("Failed to fetch wallet balance:", err);
-        setAccountBalance(0); 
+        setAccountBalance(0);
       } finally {
         setIsBalanceLoading(false);
       }
@@ -167,12 +286,12 @@ export default function RechargePage() {
 
 
   useEffect(() => {
-    if (isLoggedIn === null) return; 
+    if (isLoggedIn === null) return;
 
     async function fetchBillersData() {
       if (!isLoggedIn || !details.billerTypeForAPI) {
         setIsLoadingBillers(false);
-        setBillers(mockBillersData[details.billerTypeForAPI] || []); 
+        setBillers(mockBillersData[details.billerTypeForAPI] || []);
         return;
       }
 
@@ -187,7 +306,7 @@ export default function RechargePage() {
             setBillers(mockBillersData[details.billerTypeForAPI] || []);
         } else {
             setError('Failed to load operators. Please try again.');
-            setBillers(mockBillersData[details.billerTypeForAPI] || []); 
+            setBillers(mockBillersData[details.billerTypeForAPI] || []);
             toast({ variant: "destructive", title: "Could not load operators" });
         }
         console.error(err);
@@ -199,26 +318,25 @@ export default function RechargePage() {
   }, [isLoggedIn, details.billerTypeForAPI, toast]);
 
    useEffect(() => {
-     let shouldFetch = false;
+     let shouldFetchHistory = false;
      if (rechargePageType === 'mobile' && identifier.match(/^[6-9]\d{9}$/)) {
-       shouldFetch = true;
+       shouldFetchHistory = true;
      } else if (rechargePageType === 'dth' && identifier.length > 5) {
-       shouldFetch = true;
+       shouldFetchHistory = true;
      } else if (rechargePageType === 'fastag' && identifier.length > 10) {
-        shouldFetch = true;
+        shouldFetchHistory = true;
      } else if (rechargePageType === 'datacard' && identifier.length > 5) {
-        shouldFetch = true;
+        shouldFetchHistory = true;
      }
 
-     if (shouldFetch && isLoggedIn) { 
+     if (shouldFetchHistory && isLoggedIn) {
        fetchHistory(identifier);
      } else {
        setRechargeHistory([]);
        setShowHistory(false);
      }
-   }, [identifier, rechargePageType, isLoggedIn]);
 
-   useEffect(() => {
+     // Operator detection logic
      if (rechargePageType === 'mobile' && identifier.match(/^[6-9]\d{9}$/) && !selectedBiller && !isManualOperatorSelect) {
        detectMobileOperator();
      } else if (rechargePageType === 'dth' && identifier.length > 5 && !selectedBiller && !isManualOperatorSelect) {
@@ -237,7 +355,39 @@ export default function RechargePage() {
         setSelectedBiller('');
         setRechargePlans([]);
      }
-   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator, detectDthOperator, detectFastagOperator]);
+   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator, detectDthOperator, detectFastagOperator, isLoggedIn, fetchHistory, selectedBiller]);
+
+
+  const fetchRechargePlans = useCallback(async () => {
+    const billerToFetch = selectedBiller || detectedOperator?.billerId;
+    if (!billerToFetch) return;
+
+    setIsPlanLoading(true);
+    setRechargePlans([]);
+    try {
+      console.log(`Fetching plans for ${selectedBillerName || detectedOperator?.billerName} (${billerToFetch}) - Type: ${rechargePageType}`);
+      const fetchedPlans = await getRechargePlans(billerToFetch, rechargePageType, identifier);
+      if (fetchedPlans && fetchedPlans.length > 0) {
+        setRechargePlans(fetchedPlans);
+      } else {
+         if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
+         else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
+         else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
+         else setRechargePlans([]);
+         if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
+      }
+    } catch (error) {
+      console.error("Failed to fetch recharge plans:", error);
+      toast({ variant: "destructive", title: "Could not load recharge plans" });
+      if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
+      else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
+      else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
+      else setRechargePlans([]);
+    } finally {
+      setIsPlanLoading(false);
+    }
+  }, [selectedBiller, detectedOperator, rechargePageType, identifier, toast, selectedBillerName]);
+
 
   useEffect(() => {
     if (selectedBiller) {
@@ -248,13 +398,13 @@ export default function RechargePage() {
       } else {
         setRechargePlans([]);
       }
-       fetchBankStatusForBiller(selectedBiller); 
+       fetchBankStatusForBiller(selectedBiller);
     } else {
       setRechargePlans([]);
       setSelectedBillerName('');
       setBankStatus(null);
     }
-  }, [selectedBiller, rechargePageType, billers, detectedOperator]); 
+  }, [selectedBiller, rechargePageType, billers, detectedOperator, fetchRechargePlans]);
 
     const fetchBankStatusForBiller = async (billerId: string) => {
       const mockBankIdentifierForBiller = billerId.includes('airtel') ? 'airtelbank' : billerId.includes('jio') ? 'jiopaymentsbank' : 'genericupi';
@@ -263,7 +413,7 @@ export default function RechargePage() {
         setBankStatus(status);
       } catch (error) {
         console.error("Failed to fetch bank status for biller:", error);
-        setBankStatus(null); 
+        setBankStatus(null);
       }
     };
 
@@ -344,8 +494,8 @@ export default function RechargePage() {
   const pollActivationStatus = async (txnId: string) => {
     setCheckingActivationTxnId(txnId);
     let attempts = 0;
-    const maxAttempts = 5; 
-    const intervalTime = 5000; 
+    const maxAttempts = 5;
+    const intervalTime = 5000;
 
     const check = async () => {
       attempts++;
@@ -355,7 +505,7 @@ export default function RechargePage() {
         if (status === 'Completed') {
           toast({ title: "Activation Complete", description: `Recharge ${txnId} is now active.` });
           setCheckingActivationTxnId(null);
-          fetchHistory(identifier); 
+          fetchHistory(identifier);
         } else if (status === 'Failed') {
           toast({ variant: "destructive", title: "Activation Failed", description: `Recharge ${txnId} failed to activate.` });
           setCheckingActivationTxnId(null);
@@ -373,37 +523,6 @@ export default function RechargePage() {
       }
     };
     setTimeout(check, intervalTime);
-  };
-
-
-  const fetchRechargePlans = async () => {
-    const billerToFetch = selectedBiller || detectedOperator?.billerId;
-    if (!billerToFetch) return;
-
-    setIsPlanLoading(true);
-    setRechargePlans([]); 
-    try {
-      console.log(`Fetching plans for ${selectedBillerName || detectedOperator?.billerName} (${billerToFetch}) - Type: ${rechargePageType}`);
-      const fetchedPlans = await getRechargePlans(billerToFetch, rechargePageType, identifier);
-      if (fetchedPlans && fetchedPlans.length > 0) {
-        setRechargePlans(fetchedPlans);
-      } else {
-         if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
-         else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
-         else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
-         else setRechargePlans([]); 
-         if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
-      }
-    } catch (error) {
-      console.error("Failed to fetch recharge plans:", error);
-      toast({ variant: "destructive", title: "Could not load recharge plans" });
-      if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
-      else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
-      else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
-      else setRechargePlans([]);
-    } finally {
-      setIsPlanLoading(false);
-    }
   };
 
 
@@ -426,16 +545,16 @@ export default function RechargePage() {
          ? ['Popular', 'Data', 'Unlimited', 'Talktime', 'SMS', 'Roaming', 'Annual', 'Top-up']
          : rechargePageType === 'dth'
          ? ['Recommended', 'Basic Packs', 'HD Packs', 'Premium Packs', 'Add-Ons', 'Top-Up Packs']
-         : rechargePageType === 'datacard' 
+         : rechargePageType === 'datacard'
          ? ['Monthly', 'Work From Home', 'Add-On', 'Annual']
-         : []; 
+         : [];
 
      let dynamicCategories = [...baseCategories];
 
      const grouped = plans.reduce((acc, plan) => {
-         let category = plan.category || 'Other'; 
+         let category = plan.category || 'Other';
           if (rechargePageType === 'mobile') {
-            if (plan.isOffer) category = 'Offers'; 
+            if (plan.isOffer) category = 'Offers';
           }
          if (!acc[category]) acc[category] = [];
          acc[category].push(plan);
@@ -461,108 +580,12 @@ export default function RechargePage() {
          grouped["All Plans"] = rechargePlans;
      }
 
-     if (Object.keys(grouped).length === 0 && !isPlanLoading && !planSearchTerm) { 
+     if (Object.keys(grouped).length === 0 && !isPlanLoading && !planSearchTerm) {
          return { filteredPlansByCategory: {}, planCategories: [] };
      }
 
      return { filteredPlansByCategory: grouped, planCategories: finalCategories };
    }, [rechargePlans, planSearchTerm, isPlanLoading, rechargePageType]);
-
-  const detectMobileOperator = useCallback(async () => {
-     if (!identifier || !identifier.match(/^[6-9]\d{9}$/)) return; 
-     setIsDetecting(true);
-     setDetectedOperator(null);
-     setDetectedRegion(null);
-     setIsManualOperatorSelect(false); 
-     try {
-       await new Promise(resolve => setTimeout(resolve, 1000));
-       let mockOperator: Biller | undefined;
-       if (identifier.startsWith('98') || identifier.startsWith('99')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('airtel'));
-       else if (identifier.startsWith('70') || identifier.startsWith('80')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio'));
-       else if (identifier.startsWith('91') || identifier.startsWith('92')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('vi'));
-       else mockOperator = billers[0];
-
-       const mockRegion = "Karnataka"; 
-
-       if (mockOperator) {
-         setDetectedOperator(mockOperator);
-         setDetectedRegion(mockRegion);
-         setSelectedBiller(mockOperator.billerId);
-         toast({ title: "Operator & Region Detected", description: `${mockOperator.billerName} - ${mockRegion}` });
-       } else {
-         throw new Error("Could not determine operator from current biller list.");
-       }
-     } catch (error) {
-       console.error("Failed to detect mobile operator/region:", error);
-       toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect operator/region. Please select manually." });
-       setIsManualOperatorSelect(true);
-     } finally {
-       setIsDetecting(false);
-     }
-   }, [identifier, billers, toast]);
-
-  const detectDthOperator = useCallback(async () => {
-     if (!identifier || identifier.length <= 5) return;
-     setIsDetecting(true);
-     setDetectedOperator(null);
-     setDetectedRegion(null);
-     setIsManualOperatorSelect(false);
-     try {
-       await new Promise(resolve => setTimeout(resolve, 800));
-       let mockOperator: Biller | undefined;
-       if (identifier.startsWith('1')) mockOperator = billers.find(b => b.billerId === 'tata-play');
-       else if (identifier.startsWith('2')) mockOperator = billers.find(b => b.billerId === 'dish-tv');
-       else if (identifier.startsWith('3')) mockOperator = billers.find(b => b.billerId === 'airtel-dth');
-       else mockOperator = billers.find(b => b.billerId === 'd2h');
-
-       if (mockOperator) {
-         setDetectedOperator(mockOperator);
-         setSelectedBiller(mockOperator.billerId);
-         toast({ title: "DTH Operator Detected", description: `${mockOperator.billerName}` });
-       } else {
-         throw new Error("Could not determine DTH operator from current biller list.");
-       }
-     } catch (error) {
-       console.error("Failed to detect DTH operator:", error);
-       toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect DTH operator. Please select manually." });
-       setIsManualOperatorSelect(true);
-     } finally {
-       setIsDetecting(false);
-     }
-   }, [identifier, billers, toast]);
-
-   const detectFastagOperator = useCallback(async () => {
-      if (!identifier || identifier.length <= 10) return;
-      setIsDetecting(true);
-      setDetectedOperator(null);
-      setIsManualOperatorSelect(false);
-      try {
-        await new Promise(resolve => setTimeout(resolve, 900));
-        let mockOperator: Biller | undefined;
-        if (identifier.toUpperCase().startsWith('KA')) {
-             mockOperator = billers.find(b => b.billerId === 'icici-fastag') || billers.find(b => b.billerId === 'axis-fastag');
-        } else if (identifier.toUpperCase().startsWith('MH')) {
-             mockOperator = billers.find(b => b.billerId === 'hdfc-fastag');
-        } else {
-             mockOperator = billers.find(b => b.billerId === 'paytm-fastag');
-        }
-         if (!mockOperator && billers.length > 0) mockOperator = billers[0];
-
-        if (mockOperator) {
-            setDetectedOperator(mockOperator);
-            setSelectedBiller(mockOperator.billerId);
-            toast({ title: "FASTag Issuer Detected", description: `${mockOperator.billerName}` });
-        } else {
-            throw new Error("Could not determine FASTag issuer bank from current biller list.");
-        }
-      } catch (error) {
-          console.error("Failed to detect FASTag issuer:", error);
-          toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect FASTag issuer. Please select manually." });
-          setIsManualOperatorSelect(true);
-      } finally {
-          setIsDetecting(false);
-      }
-  }, [identifier, billers, toast]);
 
 
   const handleCompareCheckbox = (plan: RechargePlan, checked: boolean | 'indeterminate') => {
@@ -589,26 +612,6 @@ export default function RechargePage() {
     setShowTariffModal(plan);
   };
 
-   const fetchHistory = async (num: string) => {
-        if (!num || !isLoggedIn) return; 
-        setIsHistoryLoading(true);
-        try {
-            console.log(`Fetching history for ${rechargePageType}: ${num}`);
-            const filters: TransactionFilters = {
-                 type: 'Recharge',
-                 searchTerm: num,
-                 limit: 5
-            };
-            const history = await getTransactionHistory(filters);
-            setRechargeHistory(history);
-            setShowHistory(history.length > 0);
-        } catch (error) {
-            console.error("Failed to fetch recharge history:", error);
-            setShowHistory(false);
-        } finally {
-            setIsHistoryLoading(false);
-        }
-    };
 
   const handleQuickRecharge = (entry: Transaction) => {
     const rechargeAmount = Math.abs(entry.amount);
@@ -638,11 +641,11 @@ export default function RechargePage() {
   const handleSelectSavedNumber = (payee: Payee) => {
     if ((payee.type === 'mobile' && rechargePageType === 'mobile') ||
         (payee.type === 'dth' && rechargePageType === 'dth') ||
-        (payee.type === 'fastag' && rechargePageType === 'fastag') ) { 
+        (payee.type === 'fastag' && rechargePageType === 'fastag') ) {
         setIdentifier(payee.identifier);
-        setIsManualOperatorSelect(false); 
-        setDetectedOperator(null); 
-        setSelectedBiller(''); 
+        setIsManualOperatorSelect(false);
+        setDetectedOperator(null);
+        setSelectedBiller('');
         setSelectedPlan(null);
         setAmount('');
         if (inputRef.current) inputRef.current.focus();
@@ -653,8 +656,8 @@ export default function RechargePage() {
 
   const handleManualEditOperator = () => {
      setIsManualOperatorSelect(true);
-      setDetectedOperator(null); 
-      setDetectedRegion(null); 
+      setDetectedOperator(null);
+      setDetectedRegion(null);
   }
 
    const handleScheduleRecharge = async () => {
@@ -707,7 +710,7 @@ export default function RechargePage() {
             const result = await cancelRechargeService(transactionId);
             if (result.success) {
                  toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
-                 fetchHistory(identifier); 
+                 fetchHistory(identifier);
             } else {
                  throw new Error(result.message || "Cancellation not possible at this time.");
             }
@@ -722,7 +725,7 @@ export default function RechargePage() {
 
   const operatorLogoUrl = useMemo(() => {
       const operator = detectedOperator || billers.find(b => b.billerId === selectedBiller);
-       if (!operator || !operator.billerName) return '/logos/default-operator.png'; 
+       if (!operator || !operator.billerName) return '/logos/default-operator.png';
        return operator.logoUrl || `/logos/${operator.billerName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/gi, '')}.png`;
   }, [detectedOperator, selectedBiller, billers]);
 
@@ -734,19 +737,19 @@ export default function RechargePage() {
         expiry.setHours(0, 0, 0, 0);
 
         if (!isValid(expiry) || isBefore(expiry, today)) {
-            return 0; 
+            return 0;
         }
         const diffDays = differenceInDays(expiry, today);
-        return diffDays; 
+        return diffDays;
     }
     return null;
   }, [mockCurrentPlan, rechargePageType]);
 
   const handleSelectRecentProvider = (provider: Biller) => {
       setSelectedBiller(provider.billerId);
-      setDetectedOperator(provider); 
-      setIsManualOperatorSelect(false); 
-      setIdentifier(''); 
+      setDetectedOperator(provider);
+      setIsManualOperatorSelect(false);
+      setIdentifier('');
       if (inputRef.current) inputRef.current.focus();
   }
 
@@ -761,7 +764,10 @@ export default function RechargePage() {
         </Link>
         <details.icon className="h-6 w-6" />
         <h1 className="text-lg font-semibold">{details.title}</h1>
-        <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={() => alert('Help Clicked!')}>
+        <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={ isManualOperatorSelect ? undefined : (rechargePageType === 'mobile' ? detectMobileOperator : rechargePageType === 'dth' ? detectDthOperator : rechargePageType === 'fastag' ? detectFastagOperator : undefined )} disabled={isDetecting || isManualOperatorSelect || !identifier}>
+             {isDetecting ? <Loader2 className="h-5 w-5 animate-spin"/> : <RefreshCw className="h-5 w-5"/>}
+        </Button>
+        <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80" onClick={() => alert('Help Clicked!')}>
           <HelpCircle className="h-5 w-5" />
         </Button>
       </header>
@@ -956,12 +962,12 @@ export default function RechargePage() {
                                 <div className="flex items-center justify-center py-6">
                                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                                     <p className="ml-2 text-sm text-muted-foreground">
-                                        Loading plans...
+                                        Loading plans for {selectedBillerName}...
                                     </p>
                                 </div>
-                                ) : planCategories.length === 0 && rechargePlans.length > 0 ? ( 
+                                ) : planCategories.length === 0 && rechargePlans.length > 0 ? (
                                 <p className="text-sm text-muted-foreground text-center py-4">No plans found matching your search in these categories.</p>
-                                ) : rechargePlans.length === 0 ? ( 
+                                ) : rechargePlans.length === 0 ? (
                                 <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName}.</p>
                                 ) : (
                                 <Tabs defaultValue={planCategories[0]} className="w-full">
@@ -1036,7 +1042,7 @@ export default function RechargePage() {
                                 min="1"
                                 step="0.01"
                                 className="pl-7 text-lg font-semibold h-11"
-                                disabled={(!selectedBiller && !detectedOperator) && !identifier} 
+                                disabled={(!selectedBiller && !detectedOperator) && !identifier}
                                 />
                             </div>
                             {rechargePageType === 'mobile' && !selectedPlan && amount && (
