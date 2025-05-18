@@ -1,5 +1,27 @@
+
 import type { BusLiveStatus, TrainLiveStatus, BusStopStatus, TrainStopStatus } from '@/services/liveTracking';
 import { format, addMinutes, addHours } from 'date-fns';
+
+// Extended BusRoute for search results
+export interface BusRoute {
+    id: string;
+    operator: string;
+    type: string; // e.g., 'AC Sleeper', 'Non-AC Seater' - kept generic
+    serviceType?: string; // More specific: 'Volvo AC Sleeper', 'BharatBenz Non-AC Seater'
+    from: string;
+    to: string;
+    departureTime: string;
+    arrivalTime: string;
+    duration: string;
+    price: number;
+    seatsAvailable: number;
+    rating: number;
+    amenities?: string[];
+    boardingPoints: string[];
+    droppingPoints: string[];
+    hasLiveTracking?: boolean; // New field
+}
+
 
 // Existing Mock Data for Bus Live Status
 export const mockBusLiveStatusData: BusLiveStatus = {
@@ -47,25 +69,13 @@ export const mockTrainLiveStatusData: TrainLiveStatus = {
 
 // --- New Mock Data for NBS Features ---
 
-export interface BusRoute {
-    id: string;
-    operator: string;
-    type: string; // e.g., 'AC Sleeper', 'Non-AC Seater'
-    from: string;
-    to: string;
-    departureTime: string;
-    arrivalTime: string;
-    duration: string;
-    price: number;
-    seatsAvailable: number;
-    rating: number;
-    amenities?: string[];
-}
 
 export const mockBusRoutesData: BusRoute[] = [
-    { id: 'route1', operator: 'KSRTC Swift', type: 'AC Sleeper (2+1)', from: 'Bangalore', to: 'Chennai', departureTime: '22:00', arrivalTime: '05:30', duration: '7h 30m', price: 950, seatsAvailable: 12, rating: 4.3, amenities: ['Live Tracking', 'Charging Point', 'Blanket'] },
-    { id: 'route2', operator: 'Orange Travels', type: 'Volvo Multi-Axle Semi-Sleeper', from: 'Hyderabad', to: 'Vijayawada', departureTime: '23:00', arrivalTime: '04:00', duration: '5h 0m', price: 700, seatsAvailable: 25, rating: 4.5, amenities: ['Wi-Fi', 'Water Bottle'] },
-    { id: 'route3', operator: 'APSRTC Garuda Plus', type: 'AC Luxury', from: 'Visakhapatnam', to: 'Hyderabad', departureTime: '21:30', arrivalTime: '07:00', duration: '9h 30m', price: 1100, seatsAvailable: 5, rating: 4.1 },
+    { id: 'route1', operator: 'KSRTC Swift', type: 'Volvo AC Sleeper (2+1)', serviceType: 'Volvo AC Sleeper', from: 'Bangalore', to: 'Chennai', departureTime: '22:00', arrivalTime: '05:30', duration: '7h 30m', price: 950, seatsAvailable: 12, rating: 4.3, amenities: ['Live Tracking', 'Charging Point', 'Blanket', 'Water Bottle'], boardingPoints: ['Majestic', 'Silk Board', 'Madiwala'], droppingPoints: ['Koyambedu', 'Guindy', 'Tambaram'], hasLiveTracking: true },
+    { id: 'route2', operator: 'Orange Travels', type: 'Volvo Multi-Axle Semi-Sleeper', serviceType: 'Volvo AC Semi-Sleeper', from: 'Hyderabad', to: 'Vijayawada', departureTime: '23:00', arrivalTime: '04:00', duration: '5h 0m', price: 700, seatsAvailable: 25, rating: 4.5, amenities: ['Wi-Fi', 'Water Bottle', 'Reading Light'], boardingPoints: ['Lakdikapul', 'Ameerpet', 'Kukatpally'], droppingPoints: ['Benz Circle', 'Bus Stand'], hasLiveTracking: false },
+    { id: 'route3', operator: 'APSRTC Garuda Plus', type: 'AC Luxury Seater', serviceType: 'AC Seater', from: 'Visakhapatnam', to: 'Hyderabad', departureTime: '21:30', arrivalTime: '07:00', duration: '9h 30m', price: 1100, seatsAvailable: 5, rating: 4.1, amenities: ['Movies', 'Water Bottle'], boardingPoints: ['Dwaraka BS', 'Gajuwaka'], droppingPoints: ['MGBS', 'LB Nagar'], hasLiveTracking: true },
+    { id: 'route4', operator: 'Sharma Transports', type: 'Non-AC Seater/Sleeper', serviceType: 'Non-AC Seater', from: 'Bangalore', to: 'Hyderabad', departureTime: '19:00', arrivalTime: '06:00', duration: '11h 0m', price: 650, seatsAvailable: 18, rating: 3.9, amenities: ['Fan', 'Blanket'], boardingPoints: ['Anand Rao Circle', 'Hebbal'], droppingPoints: ['Shamshabad', 'Ameerpet'], hasLiveTracking: false },
+    { id: 'route5', operator: 'IntrCity SmartBus', type: 'AC Sleeper', serviceType: 'AC Sleeper', from: 'Pune', to: 'Mumbai', departureTime: '08:00', arrivalTime: '11:30', duration: '3h 30m', price: 550, seatsAvailable: 10, rating: 4.6, amenities: ['Live Tracking', 'Washroom', 'Charging Point', 'Personal TV'], boardingPoints: ['Swargate', 'Wakad'], droppingPoints: ['Dadar', 'Borivali'], hasLiveTracking: true },
 ];
 
 export interface NearbyBusStop {
@@ -103,7 +113,7 @@ export interface FavoriteRoute {
     id: string; // e.g., 'route_from_to' or 'stop_id'
     type: 'route' | 'stop';
     name: string; // e.g., "Home to Office" or "Majestic Bus Stop"
-    details: any; // Store route (from/to) or stop info
+    details: { from?: string; to?: string; address?: string }; // Store route (from/to) or stop info
 }
 
 export const mockNbsEmergencyContacts = [
@@ -133,7 +143,7 @@ And many more...
 Key Features:
 - Track buses in real-time by vehicle number or reservation.
 - Search for buses between cities and districts across states.
-- Book tickets securely using our platform (Coming Soon!).
+- Book tickets securely using our platform.
 - Access emergency services and provide feedback easily.
 - Save your favorite routes and buses for quicker access.
 - Get accurate ETAs, delays, and route details instantly.
