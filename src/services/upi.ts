@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for managing UPI linked accounts and processing payments via the backend API.
  */
@@ -13,28 +14,27 @@ export type { BankAccount, UpiTransactionResult };
 /**
  * Asynchronously links a bank account for UPI transactions via the backend API.
  *
- * @param bankDetails Details of the bank account to link (excluding id, userId, isDefault, upiId, pinLength' | 'createdAt').
+ * @param bankDetails Details of the bank account to link (e.g., bankName, accountNumber, accountType, ifsc).
  * @returns A promise that resolves to the newly linked BankAccount object returned by the backend.
  * @throws Error if the user is not logged in or linking fails.
  */
-export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'userId' | 'isDefault' | 'upiId' | 'pinLength' | 'createdAt'>): Promise<BankAccount> {
-    console.log("Linking bank account via API:", bankDetails);
+export async function linkBankAccount(bankDetails: { bankName: string; accountNumber: string; accountType: string; ifsc: string; }): Promise<BankAccount> {
+    console.log("[Client Service] Linking bank account via API:", bankDetails);
     try {
         const linkedAccount = await apiClient<BankAccount>('/upi/accounts', {
             method: 'POST',
             body: JSON.stringify(bankDetails),
         });
-        console.log("Bank account linked successfully via API:", linkedAccount);
-        // Convert createdAt string if needed
+        console.log("[Client Service] Bank account linked successfully via API:", linkedAccount);
         return {
             ...linkedAccount,
-            createdAt: linkedAccount.createdAt && typeof linkedAccount.createdAt === 'string' 
-                       ? new Date(linkedAccount.createdAt) 
-                       : linkedAccount.createdAt, // Keep as is if already Date or Timestamp
+            createdAt: linkedAccount.createdAt && typeof linkedAccount.createdAt === 'string'
+                       ? new Date(linkedAccount.createdAt)
+                       : linkedAccount.createdAt as Date,
         };
     } catch (error) {
-        console.error("Error linking bank account via API:", error);
-        throw error; // Re-throw error caught by apiClient
+        console.error("[Client Service] Error linking bank account via API:", error);
+        throw error;
     }
 }
 
@@ -44,18 +44,18 @@ export async function linkBankAccount(bankDetails: Omit<BankAccount, 'id' | 'use
  * @returns A promise that resolves to an array of BankAccount objects.
  */
 export async function getLinkedAccounts(): Promise<BankAccount[]> {
-    console.log(`Fetching linked accounts via API...`);
+    console.log(`[Client Service] Fetching linked accounts via API...`);
     try {
         const accounts = await apiClient<BankAccount[]>('/upi/accounts');
-        console.log(`Fetched ${accounts.length} linked accounts via API.`);
+        console.log(`[Client Service] Fetched ${accounts.length} linked accounts via API.`);
          return accounts.map(acc => ({
             ...acc,
-            createdAt: acc.createdAt && typeof acc.createdAt === 'string' 
-                       ? new Date(acc.createdAt) 
-                       : acc.createdAt,
+            createdAt: acc.createdAt && typeof acc.createdAt === 'string'
+                       ? new Date(acc.createdAt)
+                       : acc.createdAt as Date,
         }));
     } catch (error) {
-        console.error("Error fetching linked accounts via API:", error);
+        console.error("[Client Service] Error fetching linked accounts via API:", error);
         return [];
     }
 }
@@ -67,14 +67,14 @@ export async function getLinkedAccounts(): Promise<BankAccount[]> {
  * @throws Error if removal fails or is not allowed.
  */
 export async function removeUpiId(upiId: string): Promise<void> {
-    console.log(`Removing UPI ID via API: ${upiId}`);
+    console.log(`[Client Service] Removing UPI ID via API: ${upiId}`);
     try {
         await apiClient<void>(`/upi/accounts/${encodeURIComponent(upiId)}`, {
             method: 'DELETE',
         });
-        console.log(`UPI ID ${upiId} removed successfully via API.`);
+        console.log(`[Client Service] UPI ID ${upiId} removed successfully via API.`);
     } catch (error: any) {
-        console.error("Error removing UPI ID via API:", error);
+        console.error("[Client Service] Error removing UPI ID via API:", error);
         throw error;
     }
 }
@@ -86,15 +86,15 @@ export async function removeUpiId(upiId: string): Promise<void> {
  * @throws Error if the UPI ID is not found or the update fails.
  */
 export async function setDefaultAccount(upiId: string): Promise<void> {
-    console.log(`Setting ${upiId} as default via API...`);
+    console.log(`[Client Service] Setting ${upiId} as default via API...`);
     try {
         await apiClient<void>('/upi/accounts/default', {
             method: 'PUT',
             body: JSON.stringify({ upiId }),
         });
-        console.log(`${upiId} set as default successfully via API.`);
+        console.log(`[Client Service] ${upiId} set as default successfully via API.`);
     } catch (error) {
-        console.error("Error setting default account via API:", error);
+        console.error("[Client Service] Error setting default account via API:", error);
         throw error;
     }
 }
@@ -110,7 +110,7 @@ export async function setDefaultAccount(upiId: string): Promise<void> {
  * @throws Error if balance check fails.
  */
 export async function checkBalance(upiId: string, pin: string): Promise<number> {
-    console.log(`Checking balance via API for ${upiId} (PIN: ****)`);
+    console.log(`[Client Service] Checking balance via API for ${upiId} (PIN: ****)`);
     try {
         const response = await apiClient<{ balance: number }>('/upi/balance', {
             method: 'POST',
@@ -118,7 +118,7 @@ export async function checkBalance(upiId: string, pin: string): Promise<number> 
         });
         return response.balance;
     } catch (error) {
-        console.error(`Balance check failed via API for ${upiId}:`, error);
+        console.error(`[Client Service] Balance check failed via API for ${upiId}:`, error);
         throw error;
     }
 }
@@ -136,7 +136,7 @@ export async function verifyUpiId(upiId: string): Promise<{
     isVerifiedMerchant?: boolean;
     reason?: string;
 }> {
-    console.log(`Verifying UPI ID via API: ${upiId}`);
+    console.log(`[Client Service] Verifying UPI ID via API: ${upiId}`);
     try {
         const response = await apiClient<{
             verifiedName: string | null;
@@ -148,10 +148,10 @@ export async function verifyUpiId(upiId: string): Promise<{
         if (!response) {
              return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "Verification failed: Empty response from server." };
         }
-        console.log("Verification result from API:", response);
+        console.log("[Client Service] Verification result from API:", response);
         return response;
     } catch (error: any) {
-        console.error("UPI ID Verification failed via API:", error);
+        console.error("[Client Service] UPI ID Verification failed via API:", error);
          if (error.message?.includes('404')) {
             return { verifiedName: null, isBlacklisted: false, isVerifiedMerchant: false, reason: "UPI ID not found." };
          }
@@ -170,6 +170,7 @@ export async function verifyUpiId(upiId: string): Promise<{
  * @param note An optional transaction note/description.
  * @param sourceAccountUpiId Optional: The specific UPI ID to use for payment.
  * @param stealthScan Optional: Flag indicating if the payment was initiated via stealth scan.
+ * @param originatingScanLogId Optional: ID of the scan log if payment originated from a QR scan.
  * @returns A promise that resolves to a UpiTransactionResult object.
  */
 export async function processUpiPayment(
@@ -178,9 +179,10 @@ export async function processUpiPayment(
   pin: string,
   note?: string,
   sourceAccountUpiId?: string,
-  stealthScan?: boolean 
+  stealthScan?: boolean,
+  originatingScanLogId?: string
 ): Promise<UpiTransactionResult> {
-    console.log(`Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}, Stealth: ${stealthScan}`);
+    console.log(`[Client Service] Processing UPI payment via API to ${recipientIdentifier} from ${sourceAccountUpiId || 'default account'}, Amount: ${amount}, Stealth: ${stealthScan}, ScanLog: ${originatingScanLogId}`);
 
     const payload = {
         recipientUpiId: recipientIdentifier,
@@ -188,7 +190,8 @@ export async function processUpiPayment(
         pin,
         note: note || undefined,
         sourceAccountUpiId: sourceAccountUpiId || undefined,
-        stealthScan: stealthScan || false, // Include stealthScan in payload
+        stealthScan: stealthScan || false,
+        originatingScanLogId: originatingScanLogId || undefined,
     };
 
     try {
@@ -196,10 +199,10 @@ export async function processUpiPayment(
             method: 'POST',
             body: JSON.stringify(payload),
         });
-        console.log("UPI Payment API result:", result);
+        console.log("[Client Service] UPI Payment API result:", result);
         return result;
     } catch (error: any) {
-        console.error("UPI Payment failed via API:", error);
+        console.error("[Client Service] UPI Payment failed via API:", error);
         return {
             amount,
             recipientUpiId: recipientIdentifier,
@@ -216,12 +219,45 @@ export async function processUpiPayment(
  * @returns A promise resolving to the status: 'Active', 'Slow', or 'Down'.
  */
 export async function getBankStatus(bankIdentifier: string): Promise<'Active' | 'Slow' | 'Down'> {
-    console.log(`Checking server status via API for bank: ${bankIdentifier}`);
+    console.log(`[Client Service] Checking server status via API for bank: ${bankIdentifier}`);
     try {
         const response = await apiClient<{ status: 'Active' | 'Slow' | 'Down' }>(`/banks/status/${encodeURIComponent(bankIdentifier)}`);
         return response.status;
     } catch (error) {
-        console.error(`Error checking bank status via API for ${bankIdentifier}:`, error);
+        console.error(`[Client Service] Error checking bank status via API for ${bankIdentifier}:`, error);
         return 'Active';
+    }
+}
+
+/**
+ * Sets or changes the UPI PIN for a linked account via the backend API.
+ * @param upiId The UPI ID of the account.
+ * @param newPin The new UPI PIN.
+ * @param oldPin Optional: The old UPI PIN (required for changing, not for first time set).
+ * @param bankAccountDetails Optional: Bank account details (like debit card last 6 digits, expiry) for first time PIN set or reset.
+ * @returns A promise resolving to an object indicating success.
+ */
+export async function setUpiPin(
+    upiId: string,
+    newPin: string,
+    oldPin?: string,
+    bankAccountDetails?: { debitCardLast6: string; expiryMMYY: string }
+): Promise<{ success: boolean; message?: string }> {
+    console.log(`[Client Service] Setting/Changing UPI PIN via API for UPI ID: ${upiId}`);
+    const payload = {
+        upiId,
+        newPin,
+        oldPin: oldPin || undefined,
+        bankAccountDetails: bankAccountDetails || undefined,
+    };
+    try {
+        const result = await apiClient<{ success: boolean; message?: string }>('/upi/pin/set', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        return result;
+    } catch (error: any) {
+        console.error("[Client Service] Error setting/changing UPI PIN via API:", error);
+        throw error;
     }
 }

@@ -2,17 +2,17 @@
 // backend/controllers/upiController.js
 const admin = require('firebase-admin');
 const db = admin.firestore();
-const { getWalletBalance, payViaWalletInternal } = require('../services/wallet.ts'); // Corrected import path
-const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger.ts'); // Use backend logger
-const { scheduleRecovery } = require('../services/recoveryService.ts'); // Corrected import path
-const { checkKYCAndBridgeStatus } = require('../services/user.js'); // Corrected import path
+const { getWalletBalance, payViaWalletInternal } = require('../services/wallet.ts');
+const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger.ts');
+const { scheduleRecovery } = require('../services/recoveryService.ts');
+const { checkKYCAndBridgeStatus } = require('../services/user.js');
 const upiProviderService = require('../services/upiProviderService.js');
 const { getBankStatus } = require('../services/bankStatusService.js');
 const upiLiteService = require('../services/upiLite.js');
 const { format, addBusinessDays } = require('date-fns');
 const { sendToUser } = require('../server'); // For WebSocket updates
 
-const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp, serverTimestamp, updateDoc } = require('firebase/firestore'); // serverTimestamp added
+const { collection, query, where, orderBy, limit, getDocs, addDoc, deleteDoc, doc, getDoc, writeBatch, Timestamp, serverTimestamp, updateDoc } = require('firebase/firestore');
 const firestoreDb = admin.firestore();
 
 exports.getLinkedAccounts = async (req, res, next) => {
@@ -34,19 +34,19 @@ exports.getLinkedAccounts = async (req, res, next) => {
 
 exports.linkBankAccount = async (req, res, next) => {
     const userId = req.user.uid;
-    const { bankName, accountNumber } = req.body;
-    if (!bankName || !accountNumber) {
+    const { bankName, accountNumber, accountType, ifsc } = req.body; // Added accountType, ifsc
+    if (!bankName || !accountNumber || !accountType || !ifsc) {
         res.status(400);
-        return next(new Error("Bank Name and Account Number are required."));
+        return next(new Error("Bank Name, Account Number, Account Type, and IFSC are required."));
     }
     try {
-        console.log(`Simulating account linking for ${userId} with bank ${bankName}...`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log(`[UPI Ctrl] Simulating account linking for ${userId} with bank ${bankName}...`);
+        // Simulate PSP interaction for account verification and UPI ID generation
+        const pspResponse = await upiProviderService.linkAccountWithPsp({ userId, bankName, accountNumber, accountType, ifsc });
 
-        const maskedNumber = `xxxx${String(accountNumber).slice(-4)}`;
-        const bankDomain = bankName.toLowerCase().replace(/\s+/g, '').substring(0, 5);
-        const generatedUpiId = `${userId.substring(0, 4)}${maskedNumber.slice(-4)}@ok${bankDomain}`;
-        const pinLength = Math.random() > 0.5 ? 6 : 4;
+        if (!pspResponse.success || !pspResponse.upiId) {
+            throw new Error(pspResponse.message || "Failed to link account with UPI provider.");
+        }
 
         const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
         const q = query(accountsColRef, limit(1));
@@ -55,16 +55,18 @@ exports.linkBankAccount = async (req, res, next) => {
 
         const accountData = {
             bankName,
-            accountNumber: maskedNumber,
+            accountNumber: pspResponse.maskedAccountNumber || `xxxx${String(accountNumber).slice(-4)}`,
+            accountType, // Store account type
+            ifsc, // Store IFSC
             userId,
-            upiId: generatedUpiId,
+            upiId: pspResponse.upiId,
             isDefault: isFirstAccount,
-            pinLength,
-            createdAt: serverTimestamp(), // Use server timestamp
+            pinLength: pspResponse.pinLength || (Math.random() > 0.5 ? 6 : 4),
+            createdAt: serverTimestamp(),
+            mpinSet: false, // Initially MPIN is not set
         };
 
         const docRef = await addDoc(accountsColRef, accountData);
-        // Fetch to get resolved timestamp for response
         const savedDoc = await getDoc(docRef);
         const responseData = { ...savedDoc.data(), id: docRef.id, createdAt: savedDoc.data().createdAt.toDate().toISOString() };
         res.status(201).json(responseData);
@@ -100,7 +102,7 @@ exports.removeUpiId = async (req, res, next) => {
              res.status(400);
              throw new Error("Cannot remove default account. Set another as default first.");
         }
-        console.log(`[PSP Sim] Simulating deregistration for UPI ID: ${upiId}`);
+        await upiProviderService.deregisterUpiId(upiId); // Inform PSP
         await deleteDoc(accountDoc.ref);
         res.status(200).json({ message: `UPI ID ${upiId} removed successfully.` });
     } catch (error) {
@@ -117,7 +119,7 @@ exports.setDefaultAccount = async (req, res, next) => {
     }
     try {
         const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
-        const batch = writeBatch(firestoreDb);
+        const batch = writeBatch(firestoreDb); // Use admin.firestore().batch() if db is from admin
         const newDefaultQuery = query(accountsColRef, where('upiId', '==', upiId), limit(1));
         const newDefaultSnap = await getDocs(newDefaultQuery);
         if (newDefaultSnap.empty) {
@@ -147,33 +149,41 @@ exports.verifyUpiId = async (req, res, next) => {
         return next(new Error("Valid UPI ID query parameter is required."));
     }
     try {
-        // Check against verified merchants
+        // 1. Check internal verified merchants
         const verifiedMerchantRef = doc(firestoreDb, 'verified_merchants', upiId);
         const verifiedMerchantSnap = await getDoc(verifiedMerchantRef);
-        if (verifiedMerchantSnap.exists()) {
-            res.status(200).json({ 
-                verifiedName: verifiedMerchantSnap.data().merchantName, 
+        if (verifiedMerchantSnap.exists() && verifiedMerchantSnap.data().isVerified) {
+            res.status(200).json({
+                verifiedName: verifiedMerchantSnap.data().merchantName,
                 isVerifiedMerchant: true,
-                isBlacklisted: false 
+                isBlacklisted: false
             });
             return;
         }
 
-        const blacklistRefByUpi = doc(firestoreDb, 'blacklisted_qrs', upiId);
+        // 2. Check internal blacklist
+        const blacklistRefByUpi = doc(firestoreDb, 'blacklisted_qrs', upiId); // Assuming ID is upiId for blacklist
         const blacklistSnapByUpi = await getDoc(blacklistRefByUpi);
         if (blacklistSnapByUpi.exists()) {
              res.status(200).json({ // Return 200 with status for client to handle warning
-                verifiedName: null, 
-                isBlacklisted: true, 
-                reason: blacklistSnapByUpi.data()?.reason || 'Flagged as suspicious' 
+                verifiedName: null,
+                isVerifiedMerchant: false,
+                isBlacklisted: true,
+                reason: blacklistSnapByUpi.data()?.reason || 'Flagged as suspicious'
             });
              return;
         }
-        const verifiedName = await upiProviderService.verifyRecipient(upiId);
-        res.status(200).json({ verifiedName, isBlacklisted: false, isVerifiedMerchant: false });
+
+        // 3. Call PSP for verification
+        const pspVerificationResult = await upiProviderService.verifyRecipient(upiId);
+        res.status(200).json({
+            verifiedName: pspVerificationResult.accountHolderName, // Use consistent field name
+            isVerifiedMerchant: pspVerificationResult.isMerchant, // If PSP returns this
+            isBlacklisted: false // Not blacklisted by us if reached here
+        });
     } catch (error) {
-         if (error.message?.includes("not found") || error.message?.includes("Invalid")) {
-            res.status(404); // 404 if UPI provider says not found
+         if (error.code === 'UPI_ID_NOT_FOUND' || error.code === 'UPI_ID_NOT_REGISTERED' || error.code === 'UPI_INVALID_ID_FORMAT') {
+            res.status(404);
          } else {
              res.status(500);
          }
@@ -181,10 +191,18 @@ exports.verifyUpiId = async (req, res, next) => {
     }
 };
 
+const FALLBACK_ELIGIBLE_ERROR_CODES = [
+    'U09', // UPI_LIMIT_EXCEEDED (Example NPCI code)
+    'U16', // BANK_SERVER_DOWN
+    'M1',  // BANK_INSUFFICIENT_FUNDS
+    'U69', // BANK_NETWORK_ERROR
+    'BT',  // TRANSACTION_TIMEOUT (PSP specific)
+    'X0',  // GENERIC_DECLINE (Can be bank decline for various reasons)
+];
+
 exports.processUpiPayment = async (req, res, next) => {
     const userId = req.user.uid;
-    // Added stealthScan flag from request body
-    const { recipientUpiId, amount, pin, note, sourceAccountUpiId, stealthScan } = req.body;
+    const { recipientUpiId, amount, pin, note, sourceAccountUpiId, stealthScan, originatingScanLogId } = req.body;
     let pspTransactionId;
     let loggedTx;
 
@@ -197,8 +215,8 @@ exports.processUpiPayment = async (req, res, next) => {
         success: false,
         status: 'Failed',
         message: 'Payment processing error',
-        transactionId: null, 
-        pspTransactionId: null, 
+        transactionId: null, // Our system's transaction ID
+        pspTransactionId: null,
         usedWalletFallback: false,
         walletTransactionId: null,
         ticketId: null,
@@ -208,13 +226,13 @@ exports.processUpiPayment = async (req, res, next) => {
     };
 
     try {
-        const transferResult = await upiProviderService.initiatePayment({ sourceUpiId, recipientUpiId, amount, pin, note });
-        pspTransactionId = transferResult.transactionId;
+        const transferResult = await upiProviderService.initiatePayment({ userId, sourceUpiId, recipientUpiId, amount, pin, note });
+        pspTransactionId = transferResult.pspTransactionId;
         paymentResultFromPSP.pspTransactionId = pspTransactionId;
         paymentResultFromPSP.success = transferResult.status === 'Completed';
-        paymentResultFromPSP.status = transferResult.status;
+        paymentResultFromPSP.status = transferResult.status; // e.g., 'Completed', 'Pending', 'Failed'
         paymentResultFromPSP.message = transferResult.message;
-        paymentResultFromPSP.errorCode = transferResult.code;
+        paymentResultFromPSP.errorCode = transferResult.npciErrorCode || transferResult.pspErrorCode; // Prioritize NPCI code
         paymentResultFromPSP.mightBeDebited = transferResult.mightBeDebited || false;
 
         loggedTx = await addTransaction({
@@ -225,20 +243,36 @@ exports.processUpiPayment = async (req, res, next) => {
             status: paymentResultFromPSP.status,
             userId: userId,
             upiId: recipientUpiId,
-            originalTransactionId: pspTransactionId, 
             paymentMethodUsed: 'UPI',
             pspTransactionId: pspTransactionId,
-            failureReason: !paymentResultFromPSP.success ? paymentResultFromPSP.message : null,
-            stealthScan: stealthScan || false, // Pass stealthScan flag
+            failureReason: !paymentResultFromPSP.success ? `${paymentResultFromPSP.errorCode ? `(${paymentResultFromPSP.errorCode}) ` : ''}${paymentResultFromPSP.message}` : null,
+            stealthScan: stealthScan || false,
+            originalTransactionId: originatingScanLogId, // Link to scan log if it's from scan & pay
         });
-        paymentResultFromPSP.transactionId = loggedTx.id; 
+        paymentResultFromPSP.transactionId = loggedTx.id;
+
+        if (originatingScanLogId && paymentResultFromPSP.success) {
+            try {
+                const scanLogRef = doc(firestoreDb, 'scan_logs', originatingScanLogId);
+                await updateDoc(scanLogRef, {
+                    paymentMade: true,
+                    paymentTransactionId: loggedTx.id,
+                    updatedAt: serverTimestamp()
+                });
+                console.log(`[UPI Ctrl] Updated scan_log ${originatingScanLogId} for successful payment.`);
+            } catch (scanLogError) {
+                console.error(`[UPI Ctrl] Failed to update scan_log ${originatingScanLogId}:`, scanLogError);
+            }
+        }
+
+        sendToUser(userId, { type: 'transaction_update', payload: { ...loggedTx, date: loggedTx.date.toISOString() } });
+
 
         if (paymentResultFromPSP.status === 'Completed') {
             return res.status(200).json(paymentResultFromPSP);
         } else if (paymentResultFromPSP.status === 'Pending') {
-            return res.status(202).json(paymentResultFromPSP); 
+            return res.status(202).json(paymentResultFromPSP);
         } else {
-            // UPI Payment failed, consider fallback
             const canTryFallback = FALLBACK_ELIGIBLE_ERROR_CODES.includes(paymentResultFromPSP.errorCode) && !paymentResultFromPSP.mightBeDebited;
 
             if (canTryFallback) {
@@ -252,7 +286,7 @@ exports.processUpiPayment = async (req, res, next) => {
                         if (walletPaymentResult.success && walletPaymentResult.transactionId) {
                             await scheduleRecovery(userId, amount, recipientUpiId, sourceAccountUpiId);
                             await updateDoc(doc(db, 'transactions', loggedTx.id), {
-                                status: 'Failed', 
+                                status: 'FallbackSuccess',
                                 description: `${loggedTx.description} - Failed (${paymentResultFromPSP.errorCode}), Paid via Wallet Fallback. Wallet TxID: ${walletPaymentResult.transactionId}`,
                                 failureReason: `UPI Failed (${paymentResultFromPSP.errorCode}), then paid via Wallet.`,
                                 updatedAt: serverTimestamp()
@@ -261,28 +295,23 @@ exports.processUpiPayment = async (req, res, next) => {
                             paymentResultFromPSP.walletTransactionId = walletPaymentResult.transactionId;
                             paymentResultFromPSP.status = 'FallbackSuccess';
                             paymentResultFromPSP.message = `UPI Payment Failed (${paymentResultFromPSP.errorCode}). Successfully paid via Wallet.`;
+
+                            const updatedTxDoc = await getDoc(doc(db, 'transactions', loggedTx.id));
+                            if(updatedTxDoc.exists()) sendToUser(userId, { type: 'transaction_update', payload: { ...updatedTxDoc.data(), id: updatedTxDoc.id, date: updatedTxDoc.data().date.toDate().toISOString() } });
+
                             return res.status(200).json(paymentResultFromPSP);
                         } else {
                             paymentResultFromPSP.message = `UPI Failed (${paymentResultFromPSP.errorCode}). Wallet fallback also failed: ${walletPaymentResult.message}`;
-                            await updateDoc(doc(db, 'transactions', loggedTx.id), {
-                                failureReason: paymentResultFromPSP.message,
-                                updatedAt: serverTimestamp()
-                            });
+                            await updateDoc(doc(db, 'transactions', loggedTx.id), { failureReason: paymentResultFromPSP.message, updatedAt: serverTimestamp() });
                         }
-                    } else { 
+                    } else {
                         paymentResultFromPSP.message = `UPI Failed (${paymentResultFromPSP.errorCode}). Insufficient wallet balance (₹${walletBalance}) for fallback.`;
-                         await updateDoc(doc(db, 'transactions', loggedTx.id), {
-                            failureReason: paymentResultFromPSP.message,
-                            updatedAt: serverTimestamp()
-                        });
+                         await updateDoc(doc(db, 'transactions', loggedTx.id), { failureReason: paymentResultFromPSP.message, updatedAt: serverTimestamp() });
                     }
-                } else { 
+                } else {
                      const bridgeReason = !kycBridgeStatus.canUseBridge ? "Smart Wallet Bridge not active/eligible." : `Amount ₹${amount} exceeds bridge limit ₹${kycBridgeStatus.smartWalletBridgeLimit}.`;
                      paymentResultFromPSP.message = `UPI Failed (${paymentResultFromPSP.errorCode}). Wallet fallback not attempted: ${bridgeReason}`;
-                      await updateDoc(doc(db, 'transactions', loggedTx.id), {
-                         failureReason: paymentResultFromPSP.message,
-                         updatedAt: serverTimestamp()
-                     });
+                      await updateDoc(doc(db, 'transactions', loggedTx.id), { failureReason: paymentResultFromPSP.message, updatedAt: serverTimestamp() });
                 }
             }
             const error = new Error(paymentResultFromPSP.message || 'UPI Payment Failed');
@@ -296,13 +325,13 @@ exports.processUpiPayment = async (req, res, next) => {
         const mightBeDebited = error.mightBeDebited || false;
 
         if (loggedTx && loggedTx.id && loggedTx.status !== 'Failed') {
-             await updateDoc(doc(db, 'transactions', loggedTx.id), { status: 'Failed', failureReason: errorMessage, updatedAt: serverTimestamp() });
+             await updateDoc(doc(db, 'transactions', loggedTx.id), { status: 'Failed', failureReason: `${errorCode ? `(${errorCode}) ` : ''}${errorMessage}`, updatedAt: serverTimestamp() });
         } else if (!loggedTx) {
             try {
                 loggedTx = await addTransaction({
-                    type: 'Failed', name: recipientUpiId, description: `Payment to ${recipientUpiId} (UPI) - Error: ${errorMessage}`,
-                    amount: -amount, status: 'Failed', userId: userId, upiId: recipientUpiId, paymentMethodUsed: 'UPI', pspTransactionId: pspTransactionId, failureReason: errorMessage,
-                    stealthScan: stealthScan || false, // Pass stealthScan flag for failed initial log
+                    type: 'Failed', name: recipientUpiId, description: `Payment to ${recipientUpiId} (UPI) - Error: ${errorCode ? `(${errorCode}) ` : ''}${errorMessage}`,
+                    amount: -amount, status: 'Failed', userId: userId, upiId: recipientUpiId, paymentMethodUsed: 'UPI', pspTransactionId: pspTransactionId, failureReason: `${errorCode ? `(${errorCode}) ` : ''}${errorMessage}`,
+                    stealthScan: stealthScan || false,
                 });
                 paymentResultFromPSP.transactionId = loggedTx.id;
             } catch (logError) {
@@ -323,7 +352,7 @@ exports.processUpiPayment = async (req, res, next) => {
         paymentResultFromPSP.errorCode = errorCode;
         paymentResultFromPSP.mightBeDebited = mightBeDebited;
 
-        if (paymentResultFromPSP.mightBeDebited) {
+        if (paymentResultFromPSP.mightBeDebited && paymentResultFromPSP.transactionId && paymentResultFromPSP.transactionId !== `local-failure-${Date.now()}`) {
             const ticketId = `SPT_${Date.now()}`;
             const refundDate = addBusinessDays(new Date(), 3);
             paymentResultFromPSP.ticketId = ticketId;
@@ -340,6 +369,8 @@ exports.processUpiPayment = async (req, res, next) => {
                     refundEta: paymentResultFromPSP.refundEta,
                     createdAt: serverTimestamp(),
                 });
+                // Update original transaction with ticketId
+                await updateDoc(doc(db, 'transactions', paymentResultFromPSP.transactionId), { ticketId: ticketId, refundEta: paymentResultFromPSP.refundEta, updatedAt: serverTimestamp() });
                 console.log(`Support ticket ${ticketId} created for failed-but-debited UPI Tx ${paymentResultFromPSP.transactionId}`);
              } catch (ticketError) {
                  console.error(`[UPI Ctrl] Failed to create support ticket for ${paymentResultFromPSP.transactionId}:`, ticketError);
@@ -358,7 +389,9 @@ exports.checkBalance = async (req, res, next) => {
         return next(new Error("UPI ID and PIN are required."));
     }
      try {
-        const balance = await upiProviderService.checkAccountBalance(upiId, pin);
+        const balance = await upiProviderService.checkAccountBalance(upiId, pin, userId);
+        // Log balance check event (optional, for auditing if needed)
+        await addTransaction({ type: 'Balance Check', name: upiId, description: 'UPI Balance Enquiry', amount: 0, status: 'Completed', userId });
         res.status(200).json({ balance });
      } catch (error) {
           next(error);
@@ -416,10 +449,28 @@ exports.disableUpiLite = async (req, res, next) => {
     }
 };
 
-const FALLBACK_ELIGIBLE_ERROR_CODES = [
-    'UPI_LIMIT_EXCEEDED',
-    'BANK_SERVER_DOWN',
-    'BANK_INSUFFICIENT_FUNDS',
-    'BANK_NETWORK_ERROR',
-    'TRANSACTION_TIMEOUT',
-];
+exports.setUpiPin = async (req, res, next) => {
+    const userId = req.user.uid;
+    const { upiId, oldPin, newPin, bankAccountDetails } = req.body;
+    // Bank account details (like last 6 digits of debit card, expiry) might be needed for first time PIN set
+    if (!upiId || !newPin || ( (oldPin && oldPin.length !== (newPin.length === 4 ? 4:6)) || newPin.length !== 4 && newPin.length !== 6) ) {
+        return res.status(400).json({ message: "Valid UPI ID and new PIN (4 or 6 digits) are required. Old PIN required for change." });
+    }
+    try {
+        const result = await upiProviderService.setOrChangeUpiPin({ userId, upiId, oldPin, newPin, bankAccountDetails });
+        if (result.success) {
+            // Update mpinSet flag for the linked account
+            const accountsColRef = collection(firestoreDb, 'users', userId, 'linkedAccounts');
+            const q = query(accountsColRef, where('upiId', '==', upiId), limit(1));
+            const accountSnapshot = await getDocs(q);
+            if (!accountSnapshot.empty) {
+                await updateDoc(accountSnapshot.docs[0].ref, { mpinSet: true, pinLength: newPin.length, updatedAt: serverTimestamp() });
+            }
+            res.status(200).json({ success: true, message: result.message || 'UPI PIN set/changed successfully.' });
+        } else {
+            throw new Error(result.message || "Failed to set/change UPI PIN.");
+        }
+    } catch (error) {
+        next(error);
+    }
+};

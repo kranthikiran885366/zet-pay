@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Centralized BACKEND service for logging transactions to Firestore and Blockchain.
  */
@@ -48,10 +49,10 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             withdrawalRequestId: (rest as any).withdrawalRequestId ?? null,
             createdAt: FieldValue.serverTimestamp(), // Always set by server
             updatedAt: FieldValue.serverTimestamp(), // Always set by server
-            // Ensure all fields from Transaction type are considered or set to null/default
             pspTransactionId: (rest as any).pspTransactionId ?? null,
             refundTransactionId: (rest as any).refundTransactionId ?? null,
             failureReason: (rest as any).failureReason ?? null,
+            stealthScan: (rest as any).stealthScan ?? false,
         };
 
         Object.keys(dataToSave).forEach(key => {
@@ -75,11 +76,10 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const finalTransaction: Transaction = {
             id: docRef.id,
             ...savedData,
-            // Convert Firestore Timestamps to JS Dates for return and WS payload
             date: (savedData.date as Timestamp).toDate(),
             createdAt: (savedData.createdAt as Timestamp).toDate(),
             updatedAt: (savedData.updatedAt as Timestamp).toDate(),
-        } as Transaction; // Assert type after conversion
+        } as Transaction;
 
 
         const wsPayload = {
@@ -102,16 +102,16 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         }
 
 
-        const blockchainPayloadForLog = { // Renamed to avoid conflict
+        const blockchainPayloadForLog = {
             userId: finalTransaction.userId,
             type: finalTransaction.type,
             amount: finalTransaction.amount,
-            date: finalTransaction.date.toISOString(), // Use ISO string for logging
+            date: finalTransaction.date.toISOString(),
             recipient: finalTransaction.upiId || finalTransaction.billerId || undefined,
             name: finalTransaction.name,
             description: finalTransaction.description,
             status: finalTransaction.status,
-            originalId: finalTransaction.id,
+            originalId: finalTransaction.id, // Use Firestore ID as originalId
             ticketId: finalTransaction.ticketId
         };
 
@@ -142,7 +142,6 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
  */
 export async function logTransactionToBlockchain(transactionId: string, data: Transaction): Promise<string | null> {
     const { userId, amount, type, date, name, description, status, id, ticketId } = data;
-    // Ensure date is ISO string for consistent logging format
     const isoDate = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? date : new Date().toISOString());
 
     const blockchainPayload = { userId, amount, type, date: isoDate, name, description, status, originalId: id, ticketId };

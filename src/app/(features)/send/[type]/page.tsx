@@ -1,18 +1,19 @@
 
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageSquare, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, UserPlus, RefreshCw, Search as SearchIcon, ShieldQuestion, ShieldAlert, X as CloseIcon, ChevronRight, BookUser, Key as KeyIcon } from 'lucide-react'; // Changed Keypad to Key as KeyIcon
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Landmark, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, UserPlus, RefreshCw, Search as SearchIcon, ShieldQuestion, ShieldAlert, X as CloseIcon, ChevronRight, BookUser, Key as KeyIcon, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
-import { getContacts, savePayee, PayeeClient } from '@/services/contacts';
-import { processUpiPayment, verifyUpiId as verifyUpiIdService, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
+import { getContacts, savePayee, PayeeClient as Payee } from '@/services/contacts';
+import { processUpiPayment, verifyUpiId as verifyUpiIdService, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus, setUpiPin } from '@/services/upi';
+import type { Transaction } from '@/services/types';
 import { auth } from '@/lib/firebase';
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +24,9 @@ import { apiClient } from '@/lib/apiClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ZetChat } from '@/components/zet-chat';
-import Image from 'next/image'; // Import Image for logos
+import Image from 'next/image';
 
-interface DisplayPayee extends PayeeClient {
+interface DisplayPayee extends Payee {
     verificationStatus?: 'verified' | 'blacklisted' | 'unverified' | 'pending';
     verificationReason?: string;
     verifiedName?: string;
@@ -48,6 +49,7 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 export default function SendMoneyPage() {
   const params = useParams();
   const router = useRouter();
+  const clientSearchParams = useSearchParams(); // Use useSearchParams hook
   const { toast } = useToast();
   const type = typeof params.type === 'string' ? (params.type === 'bank' ? 'bank' : 'mobile') : 'mobile';
 
@@ -63,7 +65,7 @@ export default function SendMoneyPage() {
   const [hasError, setHasError] = useState(false);
   const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(isVerifyingUpi);
   const [selectedAccountUpiId, setSelectedAccountUpiId] = useState('');
   const [paymentResult, setPaymentResult] = useState<UpiTransactionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +117,23 @@ export default function SendMoneyPage() {
       setIsLoggedIn(!!user);
       if (user) {
         loadInitialData();
+        // Check for query params to pre-fill contact
+        const upiIdFromQuery = clientSearchParams.get('upiId');
+        const nameFromQuery = clientSearchParams.get('name');
+        const typeFromQuery = clientSearchParams.get('type') as 'bank' | 'mobile' | null; // Added explicit type
+
+        if (upiIdFromQuery && nameFromQuery && typeFromQuery) {
+          const contactData: Payee = {
+            id: `query-${upiIdFromQuery}`, // Temporary ID
+            userId: user.uid, // Use current user ID
+            name: nameFromQuery,
+            identifier: upiIdFromQuery,
+            type: typeFromQuery,
+            upiId: upiIdFromQuery,
+          };
+          verifyAndSelectPayee(contactData);
+        }
+
       } else {
         setIsLoadingContacts(false);
         setAllContacts([]);
@@ -125,7 +144,7 @@ export default function SendMoneyPage() {
       }
     });
     return () => unsubscribeAuth();
-  }, [loadInitialData]);
+  }, [loadInitialData, clientSearchParams]); // Removed verifyAndSelectPayee to avoid re-creation, will call inside
 
   const fetchBankStatusesForAccounts = async (accountsToFetch: BankAccount[]) => {
     const statuses: Record<string, 'Active' | 'Slow' | 'Down'> = {};
@@ -196,7 +215,7 @@ export default function SendMoneyPage() {
           let status: DisplayPayee['verificationStatus'] = 'unverified';
           if (validationResult.isBlacklisted) status = 'blacklisted';
           else if ((validationResult.verifiedName && validationResult.verifiedName === prev.name) || validationResult.isVerifiedMerchant) status = 'verified';
-          else if (validationResult.verifiedName) status = 'verified';
+          else if (validationResult.verifiedName) status = 'verified'; // If name fetched, consider it verified for display
           return { ...prev, upiId: upiToVerify, verificationStatus: status, verifiedName: validationResult.verifiedName || undefined, verificationReason: validationResult.reason || (status === 'unverified' ? 'Name mismatch or not found' : undefined), isZetChatUser: isZetChatUser ?? prev.isZetChatUser };
         }
         return prev;
@@ -214,6 +233,29 @@ export default function SendMoneyPage() {
       setIsVerifyingUpi(false);
     }
   }, [toast]);
+
+   // Update the useEffect for pre-filling from query params
+   useEffect(() => {
+    const upiIdFromQuery = clientSearchParams.get('upiId');
+    const nameFromQuery = clientSearchParams.get('name');
+    const typeFromQuery = clientSearchParams.get('type') as 'bank' | 'mobile' | null;
+    const actionFromQuery = clientSearchParams.get('action');
+
+    if (isLoggedIn && upiIdFromQuery && nameFromQuery && typeFromQuery && actionFromQuery === 'add') {
+      const contactData: Payee = {
+        id: `query-${upiIdFromQuery}`, // Temporary ID
+        userId: auth.currentUser!.uid,
+        name: nameFromQuery,
+        identifier: upiIdFromQuery,
+        type: typeFromQuery,
+        upiId: upiIdFromQuery,
+      };
+      verifyAndSelectPayee(contactData);
+      // Clear query params after use if needed using router.replace
+      // router.replace(params.type === 'bank' ? '/send/bank' : '/send/mobile', undefined);
+    }
+  }, [isLoggedIn, clientSearchParams, verifyAndSelectPayee, router, params.type]);
+
 
   const handleClearSelection = () => {
     setSelectedPayee(null);
@@ -233,20 +275,29 @@ export default function SendMoneyPage() {
   };
 
   const handlePinSubmit = () => {
-    const expectedLength = accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength;
+    const account = accounts.find(acc => acc.upiId === selectedAccountUpiId);
+    const expectedLength = account?.pinLength;
     const isValid = expectedLength ? upiPin.length === expectedLength : (upiPin.length === 4 || upiPin.length === 6);
-    if (isValid && pinPromiseResolverRef.current) pinPromiseResolverRef.current.resolve(upiPin);
-    else {
+
+    if (isValid && pinPromiseResolverRef.current) {
+      pinPromiseResolverRef.current.resolve(upiPin);
+    } else {
       toast({ variant: "destructive", title: "Invalid PIN", description: `Please enter your ${expectedLength || '4 or 6'} digit UPI PIN.` });
-      pinPromiseResolverRef.current?.resolve(null);
+      pinPromiseResolverRef.current?.resolve(null); // Resolve with null if PIN is invalid
     }
     pinPromiseResolverRef.current = null;
     setIsPinDialogOpen(false);
   };
 
   const handlePinCancel = () => {
-    if (pinPromiseResolverRef.current) pinPromiseResolverRef.current.resolve(null);
     setIsPinDialogOpen(false);
+    if (pinPromiseResolverRef.current) {
+        pinPromiseResolverRef.current.resolve(null);
+        pinPromiseResolverRef.current = null;
+    }
+    // Reset states if payment was in progress
+    setIsProcessing(false);
+    setShowConfirmation(false); // Go back to amount entry
   };
 
   const handleMakePayment = async () => {
@@ -276,8 +327,7 @@ export default function SendMoneyPage() {
       return;
     }
 
-    setShowConfirmation(true);
-    setIsProcessing(true);
+    setIsProcessing(true); // Set processing before PIN prompt for UPI
     setPaymentResult(null);
     setError(null);
 
@@ -285,28 +335,47 @@ export default function SendMoneyPage() {
       let result: UpiTransactionResult;
       if (selectedPaymentSource === 'upi') {
         const enteredPin = await promptForPin();
-        if (enteredPin === null) throw new Error("PIN entry cancelled.");
+        if (enteredPin === null) { // User cancelled PIN entry
+            setIsProcessing(false); // Reset processing state
+            return; // Stop further execution
+        }
         result = await processUpiPayment(payeeToPay.upiId!, Number(amount), enteredPin, note || `Payment to ${payeeToPay.name}`, selectedAccountUpiId);
-      } else {
-        const walletResult = await apiClient<WalletTransactionResult>('/wallet/pay', {
+      } else { // Wallet payment
+        const walletResult = await apiClient<UpiTransactionResult>('/wallet/pay', { // Use UpiTransactionResult for consistency if backend returns similar fields
           method: 'POST',
           body: JSON.stringify({ recipientIdentifier: payeeToPay.upiId!, amount: Number(amount), note: note || `Payment to ${payeeToPay.name}` }),
         });
-        result = { ...walletResult, amount: Number(amount), recipientUpiId: payeeToPay.upiId!, status: walletResult.success ? 'Completed' : 'Failed' };
+        // Adapt walletResult to UpiTransactionResult structure
+        result = {
+            transactionId: walletResult.transactionId,
+            amount: Number(amount),
+            recipientUpiId: payeeToPay.upiId!,
+            status: walletResult.success ? 'Completed' : 'Failed',
+            message: walletResult.message,
+            success: walletResult.success,
+        };
       }
+
       setPaymentResult(result);
+      setShowConfirmation(true); // Show confirmation screen only after payment attempt
+
       if (result.success || result.status === 'Completed' || result.status === 'FallbackSuccess') {
         toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${payeeToPay.verifiedName || payeeToPay.name}.`, duration: 5000 });
-        if (selectedPaymentSource === 'wallet' || result.usedWalletFallback) apiClient<{ balance: number }>('/wallet/balance').then(res => setWalletBalance(res.balance));
+        if (selectedPaymentSource === 'wallet' || result.usedWalletFallback) {
+            apiClient<{ balance: number }>('/wallet/balance').then(res => setWalletBalance(res.balance));
+        }
+        // Refresh contacts to potentially update recent/frequent status
+        if (auth.currentUser) loadInitialData();
       } else {
         throw new Error(result.message || `Payment ${result.status || 'Failed'}`);
       }
     } catch (err: any) {
       console.error("Payment failed:", err);
       const errorMessage = err.message || "Payment failed. Please try again.";
-      setError(errorMessage);
+      setError(errorMessage); // Set error for display on the input screen if confirmation isn't shown yet
       setPaymentResult({ amount: Number(amount), recipientUpiId: payeeToPay.upiId!, status: 'Failed', message: errorMessage });
-       if (errorMessage !== "PIN entry cancelled.") {
+      setShowConfirmation(true); // Show error on confirmation screen
+       if (errorMessage !== "PIN entry cancelled." && errorMessage !== "User cancelled PIN entry.") {
            toast({ variant: "destructive", title: "Payment Failed", description: errorMessage });
        }
     } finally {
@@ -324,31 +393,54 @@ export default function SendMoneyPage() {
     }
   };
 
-  const handleAddNewContact = () => alert("Add New Contact / Payee flow not implemented yet.");
+  const handleAddNewContact = () => {
+    // Logic to navigate to a dedicated 'add contact' page or open a modal
+    // For now, let's just clear selection and search to allow new UPI ID entry
+    setSelectedPayee(null);
+    setSearchTerm(''); // Clear search term to allow typing new UPI ID
+    if (type === 'bank' && inputRef.current) {
+        inputRef.current.focus(); // Focus on search input for UPI ID entry
+        toast({description: "Enter UPI ID in the search bar to pay a new contact."});
+    } else if (type === 'mobile' && inputRef.current){
+         inputRef.current.focus();
+         toast({description: "Enter mobile number in the search bar to pay."});
+    }
+  };
+  const inputRef = useRef<HTMLInputElement>(null); // Ref for the search input
 
-  const handlePayToUpiId = () => {
-    if (searchTerm.includes('@') && !filteredContacts.some(c => c.upiId === searchTerm || c.identifier === searchTerm)) verifyAndSelectPayee({ name: searchTerm.split('@')[0], upiId: searchTerm, identifier: searchTerm, type: 'bank' });
-    else if (searchTerm.match(/^[6-9]\d{9}$/) && !filteredContacts.some(c => c.identifier === searchTerm)) verifyAndSelectPayee({ name: searchTerm, identifier: searchTerm, type: 'mobile' });
-    else toast({ variant: "destructive", title: "Invalid Input", description: "Enter a valid UPI ID or mobile number to pay." });
+  const handlePayToUpiIdOrMobile = () => {
+    const term = searchTerm.trim();
+    if (term.includes('@') && !filteredContacts.some(c => c.upiId === term || c.identifier === term)) {
+        verifyAndSelectPayee({ name: term.split('@')[0], upiId: term, identifier: term, type: 'bank' });
+    } else if (term.match(/^[6-9]\d{9}$/) && !filteredContacts.some(c => c.identifier === term)) {
+        verifyAndSelectPayee({ name: term, identifier: term, type: 'mobile' });
+    } else {
+        toast({ variant: "destructive", title: "Invalid Input", description: "Enter a valid UPI ID (e.g., user@upi) or 10-digit mobile number to pay." });
+    }
   };
 
   const openChatWithPayee = () => {
     if (selectedPayee && selectedPayee.isZetChatUser && selectedPayee.upiId) {
       setChatRecipient({ id: selectedPayee.upiId, name: selectedPayee.verifiedName || selectedPayee.name, avatar: selectedPayee.avatarSeed ? `https://picsum.photos/seed/${selectedPayee.avatarSeed}/40/40` : undefined });
       setShowChatModal(true);
-    } else toast({ description: "Chat is only available with verified Zet Pay users." });
+    } else {
+        toast({ description: "Chat is only available with other Zet Pay users." });
+    }
   };
 
   const recentAndFrequentContacts = useMemo(() => {
     return allContacts
-      .map(c => ({ ...c, lastPaidSortKey: Math.random(), frequencySortKey: Math.random() }))
-      .sort((a, b) => b.frequencySortKey - a.lastPaidSortKey)
+      .map(c => ({ ...c, lastPaidSortKey: Math.random(), frequencySortKey: Math.random() })) // Simulate ranking
+      .sort((a, b) => b.frequencySortKey - a.lastPaidSortKey) // Example sort
       .slice(0, 6);
   }, [allContacts]);
 
   const headerTitle = type === 'bank' ? "UPI Money Transfer" : "Pay to Mobile Contact";
-  const searchPlaceholder = type === 'bank' ? "Enter UPI ID, Name or Account No." : "Enter Name or Mobile Number";
+  const searchPlaceholder = type === 'bank' ? "Enter UPI ID, Name or A/c No." : "Enter Name or Mobile Number";
   const showUPIApps = type === 'bank';
+
+  const selectedAccountForPin = accounts.find(acc => acc.upiId === selectedAccountUpiId);
+
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -370,7 +462,7 @@ export default function SendMoneyPage() {
              )}
           </div>
         </div>
-        <Button variant="link" className="text-primary-foreground/80 hover:text-primary-foreground text-xs p-0 h-auto">Help?</Button>
+        <Button variant="link" className="text-primary-foreground/80 hover:text-primary-foreground text-xs p-0 h-auto" onClick={() => router.push('/support')}>Help?</Button>
       </header>
 
       <main className="flex-grow p-4 space-y-4">
@@ -392,9 +484,11 @@ export default function SendMoneyPage() {
                 <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
                   <p><strong>Amount:</strong> ₹{Math.abs(Number(amount)).toFixed(2)}</p>
                   <p><strong>To:</strong> {selectedPayee?.verifiedName || selectedPayee?.name || paymentResult.recipientUpiId} ({paymentResult.recipientUpiId})</p>
+                  <p><strong>From:</strong> {selectedPaymentSource === 'wallet' ? `Zet Pay Wallet (Balance: ₹${walletBalance.toFixed(2)})` : accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName + ' - ' + accounts.find(acc => acc.upiId === selectedAccountUpiId)?.accountNumber}</p>
                   <p><strong>Date:</strong> {format(new Date(), 'PPp')}</p>
                   {paymentResult.transactionId && <p><strong>Transaction ID:</strong> {paymentResult.transactionId}</p>}
-                  {paymentResult.ticketId && <p className="font-medium text-orange-600"><strong>Ticket ID:</strong> {paymentResult.ticketId}</p>}
+                  {paymentResult.walletTransactionId && <p><strong>Wallet TxID:</strong> {paymentResult.walletTransactionId}</p>}
+                  {paymentResult.ticketId && <p className="font-medium text-orange-600"><strong>Support Ticket ID:</strong> {paymentResult.ticketId}</p>}
                   {paymentResult.refundEta && <p className="text-xs"><strong>Refund ETA:</strong> {paymentResult.refundEta}</p>}
                 </div>
                 <Button className="w-full" onClick={() => router.push('/')}>Done</Button>
@@ -411,13 +505,13 @@ export default function SendMoneyPage() {
             <CardContent className="p-4 space-y-3">
               <div className="relative">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input id="payeeInput" type="search" placeholder={searchPlaceholder} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-11" disabled={!!selectedPayee} />
+                <Input ref={inputRef} id="payeeInput" type="search" placeholder={searchPlaceholder} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-11" disabled={!!selectedPayee} />
                 {selectedPayee ? (
-                  <Button variant="ghost" size="icon" onClick={handleClearSelection} title="Clear Selection" className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"><XCircle className="h-5 w-5 text-muted-foreground" /></Button>
+                  <Button variant="ghost" size="icon" onClick={handleClearSelection} title="Clear Selection" className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"><CloseIcon className="h-5 w-5 text-muted-foreground" /></Button>
                 ) : (
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Direct UPI ID input coming soon."})}><KeyIcon className="h-5 w-5"/></Button> {/* Changed Keypad to KeyIcon */}
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Phone contacts access coming soon."})}><BookUser className="h-5 w-5"/></Button>
+                    {type === 'bank' && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={handlePayToUpiIdOrMobile} title="Pay to UPI ID"><KeyIcon className="h-5 w-5"/></Button>}
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Phone contacts access coming soon."})} title="Select from Contacts"><BookUser className="h-5 w-5"/></Button>
                   </div>
                 )}
               </div>
@@ -425,17 +519,17 @@ export default function SendMoneyPage() {
               {isLoadingContacts && !selectedPayee ? (
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-primary"/></div>
               ) : !selectedPayee && searchTerm ? (
-                <ScrollArea className="max-h-32 border rounded-md">
+                <ScrollArea className="max-h-40 border rounded-md">
                   <div className="p-1 space-y-0.5">
                     {filteredContacts.length === 0 && !(searchTerm.includes('@') || searchTerm.match(/^[6-9]\d{9}$/)) && <p className="text-xs text-muted-foreground p-2 text-center">No contacts found.</p>}
                     {filteredContacts.map((contact) => (
                       <Button key={contact.id || contact.identifier} variant="ghost" className="w-full justify-start h-auto py-1.5 px-2 text-left" onClick={() => handleSelectContact(contact)}>
-                        <Avatar className="h-7 w-7 mr-2"><AvatarImage src={`https://picsum.photos/seed/${contact.avatarSeed}/30/30`} alt={contact.name} data-ai-hint="person avatar"/><AvatarFallback>{contact.name.charAt(0)}</AvatarFallback></Avatar>
+                        <Avatar className="h-7 w-7 mr-2"><AvatarImage src={`https://picsum.photos/seed/${contact.avatarSeed}/30/30`} alt={contact.name} data-ai-hint="person avatar small"/><AvatarFallback>{contact.name.charAt(0)}</AvatarFallback></Avatar>
                         <div><p className="text-sm font-medium">{contact.name}</p><p className="text-xs text-muted-foreground">{contact.upiId || contact.identifier}</p></div>
                       </Button>
                     ))}
-                    {filteredContacts.length === 0 && (searchTerm.includes('@') || searchTerm.match(/^[6-9]\d{9}$/)) && (
-                      <Button variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={handlePayToUpiId}><UserPlus className="h-4 w-4 mr-2" /> Pay to <span className="font-medium ml-1">{searchTerm}</span></Button>
+                    {(searchTerm.includes('@') || searchTerm.match(/^[6-9]\d{9}$/)) && !filteredContacts.some(c => (c.upiId || c.identifier) === searchTerm) && (
+                      <Button variant="ghost" className="w-full justify-start h-auto py-1.5 px-2" onClick={handlePayToUpiIdOrMobile}><UserPlus className="h-4 w-4 mr-2" /> Pay to <span className="font-medium ml-1">{searchTerm}</span></Button>
                     )}
                   </div>
                 </ScrollArea>
@@ -446,7 +540,7 @@ export default function SendMoneyPage() {
                     <div className="flex space-x-3">
                       {recentAndFrequentContacts.map(contact => (
                         <button key={contact.id} onClick={() => handleSelectContact(contact)} className="flex flex-col items-center w-16 text-center hover:opacity-80 transition-opacity">
-                          <Avatar className="h-10 w-10 mb-1 border"><AvatarImage src={`https://picsum.photos/seed/${contact.avatarSeed}/40/40`} alt={contact.name} data-ai-hint="person avatar"/><AvatarFallback>{contact.name.charAt(0)}</AvatarFallback></Avatar>
+                          <Avatar className="h-10 w-10 mb-1 border"><AvatarImage src={`https://picsum.photos/seed/${contact.avatarSeed}/40/40`} alt={contact.name} data-ai-hint="person avatar medium"/><AvatarFallback>{contact.name.charAt(0)}</AvatarFallback></Avatar>
                           <span className="text-xs font-medium text-foreground truncate w-full">{contact.name}</span>
                         </button>
                       ))}
@@ -464,7 +558,7 @@ export default function SendMoneyPage() {
                 <div className="mt-3 p-3 bg-muted rounded-md border space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3 overflow-hidden">
-                      <Avatar className="h-10 w-10 flex-shrink-0"><AvatarImage src={`https://picsum.photos/seed/${selectedPayee.avatarSeed}/40/40`} alt={selectedPayee.name} data-ai-hint="person avatar"/><AvatarFallback>{selectedPayee.name.charAt(0)}</AvatarFallback></Avatar>
+                      <Avatar className="h-10 w-10 flex-shrink-0"><AvatarImage src={`https://picsum.photos/seed/${selectedPayee.avatarSeed}/40/40`} alt={selectedPayee.name} data-ai-hint="person avatar large"/><AvatarFallback>{selectedPayee.name.charAt(0)}</AvatarFallback></Avatar>
                       <div className="overflow-hidden">
                         <p className="text-sm font-semibold truncate">{selectedPayee.verifiedName || selectedPayee.name}</p>
                         <p className="text-xs text-muted-foreground truncate">{selectedPayee.upiId || selectedPayee.identifier}</p>
@@ -513,15 +607,15 @@ export default function SendMoneyPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
-              <AlertDialogDescription>Enter your {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || '4 or 6'} digit UPI PIN for {accounts.find(acc => acc.upiId === selectedAccountUpiId)?.bankName || 'your account'} to authorize payment of ₹{Number(amount).toFixed(2)} to {selectedPayee?.verifiedName || selectedPayee?.name}.</AlertDialogDescription>
+              <AlertDialogDescription>Enter your {selectedAccountForPin?.pinLength || '4 or 6'} digit UPI PIN for {selectedAccountForPin?.bankName || 'your account'} to authorize payment of ₹{Number(amount).toFixed(2)} to {selectedPayee?.verifiedName || selectedPayee?.name}.</AlertDialogDescription>
             </AlertDialogHeader>
             <div className="py-4">
               <Label htmlFor="pin-input-dialog" className="sr-only">UPI PIN</Label>
-              <Input id="pin-input-dialog" type="password" inputMode="numeric" maxLength={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength || 6} value={upiPin} onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, ''))} className="text-center text-xl tracking-[0.3em]" placeholder={accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 ? "****" : "******"} autoFocus/>
+              <Input id="pin-input-dialog" type="password" inputMode="numeric" maxLength={selectedAccountForPin?.pinLength || 6} value={upiPin} onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, ''))} className="text-center text-xl tracking-[0.3em]" placeholder={selectedAccountForPin?.pinLength === 4 ? "****" : "******"} autoFocus/>
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={handlePinCancel}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handlePinSubmit} disabled={!(((accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 4 && upiPin.length === 4) || (accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength === 6 && upiPin.length === 6) || (!accounts.find(acc => acc.upiId === selectedAccountUpiId)?.pinLength && (upiPin.length === 4 || upiPin.length === 6))))}><Lock className="mr-2 h-4 w-4" /> Confirm Payment</AlertDialogAction>
+              <AlertDialogAction onClick={handlePinSubmit} disabled={!(((selectedAccountForPin?.pinLength === 4 && upiPin.length === 4) || (selectedAccountForPin?.pinLength === 6 && upiPin.length === 6) || (!selectedAccountForPin?.pinLength && (upiPin.length === 4 || upiPin.length === 6))))}><Lock className="mr-2 h-4 w-4" /> Confirm Payment</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -538,4 +632,3 @@ const getBankStatusBadge = (status: 'Active' | 'Slow' | 'Down' | undefined) => {
     default: return null;
   }
 };
-
