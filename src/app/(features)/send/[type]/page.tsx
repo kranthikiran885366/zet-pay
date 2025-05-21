@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageSquare, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, UserPlus, RefreshCw, Search as SearchIcon, ShieldQuestion, ShieldAlert, X as CloseIcon, ChevronRight, BookUser, Keypad } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, MessageSquare, Users, Landmark, Clock, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, UserPlus, RefreshCw, Search as SearchIcon, ShieldQuestion, ShieldAlert, X as CloseIcon, ChevronRight, BookUser, Key as KeyIcon } from 'lucide-react'; // Changed Keypad to Key as KeyIcon
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { getContacts, savePayee, PayeeClient } from '@/services/contacts';
@@ -340,12 +340,10 @@ export default function SendMoneyPage() {
   };
 
   const recentAndFrequentContacts = useMemo(() => {
-    // Combine all contacts and add a 'lastPaidSortKey' and 'frequencySortKey'
-    // This is a simplified mock for now, real logic would involve transaction history
     return allContacts
       .map(c => ({ ...c, lastPaidSortKey: Math.random(), frequencySortKey: Math.random() }))
-      .sort((a, b) => b.frequencySortKey - a.lastPaidSortKey) // Mock sort: recents/frequent first
-      .slice(0, 6); // Show top 6
+      .sort((a, b) => b.frequencySortKey - a.lastPaidSortKey)
+      .slice(0, 6);
   }, [allContacts]);
 
   const headerTitle = type === 'bank' ? "UPI Money Transfer" : "Pay to Mobile Contact";
@@ -418,7 +416,7 @@ export default function SendMoneyPage() {
                   <Button variant="ghost" size="icon" onClick={handleClearSelection} title="Clear Selection" className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"><XCircle className="h-5 w-5 text-muted-foreground" /></Button>
                 ) : (
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Direct UPI ID input coming soon."})}><Keypad className="h-5 w-5"/></Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Direct UPI ID input coming soon."})}><KeyIcon className="h-5 w-5"/></Button> {/* Changed Keypad to KeyIcon */}
                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => toast({description: "Phone contacts access coming soon."})}><BookUser className="h-5 w-5"/></Button>
                   </div>
                 )}
@@ -540,3 +538,4 @@ const getBankStatusBadge = (status: 'Active' | 'Slow' | 'Down' | undefined) => {
     default: return null;
   }
 };
+
