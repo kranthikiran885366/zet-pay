@@ -198,7 +198,8 @@ This section details the primary functionalities of the Zet Pay app, grouped by 
 *   **UI:** Tailwind CSS, Shadcn/ui
 *   **State Management:** React Context / Zustand (as needed)
 *   **Backend:** Node.js, Express.js, TypeScript
-*   **Database:** Firebase Firestore (Primary Database), potentially Redis for caching.
+*   **Database:** Firebase Firestore (Primary Database)
+*   **Caching:** Redis (for frequently accessed data, biller lists, plans, active offers, user sessions if custom)
 *   **Authentication:** Firebase Authentication
 *   **Real-time Communication:** WebSocket (`ws` library on backend, custom hook/lib on frontend)
 *   **AI:** Google AI - Genkit (Gemini Models via Vertex AI, used via backend flows)
@@ -218,6 +219,7 @@ This section details the primary functionalities of the Zet Pay app, grouped by 
 *   npm or yarn
 *   Firebase Account & Project Setup (Firestore, Auth, Storage required). **Ensure Phone Number sign-in method is enabled in Firebase Authentication.**
 *   Google Cloud Project with Vertex AI enabled (for Genkit/Gemini)
+*   Redis Instance (Self-hosted, Docker, or Cloud Provider like Memorystore/ElastiCache) - Connection URL needed.
 *   Service Account Keys for Firebase Admin (Backend) and Google Cloud (AI) - **Store Securely!**
 *   Payment Gateway & PSP Partner Credentials (for actual payments) - **Store Securely!**
 *   API Keys for any third-party services (Travel, Movies, Food Aggregators, etc.) - **Store Securely!**
@@ -269,6 +271,10 @@ FIREBASE_STORAGE_BUCKET=YOUR_FIREBASE_STORAGE_BUCKET_URL # e.g., your-project-id
 # Google AI API Key (for Genkit backend flows)
 GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
 
+# Redis Configuration
+REDIS_URL=redis://localhost:6379 # Example: redis://username:password@host:port
+# REDIS_PASSWORD=YOUR_REDIS_PASSWORD (if applicable)
+
 # Payment Service Provider (PSP) Credentials (Examples)
 PSP_API_KEY=YOUR_PSP_API_KEY
 PSP_SECRET_KEY=YOUR_PSP_SECRET_KEY
@@ -283,7 +289,7 @@ RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_SECRET
 # Blockchain API Endpoint (If using a separate logging service)
 BLOCKCHAIN_API_ENDPOINT=http://localhost:5001/log
 
-# JWT Secret
+# JWT Secret (If implementing custom JWT-based auth for specific backend services)
 JWT_SECRET=YOUR_STRONG_JWT_SECRET
 
 # Travel Aggregator APIs
@@ -335,10 +341,11 @@ CIBIL_API_SECRET=YOUR_CIBIL_API_SECRET
 1.  **Clone:** `git clone <repository-url> && cd <repo-name>`
 2.  **Install Root Dependencies:** `npm install` (or `yarn`)
 3.  **Install Backend Dependencies:** `cd backend && npm install` (or `yarn`) && `cd ..`
-4.  **Setup `.env` files:** Create and populate `.env` in root and `backend/` as per above. Ensure Firebase credentials and necessary API keys are correct.
-5.  **Run Backend Server:** (Terminal 1) `cd backend && npm run dev`
-6.  **Run Genkit Dev Server (Optional, if using AI flows):** (Terminal 2, from root) `npm run genkit:dev`
-7.  **Run Frontend Dev Server:** (Terminal 3, from root) `npm run dev`
+4.  **Setup `.env` files:** Create and populate `.env` in root and `backend/` as per above. Ensure Firebase credentials, Redis URL, and necessary API keys are correct.
+5.  **Run Redis Server:** (If self-hosting) Start your Redis instance.
+6.  **Run Backend Server:** (Terminal 1) `cd backend && npm run dev`
+7.  **Run Genkit Dev Server (Optional, if using AI flows):** (Terminal 2, from root) `npm run genkit:dev`
+8.  **Run Frontend Dev Server:** (Terminal 3, from root) `npm run dev`
 
 Open [http://localhost:9002](http://localhost:9002) (or your frontend port). The backend runs on port 9003 by default.
 
@@ -364,14 +371,14 @@ Open [http://localhost:9002](http://localhost:9002) (or your frontend port). The
 │   ├── styles/          # Additional global styles
 │   └── mock-data/       # Mock data for various services (client-side fallback)
 ├── backend/             # Backend (Node.js/Express)
-│   ├── config/          # Firebase Admin config, DB connections, Partner SDK configs
+│   ├── config/          # Firebase Admin config, DB connections, Partner SDK configs, Redis client
 │   ├── controllers/     # Route handlers (API logic for specific features)
 │   ├── middleware/      # Auth, error handling, validation, rate limiting
 │   ├── models/          # Data models/schemas (if using ORM/ODM - less likely with Firestore)
 │   ├── routes/          # API route definitions (grouping endpoints by feature)
-│   ├── services/        # Backend business logic, external API calls, DB interactions
+│   ├── services/        # Backend business logic, external API calls, DB interactions, caching logic
 │   ├── utils/           # Backend utility functions
-│   └── server.js        # Main server entry point (includes WebSocket server setup)
+│   └── server.js        # Main server entry point (includes WebSocket server setup & Redis connection)
 ├── public/              # Static assets (images, logos)
 ├── .env                 # Frontend env vars (DO NOT COMMIT)
 ├── backend/.env         # Backend env vars (DO NOT COMMIT)
@@ -402,51 +409,108 @@ Open [http://localhost:9002](http://localhost:9002) (or your frontend port). The
 
 ## 🔐 Security Features Implemented
 
-**Bank-Level Security (Interfaced via Backend):**
+This section outlines the security measures considered and (conceptually or partially) implemented in Zet Pay. Full implementation of all features requires ongoing effort, infrastructure, and potentially native mobile code.
 
-*   **PCI DSS Compliance:** Assumed through Payment Gateway partners. Zet Pay backend does not store full card numbers.
-*   **RBI/NPCI Guidelines:** Followed for UPI payments (PSP integration), wallet operations (KYC).
-*   **End-to-End Encryption (E2EE):** For sensitive data like UPI PIN (handled by PSP SDK/NPCI library) and OTPs. Data in transit uses HTTPS.
-*   **Tokenization:**
-    *   Card details are tokenized by the Payment Gateway (e.g., `backend/services/paymentGatewayService.js` for tokenization calls, `backend/services/cards.js` for storing tokens).
-    *   UPI IDs are used directly but managed securely.
-*   **Secure Payment Gateway Integration:** Backend services (`paymentGatewayService.js`) integrate with RBI-approved PGs.
-*   **Banking-Grade KYC Verification:** User profile includes `kycStatus`. Backend (`userService.js`) would integrate with KYC provider APIs.
-*   **Fraud Detection Systems:** Backend can integrate with fraud APIs. Logging of suspicious activities (`backend/services/scanService.js`). Features include QR authenticity check, verified merchant badges, and blacklisted UPI detection.
-*   **Regular Security Audits:** (Procedural) VAPT by certified auditors would be required.
+**1. Core Security Standards (Implemented or Assumed via Partners):**
 
-**App-Level Security (Frontend & Backend):**
+| Feature                    | Status / Implementation Notes                                                                                                                                                                                                                            |
+| :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AES-256 Encryption**     | **Backend:** Data at rest in Firestore is encrypted by Google. Sensitive configuration (API keys) via `.env`. For data in transit, see SSL/TLS. **Conceptual:** Application-level encryption for specific sensitive fields if stored outside Firestore. |
+| **SSL/TLS for All Traffic**| **Frontend/Backend:** All API calls use HTTPS via `apiClient.ts`. Vercel/Cloud Run enforce HTTPS.                                                                                                                                                           |
+| **HSM (Hardware Security Module)** | **Conceptual:** For a production system managing real financial keys (e.g., master keys for payment processing), HSMs would be used by the payment gateway or banking partner. Zet Pay's backend would not directly manage these.                     |
+| **PCI-DSS Compliance**     | **Assumed via Partner:** Payment Gateway (e.g., Razorpay, Stripe) is PCI-DSS compliant. Zet Pay backend does **not** store full card numbers; only tokens. (`backend/services/cards.js` & `paymentGatewayService.js` handle tokenization).                |
+| **Tokenization**           | **Implemented (via PG):** Card details tokenized by Payment Gateway. UPI IDs used directly but securely managed by backend and PSP. (`backend/services/cards.js`, `paymentGatewayService.js`)                                                          |
+| **Fraud Detection System** | **Conceptual/Simulated:** Backend services include placeholders for calling fraud detection APIs (e.g., during QR scan validation in `scanService.js`, or transaction processing). Real implementation requires a dedicated fraud engine or third-party service. |
+| **VAPT (Vulnerability Assessment & Penetration Testing)** | **Process:** Requires regular external audits. Not implementable in code directly.                                                                                                                                                           |
+| **Audit Trails**           | **Backend:** Firestore logs all data changes. `transactionLogger.ts` creates detailed transaction records. Morgan for HTTP request logging. **Conceptual:** More extensive, dedicated audit logging service for critical actions.                 |
+| **Zero Trust Architecture**| **Principle:** Applied by requiring authentication (Firebase Auth + JWT for backend APIs) for all internal services. Network policies (via Cloud provider) would further enforce this.                                                                 |
 
-*   **Biometric/PIN Authentication:**
-    *   Frontend: `src/app/(auth)/login/page.tsx` handles OTP/password. Biometric login uses device capabilities.
-    *   Backend: `authMiddleware.js` verifies Firebase Auth tokens. UPI PIN is handled by PSP.
-*   **App Device Binding:** (Conceptual) Firebase Auth inherently links to device on first sign-in; stronger binding would require backend logic.
-*   **Session Management:** Firebase Auth handles client-side sessions. Backend uses token verification for stateless sessions.
-*   **App Integrity Check:** (Conceptual) Requires native capabilities or libraries like SafetyNet/App Attest.
-*   **SSL Pinning:** (Conceptual) Requires native configuration or specific libraries.
-*   **Runtime Application Self-Protection (RASP):** (Conceptual) Requires specialized third-party RASP SDKs.
-*   **Data Encryption at Rest and In Transit:**
-    *   At Rest (Firestore): Firebase encrypts data by default. Sensitive user uploads to Firebase Storage are secured by rules. (`src/app/(features)/vault/page.tsx`, `backend/services/vaultService.js`)
-    *   In Transit: All API calls use HTTPS (`src/lib/apiClient.ts`, backend Express server).
-*   **Two-Factor Authentication (2FA):**
-    *   Login: Firebase Phone Auth (OTP) provides primary authentication.
-    *   Critical Actions: Backend to enforce additional OTP/PIN for actions like changing bank accounts.
-*   **Secure Local Storage:** Sensitive data (like tokens) is generally not stored long-term client-side by Firebase SDK directly; it manages its own secure storage.
-*   **Real-Time Notification Alerts:** Backend uses FCM via `firebase-admin` to send alerts for logins, transactions.
-*   **Input Sanitization & Validation:** Backend uses `express-validator` in route files (e.g., `backend/routes/upiRoutes.js`) to validate API inputs.
-*   **Rate Limiting:** Implemented in `backend/server.js` using `express-rate-limit`.
-*   **Helmet:** Used in `backend/server.js` for basic security headers.
+**2. Advanced Security Mechanisms:**
 
-**Advanced Security Options (Partially/Conceptually Implemented):**
+| Feature                        | Status / Implementation Notes                                                                                                                                                                                                                                                                                                                         |
+| :----------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Biometric Authentication**   | **Frontend (Conceptual):** Login page (`login/page.tsx`) notes biometric usage. Actual implementation requires native mobile capabilities to access device biometrics. Backend verifies standard auth token. UPI PIN is handled by PSP.                                                                                                                        |
+| **Multi-Factor Authentication (MFA)** | **Partially (OTP):** Firebase Phone Auth provides OTP-based MFA for login. **Conceptual:** Additional factors (e.g., authenticator app, security key) could be added via custom backend logic.                                                                                                                                                              |
+| **Jailbreak/Root Detection**   | **Native Mobile:** Requires native code (e.g., SafetyNet/App Attest on Android, DeviceCheck on iOS) and server-side validation. Not directly implementable in Next.js/Node.js.                                                                                                                                                                         |
+| **Secure Enclave/Keystore Use**| **Native Mobile:** Sensitive client-side data (like locally stored app PIN hash, or if biometrics unlock a local key) would use device's Secure Enclave/Keystore.                                                                                                                                                                                       |
+| **Device Binding**             | **Partially (Firebase Auth):** Firebase Auth provides some level of device awareness. **Conceptual:** Stronger device binding (e.g., checking unique device identifiers on backend during critical operations) would require backend logic and client-side data collection.                                                                            |
+| **Session Timeout & Auto Logout** | **Frontend (Firebase Auth):** Firebase SDK manages client-side session persistence and refresh. **Backend:** Tokens have expiry. `authMiddleware.js` validates token on each request. Auto-logout on client can be implemented with inactivity timers.                                                                                                           |
+| **Geofencing**                 | **Conceptual:** Backend could check IP geolocation or request client location for high-risk transactions and apply rules. Requires integration with a Geo-IP service.                                                                                                                                                                                 |
+| **Dynamic Transaction Limits** | **Conceptual:** Backend logic in payment controllers (`upiController.js`, `walletController.js`) could query a risk engine or user profile settings to apply dynamic limits.                                                                                                                                                                            |
+| **OTP over Secure Channels**   | **Implemented (Firebase Phone Auth):** Uses Firebase for SMS OTP. **Conceptual:** For other OTPs (e.g., transaction confirmation), ensure delivery via secure, rate-limited channels.                                                                                                                                                                          |
 
-*   **AI/ML-based Fraud Scoring:** (Conceptual) Backend AI flows can be developed for QR and transaction fraud.
-*   **Geo-Fencing:** (Conceptual) Can be implemented on backend by checking IP/location for risky transactions.
-*   **Remote Lock/Logout:** Firebase Auth allows revoking refresh tokens. Backend API enables remote logout.
-*   **Custom Risk Engine:** (Conceptual) Backend logic can be built to assess risk based on transaction patterns.
-*   **Payment Freeze Mode:** (`src/app/(features)/profile/security/page.tsx`)
-*   **Temporary Virtual UPI ID:** (Conceptual)
-*   **Auto-Credit for Payment Failures (Wallet Based):** (`backend/controllers/paymentController.js`, `backend/services/refundService.js`)
-*   **Zet One-Tap Auth (Fallback from OTP):** (Conceptual)
-*   **Multi-device Login Alerts:** (Partially implemented with FCM)
+**3. App-Level Security Features (Primarily for Native Mobile Apps):**
 
-*This documentation provides a high-level overview. Specific security measures and their depth of implementation can be found within individual code files.*
+| Feature                             | Status / Implementation Notes (Considering Web App Context)                                                                                                                                                                                                                                            |
+| :---------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Code Obfuscation**                | **Build Step (Next.js):** Minification is standard. True obfuscation is less common for web apps but can be applied via build tools.                                                                                                                                                                        |
+| **Secure Local Storage**            | **Frontend (Firebase Auth):** Firebase SDK manages its own token storage securely. For other app data, `localStorage` is used with caution, avoiding highly sensitive data. Sensitive user settings managed server-side.                                                                              |
+| **Root/Jailbreak Detection**        | **Native Mobile:** (As above)                                                                                                                                                                                                                                                                             |
+| **App Integrity Checks**            | **Native Mobile/Web (Firebase App Check):** Firebase App Check can be integrated with Play Integrity (Android) / DeviceCheck (iOS) / reCAPTCHA Enterprise (Web) to protect backend resources from abuse. (`firebaseAdmin.js` ready for App Check token verification if client sends it).               |
+| **Certificate Pinning**             | **Native Mobile/Advanced Web:** For web, can be implemented via Service Workers or specific browser features, but complex. Primarily a native app concern. `apiClient.ts` uses HTTPS.                                                                                                                    |
+| **In-App Secure Keyboard**          | **Native Mobile:** Relevant for PIN/password entry to prevent keylogging. For web, careful input field design and HTTPS are key.                                                                                                                                                                          |
+| **Tamper Detection**                | **Native Mobile/Web (App Check):** As above with App Integrity. Backend validation of all inputs is crucial.                                                                                                                                                                                             |
+| **Prevent Screen Capture**          | **Native Mobile:** OS-level feature. **Web:** Limited browser capabilities (CSS `user-select: none` helps minimally). Sensitive data display should be carefully managed.                                                                                                                                |
+| **Realtime Crash & Threat Reporting** | **Frontend (Firebase):** Next.js can be integrated with Sentry or Firebase Crashlytics (if using Firebase Performance). **Backend:** Robust logging (Morgan, custom logs) and monitoring tools (Google Cloud Monitoring/Logging).                                                                   |
+
+**Zet Pay Security Architecture Diagram (Conceptual):**
+
+```
++------------------------------------------------------------------------------------------------------+
+|                                       Zet Pay Application Ecosystem                                    |
++------------------------------------------------------------------------------------------------------+
+| [ User Device (Mobile/Web - Next.js Frontend) ]                                                      |
+|   - Biometric/PIN App Unlock (Native/Conceptual)                                                     |
+|   - Firebase Auth SDK (OTP, Session Management)                                                      |
+|   - Secure Local Storage (Framework Managed for Tokens)                                              |
+|   - HTTPS (apiClient.ts)                                                                             |
+|   - Input Validation (Client-side checks)                                                            |
+|   - (Conceptual: SSL Pinning, Root Detection, App Integrity - Native)                                |
+|             |                                                                                        |
+|             |<--(HTTPS, Firebase Auth Tokens, WebSocket Secure)-->                                   |
+|             |                                                                                        |
+| [ Zet Pay Backend (Node.js/Express on Cloud Run/Firebase Functions) ]                                |
+|   - Firebase Admin SDK (Token Verification - authMiddleware.js)                                      |
+|   - API Gateway (e.g., Google Cloud API Gateway - Conceptual for Nginx-like features)                |
+|   - Rate Limiting, Helmet (server.js)                                                                |
+|   - Input Validation (express-validator in routes)                                                   |
+|   - AES-256 Encryption (for specific sensitive data beyond Firestore's default) - Conceptual         |
+|   - JWT/OAuth2 for internal service auth (Conceptual if scaling to microservices)                    |
+|   - Secure API Design (RESTful, clear contracts)                                                     |
+|   - Redis (Caching, Temp Data - backend/config/redisClient.js)                                       |
+|             |                                                                                        |
+|   ----------|------------------ Firebase Services -------------------|---------------------------- |
+|   |         |                    - Firestore (Data at Rest Encryption) |                            | |
+|   |         |                    - Firebase Auth (User Management)     |                            | |
+|   |         |                    - Storage (Secure File Uploads)       |                            | |
+|   |         |                    - App Check (Protect Backend)         |                            | |
+|   ----------|----------------------------------------------------------|---------------------------- |
+|             |                                                          |                             |
+|             |<--(Secure API Calls, Mutual TLS if applicable)-->        |<--(Secure SDK/API Calls)--> |
+|             |                                                          |                             |
+| [ Payment Gateways / PSPs ]       [ KYC Providers / Credit Bureaus ]   [ Simulated Blockchain Logger ] |
+|   - PCI-DSS Compliant             - Secure Data Exchange               - Logging Service             |
+|   - Tokenization                  - Data Privacy Adherence             - (Internal/Mock)             |
+|   - HSMs for Keys (Partner Side)                                                                     |
++------------------------------------------------------------------------------------------------------+
+| Monitoring & Compliance Layer:                                                                       |
+|   - Centralized Logging (Cloud Logging, Sentry)                                                      |
+|   - Security Alerts & Monitoring                                                                     |
+|   - VAPT, Code Audits (Process)                                                                      |
+|   - Incident Response Plan (Process)                                                                 |
++------------------------------------------------------------------------------------------------------+
+```
+
+**Recommendations for Implementation (Focus Areas):**
+
+*   **Firebase App Check:** Strongly recommend integrating Firebase App Check with reCAPTCHA Enterprise (for web) to protect your backend APIs from abuse. This involves client-side setup and backend token verification.
+*   **Input Validation:** Rigorously validate all inputs on the backend (`express-validator` is a good start).
+*   **Secure Error Handling:** Ensure `errorMiddleware.js` does not leak sensitive information in production.
+*   **Dependency Security:** Regularly update dependencies and scan for vulnerabilities.
+*   **Principle of Least Privilege:** Ensure Firebase security rules for Firestore and Storage are as restrictive as possible.
+*   **Session Management (Server-Side if needed):** If custom server-side sessions are implemented beyond Firebase Auth tokens (e.g., for longer-lived admin sessions or specific flows), store session IDs in Redis and ensure they are secure, short-lived, and invalidated on logout/timeout.
+*   **Rate Limiting:** Fine-tune rate limits based on expected usage to prevent abuse.
+*   **Data Minimization:** Only collect and store data that is absolutely necessary for the service.
+*   **User Education:** Inform users about security best practices (strong PINs, not sharing OTPs, etc.).
+
+*This documentation provides a high-level overview. Specific security measures and their depth of implementation can be found within individual code files and require continuous review and improvement.*

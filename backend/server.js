@@ -6,9 +6,9 @@ const WebSocket = require('ws');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const admin = require('firebase-admin'); // Import Firebase Admin
-const { getTransactionHistory } = require('./controllers/transactionController.ts'); // For initial data
-const { getWalletBalance } = require('./controllers/walletController.ts'); // For initial data
+const admin = require('firebase-admin'); 
+const { getTransactionHistory } = require('./controllers/transactionController.ts'); 
+const { getWalletBalance } = require('./controllers/walletController.ts'); 
 
 // Initialize Firebase Admin
 try {
@@ -18,6 +18,9 @@ try {
     console.error("[Server] CRITICAL: Failed to initialize Firebase Admin SDK. Check config/firebaseAdmin.js and environment variables.");
     process.exit(1);
 }
+
+// Initialize Redis Client
+const redisClient = require('./config/redisClient');
 
 const authMiddleware = require('./middleware/authMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
@@ -54,7 +57,7 @@ const shoppingRoutes = require('./routes/shoppingRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const vaultRoutes = require('./routes/vaultRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-const favoritesRoutes = require('./routes/favoritesRoutes'); // Added favorites routes
+const favoritesRoutes = require('./routes/favoritesRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -198,11 +201,9 @@ async function sendInitialData(ws, userId, filters = {}) {
 
 async function sendInitialTransactions(ws, userId, clientFilters = {}) {
     console.log(`[WS Server] Preparing initial transactions for ${userId} with filters:`, clientFilters);
-    const mockReq = { user: { uid: userId }, query: clientFilters };
     let transactions = [];
     try {
         const firestoreDb = admin.firestore();
-        const transactionsColRef = firestoreDb.collection('transactions');
         let q = firestoreDb.collection('transactions').where('userId', '==', userId);
         
         if ((clientFilters).type && (clientFilters).type !== 'all') q = q.where('type', '==', (clientFilters).type);
@@ -278,10 +279,19 @@ function broadcast(message) {
     }
 }
 
-module.exports = { broadcast, sendToUser, sendInitialData };
+module.exports = { broadcast, sendToUser, sendInitialData, redisClient }; // Export redisClient
 
 app.get('/api/health', asyncHandler(async (req, res) => {
-    res.status(200).json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() });
+    let redisStatus = 'disconnected';
+    if (redisClient.isOpen) {
+        try {
+            await redisClient.ping();
+            redisStatus = 'connected';
+        } catch (e) {
+            redisStatus = 'ping_failed';
+        }
+    }
+    res.status(200).json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime(), redis: redisStatus });
 }));
 
 // Apply authMiddleware to routes that require authentication
@@ -316,7 +326,7 @@ app.use('/api/entertainment', authMiddleware, entertainmentRoutes);
 app.use('/api/scan', authMiddleware, scanRoutes);
 app.use('/api/vault', authMiddleware, vaultRoutes);
 app.use('/api/chat', authMiddleware, chatRoutes); 
-app.use('/api/favorites', authMiddleware, favoritesRoutes); // Mount favorites routes
+app.use('/api/favorites', authMiddleware, favoritesRoutes);
 
 
 app.use((req, res, next) => {
@@ -328,27 +338,50 @@ app.use((req, res, next) => {
 app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 9003;
-server.listen(PORT, () => {
-  console.log(`[Server] PayFriend Backend listening on port ${PORT}`);
-  console.log(`[WS Server] WebSocket server started on the same port.`);
-});
 
-const shutdown = (signal) => {
+// Function to start the server
+async function startServer() {
+    try {
+        if (!redisClient.isOpen) {
+            await redisClient.connect();
+        }
+        server.listen(PORT, () => {
+            console.log(`[Server] PayFriend Backend listening on port ${PORT}`);
+            console.log(`[WS Server] WebSocket server started on the same port.`);
+        });
+    } catch (err) {
+        console.error('[Server Startup] Failed to connect to Redis or start server:', err);
+        process.exit(1); // Exit if critical services fail to start
+    }
+}
+
+startServer();
+
+
+const shutdown = async (signal) => {
     console.log(`[Server] ${signal} signal received: closing HTTP server.`);
     clearInterval(interval);
-    server.close(() => {
+    server.close(async () => {
         console.log('[Server] HTTP server closed.');
         wss.close(() => {
             console.log("[WS Server] WebSocket server closed.");
-            process.exit(0);
         });
+        if (redisClient.isOpen) {
+            try {
+                await redisClient.quit();
+                console.log('[Redis] Client disconnected successfully.');
+            } catch (err) {
+                console.error('[Redis] Error during quit:', err);
+            }
+        }
+        // Allow time for WebSocket server to close clients
         setTimeout(() => {
-             console.log("[WS Server] Forcing remaining client connections closed.");
+             console.log("[Server] Forcing remaining client connections closed (if any).");
             wss.clients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) client.terminate();
             });
             process.exit(0);
-        }, 5000);
+        }, 5000); 
     });
 };
 
