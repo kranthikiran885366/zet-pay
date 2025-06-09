@@ -97,6 +97,14 @@ exports.updateUserProfile = asyncHandler(async (req, res, next) => {
     res.status(200).json({ message: 'Profile updated successfully.', profile: { id: userId, ...clientProfile } }); // Return updated profile
 });
 
+// Fetch Credit Score (Mock)
+exports.getCreditScore = asyncHandler(async (req, res, next) => {
+    const userId = req.user.uid;
+    console.log(`[User Ctrl] Fetching credit score for user: ${userId}`);
+    const creditScoreData = await userService.fetchUserCreditScore(userId); // Call service function
+    res.status(200).json(creditScoreData);
+});
+
 
 // --- KYC Stubs (Implementation depends heavily on KYC provider) ---
 

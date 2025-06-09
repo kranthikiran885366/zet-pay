@@ -35,6 +35,10 @@ router.put('/profile',
     asyncHandler(userController.updateUserProfile)
 );
 
+// GET /api/users/credit-score - Fetch user's credit score (mocked)
+router.get('/credit-score', asyncHandler(userController.getCreditScore));
+
+
 // POST /api/users/kyc/initiate - Initiate KYC process (Placeholder)
 // router.post('/kyc/initiate', asyncHandler(userController.initiateKyc));
 

@@ -142,10 +142,39 @@ async function updateSmartWalletBridgeSettings(userId, settings) {
     }
 }
 
+/**
+ * Fetches a mock credit score for the user.
+ * In a real app, this would integrate with a credit bureau API.
+ * @param userId The ID of the user.
+ * @returns A promise resolving to mock credit score data.
+ */
+async function fetchUserCreditScore(userId) {
+    console.log(`[User Service - Backend] Simulating credit score fetch for user ${userId}`);
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Mock data generation
+    const score = Math.floor(Math.random() * (850 - 550 + 1)) + 550; // Score between 550 and 850
+    const providers = ["CIBIL", "Experian", "Equifax"];
+    const provider = providers[Math.floor(Math.random() * providers.length)];
+    const reportDate = new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString();
+
+    return {
+        score,
+        provider,
+        reportDate,
+        // Add more mock details if needed
+        // paymentHistory: "Excellent",
+        // creditUtilization: "Low",
+    };
+}
+
 
 module.exports = {
     getUserProfileFromDb,
     upsertUserProfileInDb,
     checkKYCAndBridgeStatus,
     updateSmartWalletBridgeSettings,
+    fetchUserCreditScore, // Export new function
 };
+
