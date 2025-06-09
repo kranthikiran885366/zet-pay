@@ -12,21 +12,29 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { processBillPayment } from '@/services/bills';
-import { mockClubsData, Club } from '@/mock-data'; // Import centralized mock data
+import { mockClubsData, Club } from '@/mock-data'; 
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import type { Transaction } from '@/services/types';
 
 export default function ClubFeesPage() {
     const [clubs, setClubs] = useState<Club[]>(mockClubsData);
     const [selectedClub, setSelectedClub] = useState<string>('');
     const [membershipId, setMembershipId] = useState('');
     const [amount, setAmount] = useState<string>('');
-    const [isLoadingClubs, setIsLoadingClubs] = useState(false);
+    const [isLoadingClubs, setIsLoadingClubs] = useState(false); // Currently not used as data is static
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make payments." });
+            return;
+        }
         if (!selectedClub || !membershipId || !amount || Number(amount) <= 0) {
-            toast({ variant: "destructive", title: "Missing Information" });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select club, enter membership ID and a valid amount." });
             return;
         }
         setIsProcessing(true);
@@ -39,18 +47,19 @@ export default function ClubFeesPage() {
                 billerType: 'Club Fee',
                 billerName: clubName,
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
 
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${clubName} membership (${membershipId}).` });
+                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${clubName} membership (${membershipId}). Txn ID: ${transactionResult.id}` });
                 setMembershipId('');
                 setAmount('');
+                router.push('/history');
             } else {
-                throw new Error(`Payment ${transactionResult.status}`);
+                throw new Error(transactionResult.description || `Payment ${transactionResult.status}`);
             }
         } catch (err: any) {
             console.error("Club fee payment failed:", err);
-            toast({ variant: "destructive", title: "Payment Failed", description: err.message });
+            toast({ variant: "destructive", title: "Payment Failed", description: err.message || "Could not complete club fee payment." });
         } finally {
             setIsProcessing(false);
         }

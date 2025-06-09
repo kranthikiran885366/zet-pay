@@ -12,19 +12,23 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { mockGamingPlatformsData, mockGamingVouchersData, GamingPlatform, GamingVoucher } from '@/mock-data'; // Import centralized mock data
+import { mockGamingPlatformsData, mockGamingVouchersData, GamingPlatform, GamingVoucher } from '@/mock-data';
+import { purchaseVoucher, VoucherPurchasePayload } from '@/services/vouchers'; // Import voucher service
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
 
 export default function GamingVoucherPage() {
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
     const [selectedVoucher, setSelectedVoucher] = useState<GamingVoucher | null>(null);
     const [playerId, setPlayerId] = useState('');
     const [amount, setAmount] = useState<string>('');
-    const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     const vouchers = mockGamingVouchersData[selectedPlatform] || [];
-    const requiresPlayerId = ['freefire', 'pubg-uc'].includes(selectedPlatform);
+    const platformDetails = mockGamingPlatformsData.find(p => p.id === selectedPlatform);
+    const requiresPlayerId = platformDetails?.requiresPlayerId || ['freefire', 'pubg-uc'].includes(selectedPlatform); // Fallback if not in mock data
 
     useEffect(() => {
         setSelectedVoucher(null);
@@ -39,27 +43,42 @@ export default function GamingVoucherPage() {
 
     const handlePurchase = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to purchase vouchers." });
+            return;
+        }
         if (!selectedPlatform || !amount || Number(amount) <= 0) {
             toast({ variant: "destructive", title: "Missing Information", description: "Please select platform and voucher/amount." });
             return;
         }
         if (requiresPlayerId && !playerId) {
-             toast({ variant: "destructive", title: "Player ID Required", description: "Please enter your Player ID for this game." });
+             toast({ variant: "destructive", title: "Player ID Required", description: `Please enter your Player ID for ${platformDetails?.name || 'this game'}.` });
             return;
         }
 
         setIsProcessing(true);
-        const platformName = mockGamingPlatformsData.find(p => p.id === selectedPlatform)?.name || 'Gaming';
-        console.log("Purchasing Gaming Voucher:", { platform: platformName, playerId, voucher: selectedVoucher?.description || `₹${amount}` });
+        const purchasePayload: VoucherPurchasePayload = {
+            brandId: selectedPlatform,
+            amount: Number(amount),
+            playerId: playerId || undefined,
+            billerName: platformDetails?.name || 'Gaming Voucher',
+            voucherType: 'gaming',
+        };
+
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            toast({ title: "Purchase Successful!", description: `${selectedVoucher?.description || `₹${amount} voucher`} for ${platformName} purchased. Code sent via SMS/Email.` });
-            setPlayerId('');
-            setAmount('');
-            setSelectedVoucher(null);
-        } catch (err) {
+            const result = await purchaseVoucher(purchasePayload);
+             if (result.status === 'Completed') {
+                toast({ title: "Purchase Successful!", description: `${selectedVoucher?.description || `₹${amount} voucher`} for ${platformDetails?.name} purchased. Details sent via SMS/Email. Txn ID: ${result.id}` });
+                setPlayerId('');
+                setAmount('');
+                setSelectedVoucher(null);
+                router.push('/history');
+            } else {
+                 throw new Error(result.description || "Voucher purchase failed.");
+            }
+        } catch (err: any) {
             console.error("Gaming voucher purchase failed:", err);
-            toast({ variant: "destructive", title: "Purchase Failed" });
+            toast({ variant: "destructive", title: "Purchase Failed", description: err.message || "Could not complete voucher purchase." });
         } finally {
             setIsProcessing(false);
         }
@@ -67,7 +86,6 @@ export default function GamingVoucherPage() {
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
                 <Link href="/services" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -78,7 +96,6 @@ export default function GamingVoucherPage() {
                 <h1 className="text-lg font-semibold">Gaming Vouchers</h1>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
                 <Card className="shadow-md">
                     <CardHeader>
@@ -96,7 +113,7 @@ export default function GamingVoucherPage() {
                                     <SelectContent>
                                         {mockGamingPlatformsData.map((p) => (
                                             <SelectItem key={p.id} value={p.id}>
-                                                {p.logoUrl && <Image src={p.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {p.logoUrl && <Image src={p.logoUrl} alt={p.name} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="game platform logo"/>}
                                                 {p.name}
                                             </SelectItem>
                                         ))}
@@ -151,7 +168,7 @@ export default function GamingVoucherPage() {
                                     </div>
                                 </div>
                             )}
-                             {selectedPlatform === 'google-play' && !selectedVoucher && (
+                             {platformDetails?.allowCustomAmount && !selectedVoucher && (
                                  <div className="space-y-1">
                                      <Label htmlFor="amount-custom">Recharge Amount (₹)</Label>
                                      <div className="relative">
@@ -163,7 +180,8 @@ export default function GamingVoucherPage() {
                                              value={amount}
                                              onChange={(e) => setAmount(e.target.value)}
                                              required
-                                             min="10"
+                                             min={platformDetails.customMinAmount || 10}
+                                             max={platformDetails.customMaxAmount || 5000}
                                              step="1"
                                              className="pl-7"
                                          />

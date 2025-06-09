@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,28 +11,47 @@ import { ArrowLeft, Clock, PlusCircle, Edit, Trash2, CalendarIcon, BellRing } fr
 import Link from 'next/link';
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { mockSipRemindersData, SipReminder } from '@/mock-data/reminders'; // Import from reminders mock data
+import { mockSipRemindersData, SipReminder } from '@/mock-data/reminders'; 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"; // Import Dialog components
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+
 
 export default function SipRemindersPage() {
-    const [reminders, setReminders] = useState<SipReminder[]>(mockSipRemindersData);
+    const [reminders, setReminders] = useState<SipReminder[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentReminder, setCurrentReminder] = useState<Partial<SipReminder>>({});
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
 
-    const handleSaveReminder = () => {
-        if (!currentReminder.fundName || !currentReminder.sipAmount || !currentReminder.sipDate || !currentReminder.frequency) {
-            toast({ variant: "destructive", title: "Missing fields" });
+    useEffect(() => {
+        setIsLoading(true);
+        const storedReminders = localStorage.getItem('payfriend-sip-reminders');
+        if (storedReminders) {
+            setReminders(JSON.parse(storedReminders));
+        } else {
+            setReminders(mockSipRemindersData); // Use mock data if nothing in local storage
+            localStorage.setItem('payfriend-sip-reminders', JSON.stringify(mockSipRemindersData));
+        }
+        setIsLoading(false);
+    }, []);
+
+    const saveReminder = () => {
+        if (!currentReminder.fundName || !currentReminder.sipAmount || currentReminder.sipAmount <= 0 || !currentReminder.sipDate || currentReminder.sipDate < 1 || currentReminder.sipDate > 28 || !currentReminder.frequency) {
+            toast({ variant: "destructive", title: "Invalid Input", description: "Please fill all fields correctly. SIP date must be between 1 and 28." });
             return;
         }
+        let updatedReminders;
         if (editingId) {
-            setReminders(reminders.map(r => r.id === editingId ? { ...currentReminder, id: editingId } as SipReminder : r));
+            updatedReminders = reminders.map(r => r.id === editingId ? { ...currentReminder, id: editingId } as SipReminder : r);
             toast({ title: "SIP Reminder Updated!" });
         } else {
             const newReminder = { ...currentReminder, id: `sip-${Date.now()}` } as SipReminder;
-            setReminders([...reminders, newReminder]);
+            updatedReminders = [...reminders, newReminder];
             toast({ title: "SIP Reminder Added!" });
         }
+        setReminders(updatedReminders);
+        localStorage.setItem('payfriend-sip-reminders', JSON.stringify(updatedReminders));
         setIsModalOpen(false);
         setCurrentReminder({});
         setEditingId(null);
@@ -45,14 +64,17 @@ export default function SipRemindersPage() {
     };
 
     const deleteReminder = (id: string) => {
-        setReminders(reminders.filter(r => r.id !== id));
+        const updatedReminders = reminders.filter(r => r.id !== id);
+        setReminders(updatedReminders);
+        localStorage.setItem('payfriend-sip-reminders', JSON.stringify(updatedReminders));
         toast({ title: "SIP Reminder Deleted" });
     };
 
     const calculateNextDueDate = (sipDate: number, frequency: 'Monthly' | 'Quarterly'): Date => {
         const today = new Date();
         let nextDate = new Date(today.getFullYear(), today.getMonth(), sipDate);
-        if (nextDate < today) {
+        // If this month's SIP date has already passed or is today, move to next cycle
+        if (nextDate <= today) {
             nextDate.setMonth(nextDate.getMonth() + (frequency === 'Monthly' ? 1 : 3));
         }
         return nextDate;
@@ -75,7 +97,9 @@ export default function SipRemindersPage() {
             <PlusCircle className="mr-2 h-4 w-4"/> Add SIP Reminder
         </Button>
 
-        {reminders.length === 0 ? (
+        {isLoading && <div className="text-center text-muted-foreground">Loading reminders...</div>}
+
+        {!isLoading && reminders.length === 0 ? (
             <Card className="shadow-md text-center">
                 <CardContent className="p-6">
                     <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -91,11 +115,19 @@ export default function SipRemindersPage() {
                             <CardHeader className="pb-2 flex flex-row justify-between items-start">
                                 <div>
                                     <CardTitle className="text-base">{reminder.fundName}</CardTitle>
-                                    <CardDescription>₹{reminder.sipAmount} / {reminder.frequency}</CardDescription>
+                                    <CardDescription>₹{reminder.sipAmount.toLocaleString()} / {reminder.frequency}</CardDescription>
                                 </div>
                                 <div className="flex gap-1">
                                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditModal(reminder)}><Edit className="h-4 w-4"/></Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteReminder(reminder.id)}><Trash2 className="h-4 w-4"/></Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4"/></Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader><AlertDialogTitle>Delete Reminder?</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the reminder for {reminder.fundName}?</AlertDialogDescription></AlertDialogHeader>
+                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteReminder(reminder.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
                                 </div>
                             </CardHeader>
                             <CardContent className="text-sm">
@@ -107,25 +139,36 @@ export default function SipRemindersPage() {
             </div>
         )}
 
-        {isModalOpen && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <Card className="w-full max-w-md">
-                    <CardHeader>
-                        <CardTitle>{editingId ? 'Edit' : 'Add'} SIP Reminder</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div><Label htmlFor="fundName">Fund Name</Label><Input id="fundName" value={currentReminder.fundName || ''} onChange={e => setCurrentReminder({...currentReminder, fundName: e.target.value})}/></div>
-                        <div><Label htmlFor="sipAmount">SIP Amount (₹)</Label><Input id="sipAmount" type="number" value={currentReminder.sipAmount || ''} onChange={e => setCurrentReminder({...currentReminder, sipAmount: Number(e.target.value)})}/></div>
-                        <div><Label htmlFor="sipDate">SIP Date (Day of Month)</Label><Input id="sipDate" type="number" min="1" max="28" value={currentReminder.sipDate || ''} onChange={e => setCurrentReminder({...currentReminder, sipDate: Number(e.target.value)})}/></div>
-                        <div><Label htmlFor="frequency">Frequency</Label><Select value={currentReminder.frequency || 'Monthly'} onValueChange={val => setCurrentReminder({...currentReminder, frequency: val as any})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Monthly">Monthly</SelectItem><SelectItem value="Quarterly">Quarterly</SelectItem></SelectContent></Select></div>
-                        <div className="flex justify-end gap-2 pt-2">
-                            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSaveReminder}>Save</Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        )}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>{editingId ? 'Edit' : 'Add'} SIP Reminder</DialogTitle>
+                     <DialogDescription>Set up a reminder for your Systematic Investment Plan.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="fundName" className="text-right">Fund Name</Label>
+                        <Input id="fundName" value={currentReminder.fundName || ''} onChange={e => setCurrentReminder({...currentReminder, fundName: e.target.value})} className="col-span-3" placeholder="e.g., Axis Bluechip"/>
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="sipAmount" className="text-right">Amount (₹)</Label>
+                        <Input id="sipAmount" type="number" value={currentReminder.sipAmount || ''} onChange={e => setCurrentReminder({...currentReminder, sipAmount: Number(e.target.value)})} className="col-span-3" placeholder="e.g., 5000"/>
+                    </div>
+                     <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="sipDate" className="text-right">SIP Date</Label>
+                        <Input id="sipDate" type="number" min="1" max="28" value={currentReminder.sipDate || ''} onChange={e => setCurrentReminder({...currentReminder, sipDate: Number(e.target.value)})} className="col-span-3" placeholder="Day of month (1-28)"/>
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="frequency" className="text-right">Frequency</Label>
+                        <Select value={currentReminder.frequency || 'Monthly'} onValueChange={val => setCurrentReminder({...currentReminder, frequency: val as any})}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Monthly">Monthly</SelectItem><SelectItem value="Quarterly">Quarterly</SelectItem></SelectContent></Select>
+                    </div>
+                </div>
+                <DialogFooter>
+                     <Button variant="outline" onClick={() => {setIsModalOpen(false); setCurrentReminder({}); setEditingId(null);}}>Cancel</Button>
+                    <Button onClick={handleSaveReminder}>Save Reminder</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

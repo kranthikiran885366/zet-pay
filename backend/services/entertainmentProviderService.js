@@ -1,3 +1,4 @@
+
 // backend/services/entertainmentProviderService.js
 // Placeholder for interacting with actual Movie, Event, Gaming Voucher APIs
 
@@ -25,19 +26,24 @@ const mockEvents = [
     { id: 'ev2', name: 'Live Music Concert', category: 'Music', date: '2024-08-25', city: 'Mumbai', venue: 'Arena Stadium', price: 1200, imageUrl: '/mock/music_event.jpg' },
 ];
 const mockGamingBrands = [
-    { id: 'google-play', name: 'Google Play Recharge Code', logoUrl: '/logos/googleplay.png' },
-    { id: 'freefire', name: 'Garena Free Fire Diamonds', logoUrl: '/logos/freefire.png' },
+    { id: 'google-play', name: 'Google Play Recharge Code', logoUrl: '/logos/googleplay.png', requiresPlayerId: false, allowCustomAmount: true, customMinAmount: 10, customMaxAmount: 5000 },
+    { id: 'freefire', name: 'Garena Free Fire Diamonds', logoUrl: '/logos/freefire.png', requiresPlayerId: true, allowCustomAmount: false },
 ];
 const mockGamingDenominations = {
     'google-play': [ { id: 'gp-100', value: 100 }, { id: 'gp-500', value: 500 }],
     'freefire': [ { id: 'ff-100d', value: 80, description: '100 Diamonds' }, { id: 'ff-310d', value: 240, description: '310 Diamonds' }],
 };
 
+const mockDigitalVoucherBrands = [
+    { id: 'amazon-gv', name: 'Amazon Pay Gift Card', logoUrl: '/logos/amazon.png', denominations: [100, 250, 500, 1000], allowCustomAmount: true, minCustomAmount: 50, maxCustomAmount: 10000 },
+    { id: 'flipkart-gv', name: 'Flipkart Gift Card', logoUrl: '/logos/flipkart.png', denominations: [250, 500, 1000], allowCustomAmount: false },
+];
+
+
 // --- Movies ---
 async function searchMovies({ city, date }) {
     console.log(`[Entertainment Provider Sim] Searching movies for City: ${city}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 500));
-    // Simulate filtering based on city/date (for demo, just return all non-upcoming)
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return mockMovies.filter(m => !m.isUpcoming || (m.releaseDate && m.releaseDate >= today));
 }
@@ -46,19 +52,16 @@ async function getMovieDetails({ movieId, city, date }) {
     console.log(`[Entertainment Provider Sim] Getting details for Movie: ${movieId}, City: ${city}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 600));
     const movieDetails = mockMovies.find(m => m.id === movieId);
-    if (!movieDetails || movieDetails.isUpcoming) return null; // Return null if upcoming or not found
+    if (!movieDetails || movieDetails.isUpcoming) return null; 
 
-    // Simulate fetching showtimes for this movie in the city/date
     const cinemasShowing = Object.keys(mockShowtimesData[movieId] || {})
         .map(cinemaId => mockCinemas.find(c => c.id === cinemaId))
-        .filter(c => c); // Filter out undefined
+        .filter(c => c); 
 
     const cinemaShowtimes = cinemasShowing.map(cinema => ({
         ...cinema,
-        // Simulate slightly different showtimes based on date for realism
         showtimes: mockShowtimesData[movieId]?.[cinema.id]?.map(st => ({
             ...st,
-            // Randomly make some shows almost full/filling fast based on date/time
             isFillingFast: Math.random() < 0.2,
             isAlmostFull: Math.random() < 0.1,
         })) || [],
@@ -72,8 +75,7 @@ async function confirmMovieBooking(bookingData) {
     console.log(`[Entertainment Provider Sim] Confirming Movie Booking: User ${userId}, Movie ${movieId}, Cinema ${cinemaId}, Time ${showtime}, Seats ${seats.join(',')}, Amount ${totalAmount}, PayRef ${paymentTransactionId}`);
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Simulate potential booking failures (e.g., seats became unavailable)
-    const success = Math.random() > 0.1; // 90% success simulation
+    const success = Math.random() > 0.1; 
 
     if (success) {
         const bookingId = `BMS_${Date.now()}_${userId.substring(0, 3)}`;
@@ -81,9 +83,9 @@ async function confirmMovieBooking(bookingData) {
         return {
             status: 'Confirmed',
             bookingId: bookingId,
-            seatNumbers: seats.join(', '), // Return confirmed seat numbers
+            seatNumbers: seats.join(', '), 
             message: 'Movie tickets booked successfully!',
-            providerConfirmationId: `CONF_${Math.random().toString(36).substring(2, 10).toUpperCase()}` // Example provider ref
+            providerConfirmationId: `CONF_${Math.random().toString(36).substring(2, 10).toUpperCase()}` 
         };
     } else {
         console.warn(`[Entertainment Provider Sim] Movie booking FAILED (Simulated).`);
@@ -95,10 +97,8 @@ async function confirmMovieBooking(bookingData) {
 async function searchEvents({ city, category, date }) {
     console.log(`[Entertainment Provider Sim] Searching events for City: ${city}, Category: ${category}, Date: ${date}`);
     await new Promise(resolve => setTimeout(resolve, 700));
-    // Simulate filtering
     let results = mockEvents.filter(ev => ev.city.toLowerCase() === city.toLowerCase());
     if (category) results = results.filter(ev => ev.category.toLowerCase() === category.toLowerCase());
-    // Add date filtering if needed
     return results;
 }
 
@@ -111,7 +111,7 @@ async function getEventDetails({ eventId }) {
 async function confirmEventBooking(bookingData) {
      console.log(`[Entertainment Provider Sim] Confirming Event Booking:`, bookingData);
      await new Promise(resolve => setTimeout(resolve, 1000));
-     const success = Math.random() > 0.15; // 85% success simulation
+     const success = Math.random() > 0.15; 
      if (success) {
          const bookingId = `EVT_${Date.now()}`;
          console.log(`[Entertainment Provider Sim] Event booking SUCCESS. Booking ID: ${bookingId}`);
@@ -119,7 +119,7 @@ async function confirmEventBooking(bookingData) {
              status: 'Confirmed',
              bookingId: bookingId,
              message: 'Event tickets booked successfully!',
-             ticketUrl: `/placeholder/event-ticket-${bookingId}.pdf` // Example ticket URL
+             ticketUrl: `/placeholder/event-ticket-${bookingId}.pdf` 
          };
      } else {
          console.warn(`[Entertainment Provider Sim] Event booking FAILED (Simulated).`);
@@ -127,51 +127,63 @@ async function confirmEventBooking(bookingData) {
      }
 }
 
-// --- Gaming Vouchers ---
+// --- Gaming & Digital Vouchers ---
 async function getGamingBrands() {
      console.log(`[Entertainment Provider Sim] Fetching Gaming Brands`);
      await new Promise(resolve => setTimeout(resolve, 300));
      return mockGamingBrands;
 }
+async function getDigitalVoucherBrands() { // New function for digital vouchers
+    console.log(`[Entertainment Provider Sim] Fetching Digital Voucher Brands`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return mockDigitalVoucherBrands;
+}
+
 
 async function getGamingDenominations(brandId) {
     console.log(`[Entertainment Provider Sim] Fetching Denominations for Brand: ${brandId}`);
     await new Promise(resolve => setTimeout(resolve, 400));
     return mockGamingDenominations[brandId] || [];
 }
+async function getDigitalVoucherDenominations(brandId) { // New for digital
+    console.log(`[Entertainment Provider Sim] Fetching Denominations for Digital Brand: ${brandId}`);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    const brand = mockDigitalVoucherBrands.find(b => b.id === brandId);
+    return brand ? brand.denominations.map(d => ({ id: `${brandId}-${d}`, value: d, description: `₹${d} Voucher`})) : [];
+}
 
-async function purchaseGamingVoucher(purchaseData) {
-     const { userId, brandId, amount, playerId } = purchaseData;
-     console.log(`[Entertainment Provider Sim] Purchasing Gaming Voucher: User ${userId}, Brand ${brandId}, Amt ${amount}, Player ${playerId || 'N/A'}`);
+
+async function purchaseVoucher(purchaseData) {
+     const { userId, brandId, amount, playerId, recipientMobile, voucherType } = purchaseData;
+     console.log(`[Entertainment Provider Sim] Purchasing ${voucherType} Voucher: User ${userId}, Brand ${brandId}, Amt ${amount}, Player ${playerId || 'N/A'}, Mobile ${recipientMobile || 'N/A'}`);
      await new Promise(resolve => setTimeout(resolve, 1200));
-     const success = Math.random() > 0.05; // 95% success simulation
+     const success = Math.random() > 0.05; 
      if (success) {
-          const voucherCode = `ZETV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-         console.log(`[Entertainment Provider Sim] Voucher purchase SUCCESS. Code: ${voucherCode}`);
+          const voucherCode = `${voucherType.toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+         console.log(`[Entertainment Provider Sim] ${voucherType} Voucher purchase SUCCESS. Code: ${voucherCode}`);
          return {
              success: true,
-             voucherCode: voucherCode, // Simulate voucher code generation
-             message: 'Voucher purchased successfully. Code sent via SMS/Email.',
+             voucherCode: voucherCode, 
+             message: `${voucherType === 'gaming' ? 'Gaming' : 'Digital'} voucher purchased successfully. Code sent.`,
              receiptId: `REC_${Date.now()}`
          };
      } else {
-         console.warn(`[Entertainment Provider Sim] Voucher purchase FAILED (Simulated).`);
-         return { success: false, message: 'Voucher purchase failed (e.g., provider error).' };
+         console.warn(`[Entertainment Provider Sim] ${voucherType} Voucher purchase FAILED (Simulated).`);
+         return { success: false, message: `${voucherType === 'gaming' ? 'Gaming' : 'Digital'} voucher purchase failed (e.g., provider error).` };
      }
 }
 
 
 module.exports = {
-    // Movies
     searchMovies,
     getMovieDetails,
     confirmMovieBooking,
-    // Events
     searchEvents,
     getEventDetails,
     confirmEventBooking,
-    // Gaming Vouchers
     getGamingBrands,
     getGamingDenominations,
-    purchaseGamingVoucher,
+    getDigitalVoucherBrands, // Added
+    getDigitalVoucherDenominations, // Added
+    purchaseVoucher, // Generic voucher purchase
 };

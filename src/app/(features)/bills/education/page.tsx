@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,21 +9,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, GraduationCap, Loader2, Wallet, Info, Building, BookOpen } from 'lucide-react';
 import Link from 'next/link';
-import { getBillers, Biller } from '@/services/recharge'; // Reuse biller service for listing institutions
-import { fetchBillDetails, processBillPayment } from '@/services/bills'; // Use bill payment service
+import { getBillers, Biller } from '@/services/recharge'; 
+import { fetchBillDetails, processBillPayment } from '@/services/bills'; 
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { auth } from '@/lib/firebase';
 import { format } from 'date-fns';
 import type { Transaction } from '@/services/types';
+import { useRouter } from 'next/navigation';
 
-// Extend Biller interface or create new for educational institutions
+
 interface Institute extends Biller {
-    location?: string; // e.g., "Bangalore, Karnataka"
+    location?: string; 
 }
 
-// Mock Data - This can be fetched via getBillers('Education') if backend is configured
 const mockInstitutes: Institute[] = [
     { billerId: 'mock-school-1', billerName: 'ABC Public School', billerType: 'Education', location: 'Delhi', logoUrl: '/logos/abc_school.png' },
     { billerId: 'mock-college-1', billerName: 'XYZ Engineering College', billerType: 'Education', location: 'Mumbai', logoUrl: '/logos/xyz_college.png' },
@@ -42,6 +43,7 @@ export default function EducationFeesPage() {
     const [error, setError] = useState<string | null>(null);
     const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
     const { toast } = useToast();
+    const router = useRouter();
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -54,7 +56,7 @@ export default function EducationFeesPage() {
         return () => unsubscribe();
     }, []);
 
-    // Fetch Institutes
+    
     useEffect(() => {
         if (!isLoggedIn) return;
 
@@ -62,13 +64,13 @@ export default function EducationFeesPage() {
             setIsLoadingInstitutes(true);
             setError(null);
             try {
-                const fetched = await getBillers('Education'); // Assuming 'Education' is the type
-                setInstitutes(fetched.length > 0 ? fetched as Institute[] : mockInstitutes); // Use fetched or mock
+                const fetched = await getBillers('Education');
+                setInstitutes(fetched.length > 0 ? fetched as Institute[] : mockInstitutes);
             } catch (err: any) {
                 setError(err.message || 'Failed to load institutions. Please try again.');
                 console.error(err);
                 toast({ variant: "destructive", title: "Error Loading Institutions", description: err.message });
-                setInstitutes(mockInstitutes); // Fallback to mock
+                setInstitutes(mockInstitutes);
             } finally {
                 setIsLoadingInstitutes(false);
             }
@@ -76,14 +78,14 @@ export default function EducationFeesPage() {
         fetchInstitutes();
     }, [isLoggedIn, toast]);
 
-     // Reset amount/fetched state when institute or student ID changes
+    
     useEffect(() => {
         setFetchedBillInfo(null);
         setAmount('');
         setError(null);
     }, [selectedInstituteId, studentId]);
 
-    // Fetch Bill Amount (if supported by institute)
+    
     const handleFetchFee = async () => {
         if (!selectedInstituteId || !studentId) {
            toast({ variant: "destructive", title: "Missing Details", description: "Please select an institution and enter Student ID." });
@@ -95,11 +97,11 @@ export default function EducationFeesPage() {
         setAmount('');
 
         try {
-            const billDetails = await fetchBillDetails(selectedInstituteId, studentId); // Uses generic service
+            const billDetails = await fetchBillDetails(selectedInstituteId, studentId);
             if (billDetails && billDetails.amount !== null) {
                 setFetchedBillInfo(billDetails);
                 setAmount(billDetails.amount.toString());
-                toast({ title: "Fee Amount Fetched", description: `Outstanding fee for ${billDetails.consumerName || 'Student'}: ₹${billDetails.amount.toFixed(2)}${billDetails.dueDate ? ` (Due: ${format(billDetails.dueDate, 'PP')})` : ''}` });
+                toast({ title: "Fee Amount Fetched", description: `Outstanding fee for ${billDetails.consumerName || 'Student'}: ₹${billDetails.amount.toFixed(2)}${billDetails.dueDate ? ` (Due: ${format(new Date(billDetails.dueDate), 'PP')})` : ''}` });
             } else {
                 toast({ title: "Manual Entry Required", description: "Could not fetch fee amount. Please enter manually." });
             }
@@ -112,7 +114,7 @@ export default function EducationFeesPage() {
         }
     }
 
-    // Process Payment
+    
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -136,22 +138,21 @@ export default function EducationFeesPage() {
                 billerId: selectedInstituteId,
                 identifier: studentId,
                 amount: Number(amount),
-                billerType: 'Education', // Consistent type
+                billerType: 'Education',
                 billerName: instituteName,
             };
-            const transactionResult = await processBillPayment(paymentDetails) as Transaction; // Assert type from shared types
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction; 
 
             if (transactionResult.status === 'Completed') {
                 toast({
                     title: "Payment Successful",
                     description: `Paid ₹${amount} towards ${instituteName} fees for Student ID ${studentId}. Txn ID: ${transactionResult.id}`,
                 });
-                // Reset form partially
                 setStudentId('');
                 setAmount('');
                 setFetchedBillInfo(null);
+                router.push('/history');
             } else {
-                // Backend should ideally return the transaction object even if pending/failed
                 throw new Error(`Payment ${transactionResult.status}. ${transactionResult.description || ''}`);
             }
 
@@ -168,7 +169,6 @@ export default function EducationFeesPage() {
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
                 <Link href="/services" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -179,7 +179,6 @@ export default function EducationFeesPage() {
                 <h1 className="text-lg font-semibold">Education Fees</h1>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
                 <Card className="shadow-md">
                     <CardHeader>
@@ -192,7 +191,6 @@ export default function EducationFeesPage() {
                          )}
                          {isLoggedIn && (
                             <form onSubmit={handlePayment} className="space-y-4">
-                            {/* Institution Select */}
                                 <div className="space-y-1">
                                     <Label htmlFor="institution">Institution</Label>
                                     <Select value={selectedInstituteId} onValueChange={setSelectedInstituteId} required disabled={isLoadingInstitutes || institutes.length === 0}>
@@ -210,8 +208,6 @@ export default function EducationFeesPage() {
                                     </Select>
                                     {error && error.includes("institutions") && <p className="text-xs text-destructive mt-1">{error}</p>}
                                 </div>
-
-                                {/* Student ID Input */}
                                 <div className="space-y-1">
                                     <Label htmlFor="studentId">Student ID / Roll Number</Label>
                                     <Input
@@ -224,8 +220,6 @@ export default function EducationFeesPage() {
                                         disabled={isProcessingPayment || !selectedInstituteId}
                                     />
                                 </div>
-
-                                {/* Amount Input */}
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
                                         <Label htmlFor="amount">Fee Amount (₹)</Label>
@@ -245,7 +239,7 @@ export default function EducationFeesPage() {
                                             value={amount}
                                             onChange={(e) => {
                                                 setAmount(e.target.value);
-                                                if (fetchedBillInfo?.amount !== null) setFetchedBillInfo(prev => prev ? {...prev, amount: null} : null); // Clear fetched if manually changed
+                                                if (fetchedBillInfo?.amount !== null) setFetchedBillInfo(prev => prev ? {...prev, amount: null} : null); 
                                             }}
                                             required
                                             min="1"
@@ -255,13 +249,10 @@ export default function EducationFeesPage() {
                                         />
                                     </div>
                                     {fetchedBillInfo?.amount !== null && fetchedBillInfo?.amount !== undefined && (
-                                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3"/> Fetched fee: ₹{fetchedBillInfo.amount.toFixed(2)}. Due: {fetchedBillInfo.dueDate ? format(fetchedBillInfo.dueDate, 'PP') : 'N/A'}</p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3"/> Fetched fee: ₹{fetchedBillInfo.amount.toFixed(2)}.{fetchedBillInfo.dueDate ? ` Due: ${format(new Date(fetchedBillInfo.dueDate), 'PP')}` : ''}</p>
                                     )}
                                 </div>
-
                                 {error && !error.includes("institutions") && <p className="text-sm text-destructive mt-2">{error}</p>}
-
-                                {/* Payment Button */}
                                 <div className="pt-4">
                                     <Separator className="mb-4"/>
                                     <Button

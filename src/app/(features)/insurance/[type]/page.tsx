@@ -9,12 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, ShieldCheck, Bike, Car, HeartPulse, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { processBillPayment } from '@/services/bills';
-import { mockInsurersData, Insurer } from '@/mock-data'; // Import centralized mock data
+import { mockInsurersData, Insurer } from '@/mock-data'; 
+import { auth } from '@/lib/firebase';
+import type { Transaction } from '@/services/types';
 
 const insuranceTypeDetails: { [key: string]: { title: string; icon: React.ElementType; identifierLabel: string; billerType: string } } = {
     'bike': { title: 'Bike Insurance Premium', icon: Bike, identifierLabel: 'Policy Number / Vehicle Reg. No.', billerType: 'Bike Insurance' },
@@ -25,13 +27,14 @@ const insuranceTypeDetails: { [key: string]: { title: string; icon: React.Elemen
 
 export default function InsurancePaymentPage() {
     const params = useParams();
-    const type = typeof params.type === 'string' ? params.type : 'bike';
+    const router = useRouter();
+    const type = typeof params.type === 'string' ? params.type : 'life'; // Default to life if type is weird
     const details = insuranceTypeDetails[type] || insuranceTypeDetails['life'];
 
     const [insurers, setInsurers] = useState<Insurer[]>([]);
     const [selectedInsurer, setSelectedInsurer] = useState<string>('');
     const [identifier, setIdentifier] = useState('');
-    const [dob, setDob] = useState<string>('');
+    const [dob, setDob] = useState<string>(''); // For LIC or others needing DOB
     const [amount, setAmount] = useState<string>('');
     const [isLoadingInsurers, setIsLoadingInsurers] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -39,10 +42,12 @@ export default function InsurancePaymentPage() {
 
     useEffect(() => {
         setIsLoadingInsurers(true);
+        // Simulate fetching insurers based on type
         setTimeout(() => {
-            setInsurers(mockInsurersData[type] || []);
+            setInsurers(mockInsurersData[type] || mockInsurersData['life'] || []);
             setIsLoadingInsurers(false);
         }, 500);
+        // Reset fields when type changes
         setSelectedInsurer('');
         setIdentifier('');
         setDob('');
@@ -51,8 +56,17 @@ export default function InsurancePaymentPage() {
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
+         if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make payments." });
+            return;
+        }
         if (!selectedInsurer || !identifier || !amount || Number(amount) <= 0) {
-            toast({ variant: "destructive", title: "Missing Information" });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select insurer, enter identifier, and a valid amount." });
+            return;
+        }
+        // Specific validation for LIC
+        if (selectedInsurer === 'lic' && !dob) {
+            toast({ variant: "destructive", title: "Date of Birth Required", description: "Please enter Date of Birth for LIC premium payment." });
             return;
         }
 
@@ -61,24 +75,25 @@ export default function InsurancePaymentPage() {
         try {
             const paymentDetails = {
                 billerId: selectedInsurer,
-                identifier: identifier,
+                identifier: identifier, // Could append DOB for LIC if backend expects it: `${identifier}|${dob}`
                 amount: Number(amount),
                 billerType: details.billerType,
                 billerName: insurerName,
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
 
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${insurerName} policy (${identifier}).` });
+                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${insurerName} policy (${identifier}). Txn ID: ${transactionResult.id}` });
                 setIdentifier('');
                 setAmount('');
                 setDob('');
+                router.push('/history');
             } else {
-                throw new Error(`Payment ${transactionResult.status}`);
+                throw new Error(transactionResult.description || `Payment ${transactionResult.status}`);
             }
         } catch (err: any) {
             console.error("Insurance payment failed:", err);
-            toast({ variant: "destructive", title: "Payment Failed", description: err.message });
+            toast({ variant: "destructive", title: "Payment Failed", description: err.message || "Could not complete insurance payment." });
         } finally {
             setIsProcessing(false);
         }
@@ -113,7 +128,7 @@ export default function InsurancePaymentPage() {
                                     <SelectContent>
                                         {insurers.map((i) => (
                                             <SelectItem key={i.id} value={i.id}>
-                                                {i.logoUrl && <Image src={i.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {i.logoUrl && <Image src={i.logoUrl} alt={i.name} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="insurance company logo"/>}
                                                 {i.name}
                                             </SelectItem>
                                         ))}
@@ -133,14 +148,17 @@ export default function InsurancePaymentPage() {
                                 />
                             </div>
 
-                            {selectedInsurer === 'lic' && (
+                            {selectedInsurer === 'lic' && ( // Example: Show DOB field only for LIC
                                 <div className="space-y-1">
-                                    <Label htmlFor="dob">Date of Birth (for verification)</Label>
+                                    <Label htmlFor="dob">Date of Birth (DDMMYYYY)</Label>
                                     <Input
                                         id="dob"
-                                        type="date"
+                                        type="text"
+                                        placeholder="DDMMYYYY format"
                                         value={dob}
-                                        onChange={(e) => setDob(e.target.value)}
+                                        onChange={(e) => setDob(e.target.value.replace(/\D/g, '').slice(0,8))}
+                                        maxLength={8}
+                                        pattern="\d{8}"
                                         required
                                     />
                                 </div>
@@ -169,7 +187,7 @@ export default function InsurancePaymentPage() {
                                 <Button
                                     type="submit"
                                     className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
-                                    disabled={isProcessing || !selectedInsurer || !identifier || !amount || Number(amount) <= 0}
+                                    disabled={isProcessing || !selectedInsurer || !identifier || !amount || Number(amount) <= 0 || (selectedInsurer === 'lic' && !dob)}
                                 >
                                     {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wallet className="mr-2 h-4 w-4" />}
                                     {isProcessing ? 'Processing...' : `Pay Premium`}

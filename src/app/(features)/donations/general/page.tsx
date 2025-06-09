@@ -12,9 +12,12 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { processBillPayment } from '@/services/bills';
-import { mockCharitiesData, Charity } from '@/mock-data'; // Import centralized mock data
+import { mockCharitiesData, Charity } from '@/mock-data'; 
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import type { Transaction } from '@/services/types';
 
 export default function GeneralDonationsPage() {
     const [charities, setCharities] = useState<Charity[]>(mockCharitiesData);
@@ -23,18 +26,23 @@ export default function GeneralDonationsPage() {
     const [donorName, setDonorName] = useState('');
     const [panNumber, setPanNumber] = useState('');
     const [isAnonymous, setIsAnonymous] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // For future API call if charities are fetched
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     const handleDonate = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make a donation." });
+            return;
+        }
         if (!selectedCharity || !amount || Number(amount) <= 0) {
-            toast({ variant: "destructive", title: "Missing Information" });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select a charity and enter a valid amount." });
             return;
         }
         if (!isAnonymous && !donorName) {
-            toast({ variant: "destructive", title: "Donor Name Required" });
+            toast({ variant: "destructive", title: "Donor Name Required", description: "Please enter donor name or check 'Donate Anonymously'." });
             return;
         }
 
@@ -43,26 +51,27 @@ export default function GeneralDonationsPage() {
         try {
              const paymentDetails = {
                 billerId: selectedCharity,
-                identifier: isAnonymous ? 'Anonymous' : donorName,
+                identifier: isAnonymous ? 'Anonymous' : donorName, // Use donor name or 'Anonymous' as identifier
                 amount: Number(amount),
-                billerType: 'Donation',
-                billerName: `Donation to ${charityName}`,
+                billerType: 'Donation', // Specific type for donation
+                billerName: `Donation to ${charityName}`, // More descriptive name
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
 
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Donation Successful!", description: `Thank you for donating ₹${amount} to ${charityName}.` });
+                toast({ title: "Donation Successful!", description: `Thank you for donating ₹${amount} to ${charityName}. Txn ID: ${transactionResult.id}` });
                 setAmount('');
                 setDonorName('');
                 setPanNumber('');
                 setIsAnonymous(false);
                 setSelectedCharity('');
+                router.push('/history');
             } else {
-                throw new Error(`Donation ${transactionResult.status}`);
+                throw new Error(transactionResult.description || `Donation ${transactionResult.status}`);
             }
         } catch (err: any) {
             console.error("Donation failed:", err);
-            toast({ variant: "destructive", title: "Donation Failed", description: err.message });
+            toast({ variant: "destructive", title: "Donation Failed", description: err.message || "Could not complete your donation." });
         } finally {
             setIsProcessing(false);
         }
@@ -97,7 +106,7 @@ export default function GeneralDonationsPage() {
                                     <SelectContent>
                                         {charities.map((c) => (
                                             <SelectItem key={c.id} value={c.id}>
-                                                {c.logoUrl && <Image src={c.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {c.logoUrl && <Image src={c.logoUrl} alt={c.name} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="charity organization logo"/>}
                                                 {c.name} - <span className="text-xs text-muted-foreground">{c.description}</span>
                                             </SelectItem>
                                         ))}
@@ -131,7 +140,7 @@ export default function GeneralDonationsPage() {
                             </div>
                             <div className="space-y-1">
                                 <Label htmlFor="panNumber">PAN Number (Optional for 80G)</Label>
-                                <Input id="panNumber" placeholder="Enter PAN for tax receipt" value={panNumber} onChange={(e) => setPanNumber(e.target.value)} disabled={isAnonymous}/>
+                                <Input id="panNumber" placeholder="Enter PAN for tax receipt" value={panNumber} onChange={(e) => setPanNumber(e.target.value)} disabled={isAnonymous} maxLength={10}/>
                                 <p className="text-xs text-muted-foreground">Needed for 80G tax exemption receipt (if applicable).</p>
                             </div>
                             <div className="flex items-center space-x-2">

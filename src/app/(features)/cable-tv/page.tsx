@@ -13,8 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { processBillPayment } from '@/services/bills';
-import { mockCableProvidersData } from '@/mock-data'; // Import centralized mock data
-import type { Biller } from '@/services/recharge'; // For Biller type consistency
+import { mockCableProvidersData } from '@/mock-data';
+import type { Biller } from '@/services/recharge';
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import type { Transaction } from '@/services/types';
 
 export default function CableTvPage() {
     const [providers, setProviders] = useState<Biller[]>([]);
@@ -24,17 +27,19 @@ export default function CableTvPage() {
     const [isLoadingProviders, setIsLoadingProviders] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     useEffect(() => {
         const fetchProviders = async () => {
             setIsLoadingProviders(true);
             try {
+                // Simulate API call or use direct mock data
                 await new Promise(resolve => setTimeout(resolve, 500));
                 setProviders(mockCableProvidersData);
             } catch (err) {
                 console.error("Failed to load cable providers:", err);
                 toast({ variant: "destructive", title: "Error Loading Providers" });
-                setProviders(mockCableProvidersData);
+                setProviders(mockCableProvidersData); // Fallback
             } finally {
                 setIsLoadingProviders(false);
             }
@@ -44,8 +49,12 @@ export default function CableTvPage() {
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make payments." });
+            return;
+        }
         if (!selectedProvider || !accountNumber || !amount || Number(amount) <= 0) {
-            toast({ variant: "destructive", title: "Missing Information" });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select provider, enter account/VC number, and a valid amount." });
             return;
         }
         setIsProcessing(true);
@@ -58,18 +67,19 @@ export default function CableTvPage() {
                 billerType: 'Cable TV',
                 billerName: providerName,
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
 
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${providerName} (Account: ${accountNumber}).` });
+                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${providerName} (Account: ${accountNumber}). Txn ID: ${transactionResult.id}` });
                 setAccountNumber('');
                 setAmount('');
+                router.push('/history');
             } else {
-                throw new Error(`Payment ${transactionResult.status}`);
+                throw new Error(transactionResult.description || `Payment ${transactionResult.status}`);
             }
         } catch (err: any) {
             console.error("Cable TV payment failed:", err);
-            toast({ variant: "destructive", title: "Payment Failed", description: err.message });
+            toast({ variant: "destructive", title: "Payment Failed", description: err.message || "Could not complete Cable TV payment." });
         } finally {
             setIsProcessing(false);
         }
@@ -104,7 +114,7 @@ export default function CableTvPage() {
                                     <SelectContent>
                                         {providers.map((p) => (
                                             <SelectItem key={p.billerId} value={p.billerId}>
-                                                {p.logoUrl && <Image src={p.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {p.logoUrl && <Image src={p.logoUrl} alt={p.billerName} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="cable tv provider logo"/>}
                                                 {p.billerName}
                                             </SelectItem>
                                         ))}

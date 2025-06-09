@@ -1,11 +1,12 @@
+
 // backend/controllers/entertainmentController.js
-const entertainmentProviderService = require('../services/entertainmentProviderService'); // New dedicated service
-const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger'); // Use centralized logger
-const { payViaWalletInternal } = require('../services/wallet'); // For wallet payments
+const entertainmentProviderService = require('../services/entertainmentProviderService'); 
+const { addTransaction, logTransactionToBlockchain } = require('../services/transactionLogger'); 
+const { payViaWalletInternal } = require('../services/wallet'); 
 const db = require('firebase-admin').firestore();
-const { serverTimestamp, collection, addDoc, doc, updateDoc, getDoc } = require('firebase/firestore'); // Import Firestore functions
-const { sendToUser } = require('../server'); // Import WebSocket sender
-import type { Transaction } from '../services/types'; // Import shared Transaction type
+const { serverTimestamp, collection, addDoc, doc, updateDoc, getDoc } = require('firebase/firestore'); 
+const { sendToUser } = require('../server'); 
+import type { Transaction, VoucherPurchasePayload } from '../services/types'; 
 
 // --- Movies ---
 
@@ -18,7 +19,7 @@ exports.searchMovies = async (req, res, next) => {
 
 exports.getMovieDetails = async (req, res, next) => {
     const { movieId } = req.params;
-    const { city, date } = req.query; // Need city/date for showtimes
+    const { city, date } = req.query; 
     console.log(`Fetching details for Movie ID: ${movieId}, City: ${city}, Date: ${date}`);
     const details = await entertainmentProviderService.getMovieDetails({ movieId, city, date });
     if (!details) {
@@ -31,59 +32,40 @@ exports.getMovieDetails = async (req, res, next) => {
 exports.bookMovieTickets = async (req, res, next) => {
     const userId = req.user.uid;
     const { movieId, cinemaId, showtime, seats, totalAmount, paymentMethod = 'wallet', movieName, cinemaName, format: movieFormat } = req.body;
-    // Validation already done by router
-
+    
     console.log(`Booking movie ticket for user ${userId}:`, { movieId, cinemaId, showtime, seats, totalAmount, paymentMethod });
 
     let paymentSuccess = false;
-    let paymentResult: any = {}; // Store payment result { success, transactionId, message, newBalance? }
-    let bookingResult: any = {}; // Store provider booking result
-    let finalStatus: Transaction['status'] = 'Failed';
+    let paymentResult = {}; 
+    let bookingResult = {}; 
+    let finalStatus = 'Failed';
     let failureReason = 'Booking or payment failed.';
     const bookingDescription = `Movie: ${movieName || 'Movie'} at ${cinemaName || 'Cinema'} (${movieFormat || '2D'})`;
 
-    // Prepare initial log data (will be updated based on payment/booking outcome)
-    let logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
+    let logData = {
         userId,
         type: 'Movie Booking',
         name: bookingDescription,
         description: `Seats: ${Array.isArray(seats) ? seats.join(', ') : seats}, Time: ${showtime}`,
-        amount: -totalAmount, // Payment is a debit
-        status: 'Failed', // Default to Failed
-        billerId: cinemaId, // Use cinemaId as billerId for movies
-        ticketId: movieId, // Use movieId as ticketId for reference
+        amount: -totalAmount, 
+        status: 'Failed', 
+        billerId: cinemaId, 
+        ticketId: movieId, 
         paymentMethodUsed: paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'upi' ? 'UPI' : 'Card',
     };
-    let paymentTransactionId: string | undefined;
+    let paymentTransactionId;
 
     try {
-        // --- Step 1: Payment Processing ---
         if (paymentMethod === 'wallet') {
-            // Amount is positive for debit from wallet
-            paymentResult = await payViaWalletInternal(userId, `movie_${movieId}_${cinemaId}`, totalAmount, bookingDescription);
+            paymentResult = await payViaWalletInternal(userId, `movie_${movieId}_${cinemaId}`, totalAmount, bookingDescription, 'Movie Booking');
             if (!paymentResult.success) throw new Error(paymentResult.message || 'Wallet payment failed.');
             paymentSuccess = true;
             paymentTransactionId = paymentResult.transactionId;
             logData.description += ' (via Wallet)';
-        } else if (paymentMethod === 'upi') {
-            // TODO: Implement UPI payment logic via upiProviderService
-            console.warn("UPI payment for movies not fully implemented backend-side.");
-            throw new Error("UPI payment for movies not implemented yet.");
-            // paymentSuccess = upiResult.success;
-            // paymentTransactionId = upiResult.transactionId;
-            // logData.description += ' (via UPI)';
-        } else if (paymentMethod === 'card') {
-            // TODO: Implement Card payment logic via paymentGatewayService
-             console.warn("Card payment for movies not fully implemented backend-side.");
-            throw new Error("Card payment for movies not implemented yet.");
-            // paymentSuccess = cardResult.success;
-            // paymentTransactionId = cardResult.transactionId;
-            // logData.description += ' (via Card)';
         } else {
-             throw new Error('Invalid payment method specified.');
+            throw new Error('Only wallet payment is currently supported for movie bookings.');
         }
 
-        // Ensure a transaction ID exists from the payment step before proceeding
         if (!paymentTransactionId) {
             console.error("[Entertainment Ctrl] CRITICAL: Payment reported success but no transactionId returned from payment method.", paymentResult);
             throw new Error("Payment processing error: Missing transaction ID.");
@@ -91,14 +73,12 @@ exports.bookMovieTickets = async (req, res, next) => {
         console.log(`[Entertainment Ctrl] Payment successful. Payment Tx ID: ${paymentTransactionId}. Proceeding to movie provider confirmation.`);
 
 
-        // --- Step 2: Booking Confirmation with Provider ---
-        // This part remains largely simulated by entertainmentProviderService
         bookingResult = await entertainmentProviderService.confirmMovieBooking({
             userId,
             movieId,
             cinemaId,
             showtime,
-            seats, // Assuming seats is an array of seat IDs/numbers
+            seats, 
             totalAmount,
             paymentTransactionId: paymentTransactionId,
         });
@@ -107,20 +87,18 @@ exports.bookMovieTickets = async (req, res, next) => {
             finalStatus = 'Completed';
             failureReason = '';
             logData.status = finalStatus;
-            logData.ticketId = bookingResult.bookingId || paymentTransactionId; // Use provider booking ID or fallback
+            logData.ticketId = bookingResult.bookingId || paymentTransactionId; 
             logData.description = bookingResult.message || `Booking ID: ${bookingResult.bookingId || 'N/A'}`;
-            paymentResult.message = bookingResult.message || 'Booking successful.'; // Update overall success message
+            paymentResult.message = bookingResult.message || 'Booking successful.'; 
 
-            // Update the original transaction log created by the payment method
              const originalTxRef = doc(db, 'transactions', paymentTransactionId);
              await updateDoc(originalTxRef, {
                  status: finalStatus,
-                 description: `${logData.name} - Provider Booking ID: ${logData.ticketId}`, // Update description
-                 ticketId: logData.ticketId, // Ensure ticketId is on the transaction log
+                 description: `${logData.name} - Provider Booking ID: ${logData.ticketId}`, 
+                 ticketId: logData.ticketId, 
                  updatedAt: serverTimestamp()
              });
 
-             // Save booking details to user's subcollection
              const userBookingsRef = collection(db, 'users', userId, 'bookings');
              await addDoc(userBookingsRef, {
                   bookingId: bookingResult.bookingId,
@@ -128,22 +106,20 @@ exports.bookMovieTickets = async (req, res, next) => {
                   details: { movieName, cinemaName, showtime, seats: Array.isArray(seats) ? seats.join(', ') : seats, format: movieFormat },
                   totalAmount: totalAmount,
                   bookingDate: serverTimestamp(),
-                  status: 'Confirmed', // Provider status
+                  status: 'Confirmed', 
                   userId: userId,
-                  paymentTransactionId: paymentTransactionId, // Link to the payment transaction
+                  paymentTransactionId: paymentTransactionId, 
              });
              console.log(`[Entertainment Ctrl] Movie booking ${bookingResult.bookingId} saved to Firestore.`);
 
         } else {
-             // Booking failed AFTER successful payment -> Refund required
              finalStatus = 'Failed';
              failureReason = bookingResult.message || 'Booking failed at provider.';
-             logData.status = 'Failed'; // Log Data for blockchain should reflect this
-             logData.description = `${logData.name} - Booking Failed: ${failureReason}`; // Update log description
-             paymentResult.message = failureReason; // Update overall message
+             logData.status = 'Failed'; 
+             logData.description = `${logData.name} - Booking Failed: ${failureReason}`; 
+             paymentResult.message = failureReason; 
 
              console.error(`[Entertainment Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but movie booking failed for user ${userId}. Refunding.`);
-             // Update the original transaction log to 'Failed'
              const originalTxRefFailed = doc(db, 'transactions', paymentTransactionId);
              await updateDoc(originalTxRefFailed, {
                  status: 'Failed',
@@ -151,33 +127,22 @@ exports.bookMovieTickets = async (req, res, next) => {
                  updatedAt: serverTimestamp()
              });
 
-             // --- Refund Logic ---
              if (paymentMethod === 'wallet' && paymentTransactionId) {
-                  const refundAmount = totalAmount; // Full refund
-                  // Use negative amount for credit back to wallet
-                  const refundResult = await payViaWalletInternal(userId, `REFUND_${paymentTransactionId}`, -refundAmount, `Refund: Failed Movie Booking for ${movieName}`);
+                  const refundAmount = totalAmount; 
+                  const refundResult = await payViaWalletInternal(userId, `REFUND_${paymentTransactionId}`, -refundAmount, `Refund: Failed Movie Booking for ${movieName}`, 'Refund');
                   if (refundResult.success) {
                        paymentResult.message = `${failureReason} Refund of ₹${refundAmount} processed to wallet.`;
-                        // Optionally update the *original* payment log status to 'Refunded'
-                        // This would be a separate transaction if refund has its own ID
-                        // await updateDoc(originalTxRefFailed, { status: 'Refunded', description: `${logData.name} - Refunded due to booking failure.` });
-                        console.log(`[Entertainment Ctrl] Wallet refund of ₹${refundAmount} successful for Tx: ${paymentTransactionId}`);
                   } else {
                        paymentResult.message = `${failureReason} CRITICAL: Wallet refund failed after payment success. Manual intervention required.`;
                        console.error(paymentResult.message);
-                        // Add alerting here!
                   }
              }
-             // TODO: Add refund logic for UPI/Card if implemented
-             // --- End Refund Logic ---
-             throw new Error(paymentResult.message); // Throw error to signify booking failure for the catch block
+             throw new Error(paymentResult.message); 
         }
 
-        // --- Step 3: Blockchain Logging (Optional for successful booking) ---
-         logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } as Transaction)
+         logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } )
               .catch(err => console.error("[Entertainment Ctrl] Blockchain log failed:", err));
-
-        // --- Step 4: Send final WebSocket Update ---
+        
          const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
          if (finalTxDoc.exists()) {
              const finalTxData = { id: finalTxDoc.id, ...finalTxDoc.data(), date: finalTxDoc.data().date.toDate() };
@@ -186,34 +151,29 @@ exports.bookMovieTickets = async (req, res, next) => {
                  sendToUser(userId, { type: 'booking_update', payload: { id: bookingResult.bookingId, status: finalStatus, type: 'movie', details: bookingResult } });
              }
          }
-
-         // --- Step 5: Respond to Client ---
-        res.status(201).json({ // Use 201 Created for successful booking
-            status: finalStatus, // Should be 'Completed'
+        
+        res.status(201).json({ 
+            status: finalStatus, 
             message: paymentResult.message,
             transactionId: paymentTransactionId,
             bookingDetails: bookingResult,
         });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error(`[Entertainment Ctrl] Movie booking failed for user ${userId}:`, error.message);
-        // The transaction might have been logged by payViaWalletInternal already if payment itself failed.
-        // If payment succeeded but booking failed, we have updated the original log.
-        // Ensure the response reflects the latest state.
-        let finalFailedTxId = paymentTransactionId; // If payment was attempted, use its ID
+        let finalFailedTxId = paymentTransactionId; 
 
-        if (!finalFailedTxId) { // If payment failed before logging
+        if (!finalFailedTxId) { 
             logData.status = 'Failed';
             logData.description = `${logData.name} - Booking Error: ${error.message}`;
             try {
-                const failedTx = await addTransaction(logData as any);
+                const failedTx = await addTransaction(logData);
                 finalFailedTxId = failedTx.id;
                  sendToUser(userId, { type: 'transaction_update', payload: { ...failedTx, date: failedTx.date } });
             } catch (logError) {
                 console.error("[Entertainment Ctrl] Failed to log initial failed movie booking transaction:", logError);
             }
         } else {
-            // Ensure the existing transaction log reflects the failure if not already done
             try {
                 const txDocRef = doc(db, 'transactions', finalFailedTxId);
                 const txSnap = await txDocRef.get();
@@ -263,22 +223,20 @@ exports.getEventDetails = async (req, res, next) => {
 };
 
 exports.bookEventTickets = async (req, res, next) => {
-    // Similar logic to bookMovieTickets: Payment -> Provider Confirmation -> Log -> Refund on failure
     const userId = req.user.uid;
     const { eventId, quantity, totalAmount, paymentMethod = 'wallet', eventName } = req.body;
-    // Validation in router
-
+    
     console.log(`Booking event ticket for user ${userId}:`, req.body);
 
     let paymentSuccess = false;
-    let paymentResult: any = {};
-    let bookingResult: any = {};
-    let finalStatus: Transaction['status'] = 'Failed';
+    let paymentResult = {};
+    let bookingResult = {};
+    let finalStatus = 'Failed';
     let failureReason = 'Event booking failed.';
     const bookingDescription = `Event: ${eventName || 'Event'} (${eventId})`;
-    let paymentTransactionId: string | undefined;
+    let paymentTransactionId;
 
-    let logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
+    let logData = {
         userId,
         type: 'Event Booking',
         name: eventName || eventId,
@@ -291,26 +249,22 @@ exports.bookEventTickets = async (req, res, next) => {
 
 
     try {
-        // --- Step 1: Payment ---
         if (totalAmount <= 0) throw new Error("Invalid booking amount.");
         if (paymentMethod === 'wallet') {
-            paymentResult = await payViaWalletInternal(userId, `event_${eventId}`, totalAmount, bookingDescription);
+            paymentResult = await payViaWalletInternal(userId, `event_${eventId}`, totalAmount, bookingDescription, 'Event Booking');
             if (!paymentResult.success) throw new Error(paymentResult.message || 'Wallet payment failed.');
             paymentSuccess = true;
             paymentTransactionId = paymentResult.transactionId;
              logData.description += ' (via Wallet)';
         } else {
-            // TODO: Implement UPI/Card payment
             throw new Error(`Payment method '${paymentMethod}' not supported for events yet.`);
         }
-
-        // Ensure a transaction ID exists
+        
         if (!paymentTransactionId) {
             console.error("[Entertainment Ctrl] CRITICAL: Payment reported success but no transactionId for event booking.");
             throw new Error("Payment processing error: Missing transaction ID for event.");
         }
 
-        // --- Step 2: Provider Confirmation ---
         console.log("Payment successful, confirming event ticket booking...");
         bookingResult = await entertainmentProviderService.confirmEventBooking({ userId, eventId, quantity, totalAmount, paymentTransactionId });
         if (bookingResult.status === 'Confirmed') {
@@ -320,7 +274,6 @@ exports.bookEventTickets = async (req, res, next) => {
             logData.description = bookingResult.message || `Booking ID: ${bookingResult.bookingId}`;
             paymentResult.message = bookingResult.message || 'Event booked successfully.';
 
-             // Update the original transaction log
              const originalTxRef = doc(db, 'transactions', paymentTransactionId);
              await updateDoc(originalTxRef, {
                  status: finalStatus,
@@ -329,7 +282,6 @@ exports.bookEventTickets = async (req, res, next) => {
                  updatedAt: serverTimestamp()
              });
 
-             // Optionally add booking details to a user subcollection
              const userBookingsRef = collection(db, 'users', userId, 'bookings');
              await addDoc(userBookingsRef, {
                  bookingId: bookingResult.bookingId,
@@ -350,13 +302,11 @@ exports.bookEventTickets = async (req, res, next) => {
              paymentResult.message = failureReason;
 
              console.error(`[Entertainment Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but event booking failed. Refunding.`);
-             // Update original transaction to Failed
              const originalTxRefFailed = doc(db, 'transactions', paymentTransactionId);
              await updateDoc(originalTxRefFailed, { status: 'Failed', description: `Event Booking Failed at provider for ${logData.name}`, updatedAt: serverTimestamp() });
 
-             // --- Refund Logic ---
              if (paymentMethod === 'wallet' && paymentTransactionId) {
-                  const refundResult = await payViaWalletInternal(userId, `REFUND_EVENT_${paymentTransactionId}`, -totalAmount, `Refund: Failed Event Booking for ${eventName}`);
+                  const refundResult = await payViaWalletInternal(userId, `REFUND_EVENT_${paymentTransactionId}`, -totalAmount, `Refund: Failed Event Booking for ${eventName}`, 'Refund');
                   if (refundResult.success) {
                        paymentResult.message = `${failureReason} Refund of ₹${totalAmount} processed to wallet.`;
                   } else {
@@ -364,12 +314,10 @@ exports.bookEventTickets = async (req, res, next) => {
                        console.error(paymentResult.message);
                   }
              }
-             // --- End Refund Logic ---
              throw new Error(paymentResult.message);
         }
 
-        // --- Step 3: Blockchain/WS Update ---
-        logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } as Transaction).catch(console.error);
+        logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } ).catch(console.error);
         
         const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
         if (finalTxDoc.exists()) {
@@ -379,8 +327,7 @@ exports.bookEventTickets = async (req, res, next) => {
                 sendToUser(userId, { type: 'booking_update', payload: { id: bookingResult.bookingId, status: finalStatus, type: 'event', details: bookingResult } });
             }
         }
-
-         // --- Step 4: Respond ---
+        
         res.status(201).json({
              status: 'Completed',
              message: paymentResult.message,
@@ -388,7 +335,7 @@ exports.bookEventTickets = async (req, res, next) => {
              bookingDetails: bookingResult,
         });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error(`[Entertainment Ctrl] Event booking failed for user ${userId}:`, error.message);
         let finalFailedTxId = paymentTransactionId;
 
@@ -396,7 +343,7 @@ exports.bookEventTickets = async (req, res, next) => {
             logData.status = 'Failed';
             logData.description = `${logData.name} - Booking Error: ${error.message}`;
             try {
-                const failedTx = await addTransaction(logData as any);
+                const failedTx = await addTransaction(logData);
                 finalFailedTxId = failedTx.id;
                 sendToUser(userId, { type: 'transaction_update', payload: { ...failedTx, date: failedTx.date } });
             } catch (logError) {
@@ -426,7 +373,7 @@ exports.bookEventTickets = async (req, res, next) => {
 };
 
 
-// --- Gaming Vouchers ---
+// --- Gaming & Digital Vouchers ---
 
 exports.getGamingVoucherBrands = async (req, res, next) => {
     const brands = await entertainmentProviderService.getGamingBrands();
@@ -439,61 +386,54 @@ exports.getGamingVoucherDenominations = async (req, res, next) => {
     res.status(200).json(denominations);
 };
 
-exports.purchaseGamingVoucher = async (req, res, next) => {
+exports.purchaseVoucher = async (req, res, next) => {
     const userId = req.user.uid;
-    const { brandId, amount, playerId, paymentMethod = 'wallet', brandName } = req.body;
+    const { brandId, amount, playerId, recipientMobile, billerName, voucherType = 'gaming' }: VoucherPurchasePayload = req.body;
 
-    console.log(`Purchasing voucher for user ${userId}:`, req.body);
+    console.log(`Purchasing ${voucherType} voucher for user ${userId}:`, req.body);
 
     let paymentSuccess = false;
-    let paymentResult: any = {};
-    let purchaseResult: any = {};
-    let finalStatus: Transaction['status'] = 'Failed';
+    let paymentResult = {};
+    let purchaseResult = {};
+    let finalStatus = 'Failed';
     let failureReason = 'Voucher purchase failed.';
-    const purchaseDescription = `Voucher: ${brandName || 'Gaming'} (${brandId})`;
-    let paymentTransactionId: string | undefined;
+    const purchaseDescription = `Voucher: ${billerName || brandId}`;
+    let paymentTransactionId;
 
-    let logData: Partial<Omit<Transaction, 'id' | 'date'>> & { userId: string } = {
+    let logData = {
         userId,
         type: 'Voucher Purchase',
-        name: brandName || brandId,
-        description: `Amount: ₹${amount}${playerId ? `, PlayerID: ${playerId}` : ''}`,
+        name: billerName || brandId,
+        description: `Amount: ₹${amount}${playerId ? `, PlayerID: ${playerId}` : ''}${recipientMobile ? `, For: ${recipientMobile}` : ''}`,
         amount: -amount,
         status: 'Failed',
         billerId: brandId,
-        paymentMethodUsed: paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'upi' ? 'UPI' : 'Card',
+        paymentMethodUsed: 'Wallet', // Assuming wallet for now
     };
 
-
     try {
-        // 1. Payment
         if (amount <= 0) throw new Error("Invalid voucher amount.");
-        if (paymentMethod === 'wallet') {
-             paymentResult = await payViaWalletInternal(userId, `voucher_${brandId}`, amount, purchaseDescription);
-             if (!paymentResult.success) throw new Error(paymentResult.message || 'Wallet payment failed.');
-             paymentSuccess = true;
-             paymentTransactionId = paymentResult.transactionId;
-             logData.description += ' (via Wallet)';
-        } else {
-            throw new Error(`Payment method '${paymentMethod}' not supported for vouchers currently.`);
-        }
+        
+        paymentResult = await payViaWalletInternal(userId, `voucher_${voucherType}_${brandId}`, amount, purchaseDescription, 'Voucher Purchase');
+        if (!paymentResult.success) throw new Error(paymentResult.message || 'Wallet payment failed.');
+        paymentSuccess = true;
+        paymentTransactionId = paymentResult.transactionId;
+        logData.description += ' (via Wallet)';
         
         if (!paymentTransactionId) {
             console.error("[Entertainment Ctrl] CRITICAL: Payment reported success but no transactionId for voucher.");
             throw new Error("Payment processing error: Missing transaction ID for voucher.");
         }
 
-        // 2. Purchase from Provider
-        console.log("Payment successful, purchasing gaming voucher...");
-        purchaseResult = await entertainmentProviderService.purchaseGamingVoucher({ userId, brandId, amount, playerId, paymentTransactionId });
+        console.log(`Payment successful, purchasing ${voucherType} voucher...`);
+        purchaseResult = await entertainmentProviderService.purchaseVoucher({ userId, brandId, amount, playerId, recipientMobile, paymentTransactionId, voucherType });
         if (purchaseResult.success) {
             finalStatus = 'Completed';
             logData.status = finalStatus;
-            logData.ticketId = purchaseResult.voucherCode || purchaseResult.receiptId || undefined; // Store code/ref in ticketId
-            logData.description = purchaseResult.message || `Voucher Code: ${logData.ticketId || 'Sent'}`;
+            logData.ticketId = purchaseResult.voucherCode || purchaseResult.receiptId || undefined; 
+            logData.description = purchaseResult.message || `Voucher Details: ${logData.ticketId || 'Sent'}`;
             paymentResult.message = purchaseResult.message || 'Voucher purchased successfully.';
 
-            // Update the original transaction log
             const originalTxRef = doc(db, 'transactions', paymentTransactionId);
             await updateDoc(originalTxRef, {
                 status: finalStatus,
@@ -509,55 +449,48 @@ exports.purchaseGamingVoucher = async (req, res, next) => {
             logData.description += ` - Purchase Failed: ${failureReason}`;
             paymentResult.message = failureReason;
 
-            console.error(`[Entertainment Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but voucher purchase failed. Refunding.`);
+            console.error(`[Entertainment Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but ${voucherType} voucher purchase failed. Refunding.`);
             const originalTxRefFailed = doc(db, 'transactions', paymentTransactionId);
-            await updateDoc(originalTxRefFailed, { status: 'Failed', description: `Voucher Purchase Failed at provider for ${logData.name}`, updatedAt: serverTimestamp() });
+            await updateDoc(originalTxRefFailed, { status: 'Failed', description: `${voucherType} Voucher Purchase Failed at provider for ${logData.name}`, updatedAt: serverTimestamp() });
 
-            // --- Refund Logic ---
-            if (paymentMethod === 'wallet' && paymentTransactionId) {
-                const refundResult = await payViaWalletInternal(userId, `REFUND_VOUCHER_${paymentTransactionId}`, -amount, `Refund: Failed Voucher Purchase for ${brandName}`);
-                 if (refundResult.success) {
-                      paymentResult.message = `${failureReason} Refund of ₹${amount} processed to wallet.`;
-                 } else {
-                      paymentResult.message = `${failureReason} CRITICAL: Wallet refund failed. Manual intervention required.`;
-                      console.error(paymentResult.message);
-                 }
+            const refundResult = await payViaWalletInternal(userId, `REFUND_${voucherType.toUpperCase()}_VOUCHER_${paymentTransactionId}`, -amount, `Refund: Failed ${billerName} Voucher`, 'Refund');
+            if (refundResult.success) {
+                  paymentResult.message = `${failureReason} Refund of ₹${amount} processed to wallet.`;
+            } else {
+                  paymentResult.message = `${failureReason} CRITICAL: Wallet refund failed. Manual intervention required.`;
+                  console.error(paymentResult.message);
             }
-            // --- End Refund Logic ---
             throw new Error(paymentResult.message);
         }
 
-        // --- Blockchain/WS Update ---
-        logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } as Transaction).catch(console.error);
+        logTransactionToBlockchain(paymentTransactionId, { ...logData, id: paymentTransactionId, date: new Date() } ).catch(console.error);
         
         const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
         if (finalTxDoc.exists()) {
             const finalTxData = { id: finalTxDoc.id, ...finalTxDoc.data(), date: finalTxDoc.data().date.toDate() };
             sendToUser(userId, { type: 'transaction_update', payload: finalTxData });
-            // Optionally send a specific voucher_purchase_update
         }
-
-         // --- Respond ---
+        
          res.status(201).json({
              status: 'Completed',
              message: paymentResult.message,
               transactionId: paymentTransactionId,
-             voucherDetails: purchaseResult, // Include voucher code/details if available
+             voucherDetails: purchaseResult,
          });
 
-    } catch (error: any) {
-         console.error(`[Entertainment Ctrl] Voucher purchase failed for user ${userId}:`, error.message);
+    } catch (error) {
+         console.error(`[Entertainment Ctrl] ${voucherType} Voucher purchase failed for user ${userId}:`, error.message);
          let finalFailedTxId = paymentTransactionId;
 
         if (!finalFailedTxId) {
             logData.status = 'Failed';
-            logData.description = `${logData.name} - Voucher Purchase Error: ${error.message}`;
+            logData.description = `${logData.name} - Purchase Error: ${error.message}`;
             try {
-                const failedTx = await addTransaction(logData as any);
+                const failedTx = await addTransaction(logData);
                 finalFailedTxId = failedTx.id;
                 sendToUser(userId, { type: 'transaction_update', payload: { ...failedTx, date: failedTx.date } });
             } catch (logError) {
-                console.error("[Entertainment Ctrl] Failed to log initial failed voucher purchase transaction:", logError);
+                console.error(`[Entertainment Ctrl] Failed to log initial failed ${voucherType} voucher purchase transaction:`, logError);
             }
         } else {
             try {
@@ -569,11 +502,9 @@ exports.purchaseGamingVoucher = async (req, res, next) => {
                     if(updatedTxDoc.exists()) sendToUser(userId, { type: 'transaction_update', payload: { id: updatedTxDoc.id, ...updatedTxDoc.data(), date: updatedTxDoc.data().date.toDate() } });
                 }
             } catch (updateError) {
-                console.error(`[Entertainment Ctrl] Error updating voucher transaction ${finalFailedTxId} to Failed state:`, updateError);
+                console.error(`[Entertainment Ctrl] Error updating ${voucherType} voucher transaction ${finalFailedTxId} to Failed state:`, updateError);
             }
         }
-
-
         res.status(400).json({
             status: 'Failed',
             message: error.message || failureReason,
@@ -582,3 +513,122 @@ exports.purchaseGamingVoucher = async (req, res, next) => {
         });
     }
 };
+
+
+```
+  </change>
+  <change>
+    <file>backend/routes/entertainmentRoutes.js</file>
+    <content><![CDATA[
+// backend/routes/entertainmentRoutes.js
+const express = require('express');
+const { query, body, param, validationResult } = require('express-validator');
+const entertainmentController = require('../controllers/entertainmentController');
+const asyncHandler = require('../middleware/asyncHandler');
+const router = express.Router();
+
+// Middleware to handle validation results
+const handleValidationErrors = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        const errorMessages = errors.array().map(err => err.msg).join(', ');
+        res.status(400);
+        throw new Error(`Validation Failed: ${errorMessages}`);
+    }
+    next();
+};
+
+// All routes require authentication (applied in server.js)
+
+// --- Movies ---
+router.get('/movies/search',
+    query('city').isString().trim().notEmpty().withMessage('City is required.'),
+    query('date').optional().isISO8601().toDate().withMessage('Invalid date format.'),
+    handleValidationErrors,
+    asyncHandler(entertainmentController.searchMovies)
+);
+
+router.get('/movies/:movieId/details',
+    param('movieId').isString().trim().notEmpty().withMessage('Movie ID is required.'),
+    query('city').isString().trim().notEmpty().withMessage('City is required.'),
+    query('date').optional().isISO8601().toDate().withMessage('Invalid date format.'),
+    handleValidationErrors,
+    asyncHandler(entertainmentController.getMovieDetails)
+);
+
+router.post('/movies/book',
+    body('movieId').isString().trim().notEmpty().withMessage('Movie ID required.'),
+    body('cinemaId').isString().trim().notEmpty().withMessage('Cinema ID required.'),
+    body('showtime').isString().trim().notEmpty().withMessage('Showtime required.'),
+    body('seats').isArray({ min: 1 }).withMessage('At least one seat must be selected.'),
+    body('seats.*').isString().trim().notEmpty().withMessage('Invalid seat ID.'), 
+    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'), 
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('movieName').optional().isString().trim(), 
+    body('cinemaName').optional().isString().trim(), 
+    handleValidationErrors,
+    asyncHandler(entertainmentController.bookMovieTickets) 
+);
+
+// --- Events (Generic/Comedy/Sports) ---
+router.get('/events/search',
+    query('city').isString().trim().notEmpty().withMessage('City is required.'),
+    query('category').optional().isIn(['Comedy', 'Sports', 'Music', 'Workshop']).withMessage('Invalid category.'),
+    query('date').optional().isISO8601().toDate(),
+    handleValidationErrors,
+    asyncHandler(entertainmentController.searchEvents)
+);
+
+router.get('/events/:eventId/details',
+    param('eventId').isString().trim().notEmpty().withMessage('Event ID is required.'),
+    handleValidationErrors,
+    asyncHandler(entertainmentController.getEventDetails)
+);
+
+router.post('/events/book',
+    body('eventId').isString().trim().notEmpty().withMessage('Event ID required.'),
+    body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1.'),
+    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'),
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('eventName').optional().isString().trim(), 
+    handleValidationErrors,
+    asyncHandler(entertainmentController.bookEventTickets)
+);
+
+// --- Gaming Vouchers ---
+router.get('/vouchers/gaming/brands', asyncHandler(entertainmentController.getGamingVoucherBrands));
+
+router.get('/vouchers/gaming/denominations',
+    query('brandId').isString().trim().notEmpty().withMessage('Brand ID is required.'),
+    handleValidationErrors,
+    asyncHandler(entertainmentController.getGamingVoucherDenominations)
+);
+
+// Common endpoint for voucher purchase, differentiate by voucherType in payload
+router.post('/vouchers/gaming/purchase',
+    body('brandId').isString().trim().notEmpty().withMessage('Brand ID required.'),
+    body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid amount required.'),
+    body('playerId').optional({ checkFalsy: true }).isString().trim(), 
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'), // For consistency, though backend might default to wallet
+    body('billerName').optional().isString().trim(),
+    body('voucherType').default('gaming').isIn(['gaming']).withMessage('Invalid voucher type for this endpoint.'), // Specific to gaming
+    handleValidationErrors,
+    asyncHandler(entertainmentController.purchaseVoucher) // Use generic purchaseVoucher
+);
+
+// --- Digital Vouchers (e.g., Google Play, App Store) ---
+// Note: This might be a separate route file in a larger app, or use query params to /vouchers.
+// Using a distinct path for clarity for now.
+router.post('/vouchers/digital/purchase',
+    body('brandId').isString().trim().notEmpty().withMessage('Brand ID required.'),
+    body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid amount required.'),
+    body('recipientMobile').optional({ checkFalsy: true }).isMobilePhone('any').withMessage('Invalid recipient mobile number.'), // Make sure to validate mobile number
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('billerName').optional().isString().trim(),
+    body('voucherType').default('digital').isIn(['digital']).withMessage('Invalid voucher type for this endpoint.'), // Specific to digital
+    handleValidationErrors,
+    asyncHandler(entertainmentController.purchaseVoucher) // Use generic purchaseVoucher
+);
+
+
+module.exports = router;

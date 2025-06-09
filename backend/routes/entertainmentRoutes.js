@@ -19,7 +19,6 @@ const handleValidationErrors = (req, res, next) => {
 // All routes require authentication (applied in server.js)
 
 // --- Movies ---
-// GET /api/entertainment/movies/search?city=...&date=... - Search movies
 router.get('/movies/search',
     query('city').isString().trim().notEmpty().withMessage('City is required.'),
     query('date').optional().isISO8601().toDate().withMessage('Invalid date format.'),
@@ -27,7 +26,6 @@ router.get('/movies/search',
     asyncHandler(entertainmentController.searchMovies)
 );
 
-// GET /api/entertainment/movies/:movieId/details?city=...&date=... - Get movie details & showtimes
 router.get('/movies/:movieId/details',
     param('movieId').isString().trim().notEmpty().withMessage('Movie ID is required.'),
     query('city').isString().trim().notEmpty().withMessage('City is required.'),
@@ -36,23 +34,21 @@ router.get('/movies/:movieId/details',
     asyncHandler(entertainmentController.getMovieDetails)
 );
 
-// POST /api/entertainment/movies/book - Book movie tickets
 router.post('/movies/book',
     body('movieId').isString().trim().notEmpty().withMessage('Movie ID required.'),
     body('cinemaId').isString().trim().notEmpty().withMessage('Cinema ID required.'),
     body('showtime').isString().trim().notEmpty().withMessage('Showtime required.'),
     body('seats').isArray({ min: 1 }).withMessage('At least one seat must be selected.'),
-    body('seats.*').isString().trim().notEmpty().withMessage('Invalid seat ID.'), // Validate individual seats
-    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'), // Ensure amount > 0
+    body('seats.*').isString().trim().notEmpty().withMessage('Invalid seat ID.'), 
+    body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'), 
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
-    body('movieName').optional().isString().trim(), // Optional for logging/display
-    body('cinemaName').optional().isString().trim(), // Optional for logging/display
+    body('movieName').optional().isString().trim(), 
+    body('cinemaName').optional().isString().trim(), 
     handleValidationErrors,
-    asyncHandler(entertainmentController.bookMovieTickets) // Use specific controller
+    asyncHandler(entertainmentController.bookMovieTickets) 
 );
 
 // --- Events (Generic/Comedy/Sports) ---
-// GET /api/entertainment/events/search?city=...&category=... - Search events
 router.get('/events/search',
     query('city').isString().trim().notEmpty().withMessage('City is required.'),
     query('category').optional().isIn(['Comedy', 'Sports', 'Music', 'Workshop']).withMessage('Invalid category.'),
@@ -61,49 +57,56 @@ router.get('/events/search',
     asyncHandler(entertainmentController.searchEvents)
 );
 
-// GET /api/entertainment/events/:eventId/details - Get event details
 router.get('/events/:eventId/details',
     param('eventId').isString().trim().notEmpty().withMessage('Event ID is required.'),
     handleValidationErrors,
     asyncHandler(entertainmentController.getEventDetails)
 );
 
-// POST /api/entertainment/events/book - Book event tickets
 router.post('/events/book',
     body('eventId').isString().trim().notEmpty().withMessage('Event ID required.'),
     body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1.'),
     body('totalAmount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid total amount required.'),
     body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
-    body('eventName').optional().isString().trim(), // Optional for logging
+    body('eventName').optional().isString().trim(), 
     handleValidationErrors,
     asyncHandler(entertainmentController.bookEventTickets)
 );
 
 // --- Gaming Vouchers ---
-// GET /api/entertainment/vouchers/gaming/brands - Get list of gaming platforms/brands
 router.get('/vouchers/gaming/brands', asyncHandler(entertainmentController.getGamingVoucherBrands));
 
-// GET /api/entertainment/vouchers/gaming/denominations?brandId=... - Get denominations for a brand
 router.get('/vouchers/gaming/denominations',
     query('brandId').isString().trim().notEmpty().withMessage('Brand ID is required.'),
     handleValidationErrors,
     asyncHandler(entertainmentController.getGamingVoucherDenominations)
 );
 
-// POST /api/entertainment/vouchers/gaming/purchase - Purchase a gaming voucher
+// Common endpoint for voucher purchase, differentiate by voucherType in payload
 router.post('/vouchers/gaming/purchase',
     body('brandId').isString().trim().notEmpty().withMessage('Brand ID required.'),
     body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid amount required.'),
-    body('playerId').optional({ checkFalsy: true }).isString().trim(), // Optional player ID, allow empty string if provided but falsy
-    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
-    body('brandName').optional().isString().trim(), // Optional for logging
+    body('playerId').optional({ checkFalsy: true }).isString().trim(), 
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'), // For consistency, though backend might default to wallet
+    body('billerName').optional().isString().trim(),
+    body('voucherType').default('gaming').isIn(['gaming']).withMessage('Invalid voucher type for this endpoint.'), // Specific to gaming
     handleValidationErrors,
-    asyncHandler(entertainmentController.purchaseGamingVoucher)
+    asyncHandler(entertainmentController.purchaseVoucher) // Use generic purchaseVoucher
 );
 
-// --- OTT Subscriptions ---
-// GET /api/entertainment/subscriptions/billers - Get OTT billers (reuse /recharge/billers?type=Subscription ?)
-// POST /api/entertainment/subscriptions/pay - Pay for subscription (reuse /bills/subscription ?)
-// For now, assume these reuse existing bill payment/recharge routes.
+// --- Digital Vouchers (e.g., Google Play, App Store) ---
+// Note: This might be a separate route file in a larger app, or use query params to /vouchers.
+// Using a distinct path for clarity for now.
+router.post('/vouchers/digital/purchase',
+    body('brandId').isString().trim().notEmpty().withMessage('Brand ID required.'),
+    body('amount').isNumeric().toFloat().isFloat({ gt: 0 }).withMessage('Valid amount required.'),
+    body('recipientMobile').optional({ checkFalsy: true }).isMobilePhone('any').withMessage('Invalid recipient mobile number.'), // Make sure to validate mobile number
+    body('paymentMethod').optional().isIn(['wallet', 'upi', 'card']).withMessage('Invalid payment method.'),
+    body('billerName').optional().isString().trim(),
+    body('voucherType').default('digital').isIn(['digital']).withMessage('Invalid voucher type for this endpoint.'), // Specific to digital
+    handleValidationErrors,
+    asyncHandler(entertainmentController.purchaseVoucher) // Use generic purchaseVoucher
+);
+
 
 module.exports = router;

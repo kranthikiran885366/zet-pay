@@ -12,21 +12,29 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { processBillPayment } from '@/services/bills';
-import { mockSocietiesData, HousingSociety } from '@/mock-data'; // Import centralized mock data
+import { mockSocietiesData, HousingSociety } from '@/mock-data';
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import type { Transaction } from '@/services/types';
 
 export default function HousingSocietyPage() {
     const [societies, setSocieties] = useState<HousingSociety[]>(mockSocietiesData);
     const [selectedSociety, setSelectedSociety] = useState<string>('');
     const [flatNumber, setFlatNumber] = useState('');
     const [amount, setAmount] = useState<string>('');
-    const [isLoadingSocieties, setIsLoadingSocieties] = useState(false);
+    const [isLoadingSocieties, setIsLoadingSocieties] = useState(false); // Currently not used as data is static
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make payments." });
+            return;
+        }
         if (!selectedSociety || !flatNumber || !amount || Number(amount) <= 0) {
-            toast({ variant: "destructive", title: "Missing Information" });
+            toast({ variant: "destructive", title: "Missing Information", description: "Please select society, enter flat number and a valid amount." });
             return;
         }
         setIsProcessing(true);
@@ -39,18 +47,19 @@ export default function HousingSocietyPage() {
                 billerType: 'Housing Society',
                 billerName: societyName,
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
 
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${societyName} (Flat: ${flatNumber}).` });
+                toast({ title: "Payment Successful!", description: `₹${amount} paid for ${societyName} (Flat: ${flatNumber}). Txn ID: ${transactionResult.id}` });
                 setFlatNumber('');
                 setAmount('');
+                router.push('/history');
             } else {
-                throw new Error(`Payment ${transactionResult.status}`);
+                throw new Error(transactionResult.description || `Payment ${transactionResult.status}`);
             }
         } catch (err: any) {
             console.error("Housing society payment failed:", err);
-            toast({ variant: "destructive", title: "Payment Failed", description: err.message });
+            toast({ variant: "destructive", title: "Payment Failed", description: err.message || "Could not complete society dues payment." });
         } finally {
             setIsProcessing(false);
         }

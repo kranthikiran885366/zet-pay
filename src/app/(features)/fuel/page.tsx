@@ -10,9 +10,10 @@ import { ArrowLeft, Fuel as FuelIcon, Loader2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { processFuelPayment } from '@/services/payments'; // New service function
+import { processFuelPayment } from '@/services/payments'; 
 import type { Transaction } from '@/services/types';
 import { useRouter } from 'next/navigation';
+import { auth } from '@/lib/firebase';
 
 export default function FuelPaymentPage() {
     const [amount, setAmount] = useState<string>('');
@@ -22,6 +23,10 @@ export default function FuelPaymentPage() {
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
+         if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to make payments." });
+            return;
+        }
         if (!amount || Number(amount) <= 0) {
             toast({ variant: "destructive", title: "Invalid Amount", description: "Please enter a valid amount for fuel payment." });
             return;
@@ -34,7 +39,7 @@ export default function FuelPaymentPage() {
                 setAmount('');
                 router.push('/history');
             } else {
-                throw new Error(result?.message || "Fuel payment failed.");
+                throw new Error(result?.description || "Fuel payment failed. Please check history for details.");
             }
         } catch (err: any) {
             console.error("Fuel payment failed:", err);
@@ -106,7 +111,7 @@ export default function FuelPaymentPage() {
                         <p>1. Ask the fuel station attendant for the total amount.</p>
                         <p>2. Enter the amount above and tap "Pay for Fuel".</p>
                         <p>3. Show the confirmation screen to the attendant.</p>
-                        <p className="text-xs mt-2">(Currently simulates a generic fuel payment. QR/Specific provider integration coming soon!)</p>
+                        <p className="text-xs mt-2">(This currently uses your default payment method. QR/Specific provider integration coming soon!)</p>
                     </CardContent>
                 </Card>
             </main>

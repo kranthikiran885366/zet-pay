@@ -12,7 +12,10 @@ import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { mockDigitalVoucherBrandsData, DigitalVoucherBrand } from '@/mock-data'; // Import centralized mock data
+import { mockDigitalVoucherBrandsData, DigitalVoucherBrand } from '@/mock-data';
+import { purchaseVoucher, VoucherPurchasePayload } from '@/services/vouchers'; // Import voucher service
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
 
 export default function DigitalVoucherPage() {
     const [brands] = useState<DigitalVoucherBrand[]>(mockDigitalVoucherBrandsData);
@@ -22,6 +25,7 @@ export default function DigitalVoucherPage() {
     const [recipientMobile, setRecipientMobile] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const router = useRouter();
 
     useEffect(() => {
         setSelectedDenomination(null);
@@ -53,6 +57,10 @@ export default function DigitalVoucherPage() {
 
     const handlePurchase = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth.currentUser) {
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to purchase vouchers." });
+            return;
+        }
         const finalAmount = selectedDenomination || (customAmount ? Number(customAmount) : 0);
 
         if (!selectedBrand || finalAmount <= 0 || !recipientMobile || !recipientMobile.match(/^[6-9]\d{9}$/)) {
@@ -76,19 +84,26 @@ export default function DigitalVoucherPage() {
         }
 
         setIsProcessing(true);
-        console.log("Purchasing Digital Voucher:", {
-            brand: selectedBrand.name,
+        const purchasePayload: VoucherPurchasePayload = {
+            brandId: selectedBrand.id,
             amount: finalAmount,
-            recipientMobile
-        });
+            recipientMobile: recipientMobile,
+            billerName: selectedBrand.name,
+            voucherType: 'digital',
+        };
+
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            toast({ title: "Voucher Purchased!", description: `₹${finalAmount} ${selectedBrand.name} voucher code sent to ${recipientMobile}.` });
-            setSelectedBrand(null);
-            setRecipientMobile('');
-        } catch (err) {
+            const result = await purchaseVoucher(purchasePayload);
+            if (result.status === 'Completed') {
+                toast({ title: "Voucher Purchased!", description: `₹${finalAmount} ${selectedBrand.name} voucher code sent to ${recipientMobile}. Txn ID: ${result.id}` });
+                setSelectedBrand(null); // Reset selection
+                router.push('/history');
+            } else {
+                 throw new Error(result.description || "Voucher purchase failed.");
+            }
+        } catch (err: any) {
             console.error("Voucher purchase failed:", err);
-            toast({ variant: "destructive", title: "Purchase Failed" });
+            toast({ variant: "destructive", title: "Purchase Failed", description: err.message || "Could not complete voucher purchase." });
         } finally {
             setIsProcessing(false);
         }
@@ -96,7 +111,6 @@ export default function DigitalVoucherPage() {
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
-            {/* Header */}
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
                 <Link href="/services" passHref>
                     <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
@@ -107,7 +121,6 @@ export default function DigitalVoucherPage() {
                 <h1 className="text-lg font-semibold">Digital Vouchers</h1>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow p-4 space-y-4 pb-20">
                 <Card className="shadow-md">
                     <CardHeader>
@@ -125,7 +138,7 @@ export default function DigitalVoucherPage() {
                                     <SelectContent>
                                         {brands.map((b) => (
                                             <SelectItem key={b.id} value={b.id}>
-                                                {b.logoUrl && <Image src={b.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {b.logoUrl && <Image src={b.logoUrl} alt={b.name} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="brand logo"/>}
                                                 {b.name}
                                             </SelectItem>
                                         ))}
@@ -140,19 +153,11 @@ export default function DigitalVoucherPage() {
                                              <Label>Select Amount (₹)</Label>
                                              <div className="flex flex-wrap gap-2">
                                                 {selectedBrand.denominations.map(denom => (
-                                                    <Button
-                                                        key={denom}
-                                                        type="button"
-                                                        variant={selectedDenomination === denom ? "default" : "outline"}
-                                                        onClick={() => handleSelectDenomination(denom)}
-                                                    >
-                                                        ₹{denom}
-                                                    </Button>
+                                                    <Button key={denom} type="button" variant={selectedDenomination === denom ? "default" : "outline"} onClick={() => handleSelectDenomination(denom)}>₹{denom}</Button>
                                                 ))}
                                              </div>
                                          </div>
                                      )}
-
                                      {selectedBrand.allowCustomAmount && (
                                          <div className="space-y-1">
                                              <Label htmlFor="customAmount">Or Enter Custom Amount (₹)</Label>
@@ -173,9 +178,7 @@ export default function DigitalVoucherPage() {
                                              </div>
                                          </div>
                                     )}
-
                                      <Separator />
-
                                     <div className="space-y-1">
                                         <Label htmlFor="recipientMobile">Recipient Mobile Number</Label>
                                         <Input
@@ -190,7 +193,6 @@ export default function DigitalVoucherPage() {
                                         />
                                         <p className="text-xs text-muted-foreground">Voucher code will be sent via SMS to this number.</p>
                                     </div>
-
                                      <div className="pt-4">
                                          <Separator className="mb-4"/>
                                           <div className="flex justify-between items-center text-sm mb-2">
