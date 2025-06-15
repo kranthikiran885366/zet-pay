@@ -1,4 +1,3 @@
-
 # PayFriend Firestore Database Schema
 
 This document outlines the collections, subcollections, and document structures for the PayFriend application's Firestore database.
@@ -43,7 +42,7 @@ This document outlines the collections, subcollections, and document structures 
      - `scratchCards`: (See below)
      - `templeBookings`: (See below)
      - `prasadamOrders`: (See below)
-     - `travelBookings`: (See below)
+     - `travelBookings`: (e.g., flights, buses, trains - documents with type field)
      - `genericBookings`: (General bookings, e.g., movies, events)
      - `savingsGoals`: (See below)
      - `userInvestments`: (See below)
@@ -52,7 +51,7 @@ This document outlines the collections, subcollections, and document structures 
    - **Document ID**: Auto-generated
    - **Fields**:
      - `userId`: string (Firebase Auth UID of the user initiating/receiving)
-     - `type`: string (e.g., `Sent`, `Received`, `Recharge`, `Bill Payment`, `Wallet Top-up`, `Investment`, `Loan Disbursement`, `Loan Repayment`, `Cashback`, `Refund`, `Hold`, `Shopping`, `Booking Fee`, `Donation`)
+     - `type`: string (e.g., `Sent`, `Received`, `Recharge`, `Bill Payment`, `Wallet Top-up`, `Investment`, `Loan Disbursement`, `Loan Repayment`, `Cashback`, `Refund`, `Hold`, `Shopping`, `Booking Fee`, `Donation`, `BNPL Usage`, `BNPL Repayment`)
      - `name`: string (Payee name, Biller name, Merchant name, Fund name, etc.)
      - `description`: string (Note, purpose, plan details)
      - `amount`: number (Negative for debits, positive for credits)
@@ -66,7 +65,7 @@ This document outlines the collections, subcollections, and document structures 
      - `billerName`: string (Biller Name if applicable)
      - `identifier`: string (Consumer number, policy number, mobile for recharge, etc.)
      - `planId`: string (Recharge plan ID if applicable)
-     - `loanId`: string (Reference to `microLoans` document if applicable)
+     - `loanId`: string (Reference to `microLoans` or `bnplStatements` document if applicable)
      - `bookingId`: string (Reference to a booking document if applicable)
      - `ticketId`: string (For support tickets related to this transaction)
      - `withdrawalRequestId`: string (Link to `cashWithdrawals` if applicable)
@@ -139,9 +138,10 @@ This document outlines the collections, subcollections, and document structures 
      - `maxDiscount`: number (Optional)
      - `couponCode`: string (If applicable)
      - `redemptionLimitPerUser`: number (Optional)
-     - `totalRedemptions`: number (Optional)
+     - `totalRedemptions`: number (Optional, for campaign tracking)
      - `isActive`: boolean
      - `createdAt`: Timestamp
+     - `updatedAt`: Timestamp
 
 ### 7. `loyaltyStatus`
    - **Document ID**: `userId`
@@ -151,7 +151,9 @@ This document outlines the collections, subcollections, and document structures 
      - `tier`: string (`Bronze`, `Silver`, `Gold`, `Platinum`)
      - `benefits`: array of strings (Description of benefits for current tier)
      - `pointsToNextTier`: number
-     - `lastUpdated`: Timestamp
+     - `lastTransactionDate`: Timestamp (When points were last updated)
+     - `createdAt`: Timestamp
+     - `updatedAt`: Timestamp
 
 ### 8. `referralStatus`
    - **Document ID**: `userId` (The referrer's ID)
@@ -172,13 +174,15 @@ This document outlines the collections, subcollections, and document structures 
         - `isActive`: boolean
         - `creditLimit`: number
         - `usedLimit`: number (Amount currently utilized)
-        - `availableLimit`: number (creditLimit - usedLimit)
+        - `availableLimit`: number (Calculated: creditLimit - usedLimit)
         - `providerName`: string (e.g., "ZetPay BNPL Partner")
         - `partnerBank`: string (Optional, if applicable)
         - `billingCycleDay`: number (e.g., 1 for 1st of month)
         - `paymentDueDateOffsetDays`: number (e.g., 15 days after bill generation)
         - `activationDate`: Timestamp
-        - `lastUpdated`: Timestamp
+        - `lastTransactionDate`: Timestamp
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
 
 ### 10. `bnplStatements`
     - **Document ID**: Auto-generated (or `userId_YYYYMM`)
@@ -191,26 +195,23 @@ This document outlines the collections, subcollections, and document structures 
         - `dueAmount`: number
         - `minAmountDue`: number
         - `isPaid`: boolean (default: `false`)
-        - `paidDate`: Timestamp (Optional)
-        - `lastPaymentAmount`: number (Optional)
+        - `paidDate`: Timestamp (Optional, if fully paid)
+        - `lastPaymentAmount`: number (Optional, amount of last partial/full payment)
         - `lastPaymentDate`: Timestamp (Optional)
-        - `lastPaymentMethod`: string (Optional)
-        - `transactions`: array of maps (or reference to `bnplTransactions`) - Contains brief transaction details
+        - `lastPaymentMethod`: string (Optional, e.g., 'Wallet', 'UPI')
+        - `lateFeesApplied`: number (Optional)
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
+    - **Subcollections**:
+        - `statementTransactions`:
+            - **Document ID**: Auto-generated (or linked `transactionId` from main `transactions` collection)
+            - **Fields**:
+                - `originalTransactionId`: string (ID of the transaction in `transactions` that used BNPL)
+                - `date`: Timestamp
+                - `merchantName`: string
+                - `amount`: number (Amount of the individual BNPL spend)
 
-### 11. `bnplTransactions` (if not embedded in statements)
-    - **Document ID**: Auto-generated
-    - **Fields**:
-        - `userId`: string
-        - `statementId`: string (Reference to `bnplStatements` document)
-        - `originalTransactionId`: string (ID of the primary transaction that used BNPL)
-        - `date`: Timestamp (When the BNPL credit was used)
-        - `merchantName`: string (Or purpose of transaction)
-        - `amount`: number
-        - `createdAt`: Timestamp
-
-### 12. `microLoans`
+### 11. `microLoans`
     - **Document ID**: Auto-generated
     - **Fields**:
         - `userId`: string
@@ -226,7 +227,7 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 13. `pocketMoneyConfigs`
+### 12. `pocketMoneyConfigs`
     - **Document ID**: `parentUserId`
     - **Fields**:
         - `userId`: string (Parent's UID)
@@ -243,7 +244,7 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 14. `pocketMoneyTransactions`
+### 13. `pocketMoneyTransactions`
     - **Document ID**: Auto-generated
     - **Fields**:
         - `userId`: string (Parent's UID)
@@ -256,7 +257,7 @@ This document outlines the collections, subcollections, and document structures 
         - `originalTransactionId`: string (If this PM transaction is linked to a main transaction)
         - `createdAt`: Timestamp
 
-### 15. `zetAgents`
+### 14. `zetAgents`
     - **Document ID**: Auto-generated (or custom `agentId`)
     - **Fields**:
         - `agentId`: string (Unique ID)
@@ -272,7 +273,7 @@ This document outlines the collections, subcollections, and document structures 
         - `rating`: number (Average user rating)
         - `createdAt`: Timestamp
 
-### 16. `cashWithdrawals`
+### 15. `cashWithdrawals`
     - **Document ID**: Auto-generated
     - **Fields**:
         - `userId`: string (User initiating withdrawal)
@@ -290,7 +291,7 @@ This document outlines the collections, subcollections, and document structures 
         - `completedAt`: Timestamp (Optional)
         - `updatedAt`: Timestamp
 
-### 17. `supportTickets`
+### 16. `supportTickets`
     - **Document ID**: Auto-generated (or custom `ticketId`)
     - **Fields**:
         - `userId`: string
@@ -319,7 +320,7 @@ This document outlines the collections, subcollections, and document structures 
          - `timestamp`: Timestamp
          - `attachmentUrl`: string (Optional)
 
-### 18. `scan_logs`
+### 17. `scan_logs`
    - **Document ID**: Auto-generated (`scanLogId`)
    - **Fields**:
      - `userId`: string
@@ -340,7 +341,7 @@ This document outlines the collections, subcollections, and document structures 
      - `location`: GeoPoint (Optional, if geo-tagging scans)
      - `deviceInfo`: map (Optional, basic device info for fraud analysis)
 
-### 19. `verified_merchants`
+### 18. `verified_merchants`
    - **Document ID**: `upiId` (e.g., `merchant@okaxis`)
    - **Fields**:
      - `upiId`: string
@@ -352,7 +353,7 @@ This document outlines the collections, subcollections, and document structures 
      - `address`: string (Optional)
      - `contact`: string (Optional)
 
-### 20. `blacklisted_qrs`
+### 19. `blacklisted_qrs`
    - **Document ID**: `upiId` or `qrDataHash` (Choose one as primary key or have both indexed)
    - **Fields**:
      - `identifier`: string (The UPI ID or QR Hash that is blacklisted)
@@ -361,7 +362,7 @@ This document outlines the collections, subcollections, and document structures 
      - `blacklistedAt`: Timestamp
      - `source`: string (e.g., "Admin", "AI Flag", "User Report Threshold")
 
-### 21. `reported_qrs`
+### 20. `reported_qrs`
    - **Document ID**: Auto-generated
    - **Fields**:
      - `reporterUserId`: string
@@ -375,7 +376,7 @@ This document outlines the collections, subcollections, and document structures 
      - `resolvedAt`: Timestamp (Optional)
      - `adminNotes`: string (Optional)
 
-### 22. `vaultItems`
+### 21. `vaultItems`
     - **Document ID**: Auto-generated (`itemId`)
     - **Fields**:
         - `userId`: string
@@ -395,7 +396,7 @@ This document outlines the collections, subcollections, and document structures 
         - `originalTransactionId`: string (Optional, if item linked to a transaction, e.g. a bill)
         - `expiryDate`: Timestamp (Optional, e.g. for tickets)
 
-### 23. `chats`
+### 22. `chats`
     - **Document ID**: Composite ID (e.g., `userId1_userId2` where userId1 < userId2)
     - **Fields**:
         - `participants`: array of strings (UserIDs of chat participants)
@@ -432,7 +433,7 @@ This document outlines the collections, subcollections, and document structures 
                 - `isRead`: boolean (default: `false`)
                 - `readBy`: array of strings (UserIDs who have read the message) - For group chats later
 
-### 24. `recoveryTasks` (For Smart Wallet Bridge recovery)
+### 23. `recoveryTasks` (For Smart Wallet Bridge recovery)
     - **Document ID**: Auto-generated
     - **Fields**:
         - `userId`: string
@@ -447,7 +448,7 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 25. `user_favorite_qrs`
+### 24. `user_favorite_qrs`
     - **Document ID**: Auto-generated (or composite like `userId_qrDataHash`)
     - **Fields**:
         - `userId`: string
@@ -462,6 +463,68 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
+### 25. `flightListings` (Mock backend data source for flight search)
+    - **Document ID**: Auto-generated (or custom like `AIRLINECODE_FLIGHTNUMBER_DATE`)
+    - **Fields**:
+        - `airline`: string
+        - `flightNumber`: string
+        - `departureAirport`: string (IATA code)
+        - `arrivalAirport`: string (IATA code)
+        - `departureDateTime`: Timestamp
+        - `arrivalDateTime`: Timestamp
+        - `durationMinutes`: number
+        - `stops`: number
+        - `price`: number
+        - `currency`: string (e.g., "INR")
+        - `cabinClass`: string (`Economy`, `Premium Economy`, `Business`)
+        - `seatsAvailable`: number
+        - `refundable`: boolean
+        - `baggageAllowance`: map (`cabin`: string, `checkin`: string)
+        - `aircraftType`: string (Optional)
+        - `source`: string (e.g., "Amadeus", "Sabre", "MockData")
+        - `lastUpdated`: Timestamp
+
+### 26. `temples` (Basic temple information for selection)
+    - **Document ID**: `templeId` (e.g., "tirupati", "shirdi")
+    - **Fields**:
+        - `name`: string
+        - `locationCity`: string
+        - `state`: string
+        - `imageUrl`: string (Optional)
+        - `description`: string (Optional)
+        - `allowsDarshanBooking`: boolean
+        - `allowsPoojaBooking`: boolean
+        - `allowsPrasadamOrder`: boolean
+        - `hasLiveFeed`: boolean
+        - `bookingFee`: number (Optional base fee for marriage hall booking)
+        - `requiresApproval`: boolean (Optional for marriage hall approval)
+
+### 27. `darshanSlots` (Availability for a specific temple and date)
+    - **Document ID**: `templeId_YYYY-MM-DD` (e.g., "tirupati_2024-08-15")
+    - **Fields**:
+        - `templeId`: string
+        - `date`: string (YYYY-MM-DD)
+        - `slots`: array of maps
+            - `time`: string (e.g., "09:00 - 10:00")
+            - `quota`: string (e.g., "Special Entry (₹300)")
+            - `availability`: string (`Available`, `Filling Fast`, `Full`)
+            - `ticketsLeft`: number (Optional, for direct booking)
+            - `totalTickets`: number (Optional)
+
+### 28. `hyperlocalProviders` (List of service providers)
+    - **Document ID**: Auto-generated
+    - **Fields**:
+        - `providerName`: string
+        - `serviceType`: string (`Electrician`, `Plumber`, `Cleaning`, `AC Repair`)
+        - `city`: string
+        - `area`: string (Optional, e.g., "Koramangala")
+        - `contactNumber`: string (Optional)
+        - `rating`: number (Optional)
+        - `basePrice`: number (Optional, e.g., "Starts from ₹X")
+        - `availableSlots`: map (e.g., `{"YYYY-MM-DD": ["09:00", "11:00"]}`) - Simplified
+        - `isActive`: boolean
+        - `logoUrl`: string (Optional)
+
 ---
 ## Subcollections (under `users/{userId}`)
 
@@ -470,11 +533,16 @@ This document outlines the collections, subcollections, and document structures 
    - **Fields**:
      - `bankName`: string
      - `accountNumber`: string (Masked, e.g., `xxxx1234`)
+     - `accountName`: string (e.g., "Savings Account")
+     - `accountType`: string (`SAVINGS`, `CURRENT`)
+     - `ifsc`: string
      - `upiId`: string (Linked UPI ID, e.g., `user@okaxis`)
      - `isDefault`: boolean (Primary account for payments)
+     - `isUpiPinSet`: boolean (default: `false`)
      - `pinLength`: number (4 or 6, for UI hints)
      - `isVerified`: boolean (If bank account successfully linked and verified by PSP)
      - `linkedAt`: Timestamp (or `createdAt`)
+     - `updatedAt`: Timestamp
 
 ### 2. `users/{userId}/savedCards`
    - **Document ID**: Auto-generated (or gateway token ID if unique and safe)
@@ -489,6 +557,7 @@ This document outlines the collections, subcollections, and document structures 
      - `cardType`: string (`Credit`, `Debit`)
      - `isPrimary`: boolean
      - `addedAt`: Timestamp (or `createdAt`)
+     - `updatedAt`: Timestamp
 
 ### 3. `users/{userId}/contacts`
    - **Document ID**: Auto-generated (or custom if using a unique identifier)
@@ -591,7 +660,7 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 9. `users/{userId}/travelBookings` (Example for Flights)
+### 9. `users/{userId}/travelBookings` (Example for Flights, Buses, Trains)
     - **Document ID**: Auto-generated (`bookingId`)
     - **Fields**:
         - `bookingType`: string (`Flight`, `Bus`, `Train`, `Hotel`, `Car Rental`, `Bike Rental`)
@@ -604,11 +673,13 @@ This document outlines the collections, subcollections, and document structures 
             - `arrivalDateTime`: Timestamp (Optional)
             - `flightNumber`: string (If flight)
             - `busServiceNumber`: string (If bus)
+            - `trainNumber`: string (If train)
         - `passengers`: array of maps
             - `name`: string
             - `age`: number
             - `gender`: string
             - `seatNumber`: string (Optional)
+            - `berthPreference`: string (Optional, for trains)
         - `totalFare`: number
         - `paymentTransactionId`: string
         - `bookingStatus`: string (`Confirmed`, `Cancelled`, `Pending`)
@@ -616,22 +687,25 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 10. `users/{userId}/genericBookings` (For Movies, Events, etc.)
+### 10. `users/{userId}/genericBookings` (For Movies, Events, Hyperlocal, etc.)
     - **Document ID**: Auto-generated
     - **Fields**:
-        - `bookingType`: string (e.g., `Movie`, `Event`, `ComedyShow`)
-        - `itemName`: string (e.g., "KGF Chapter 3 Movie Ticket", "Music Concert Pass")
-        - `providerName`: string (e.g., "PVR Cinemas", "BookMyShow Events")
+        - `bookingType`: string (e.g., `Movie`, `Event`, `ComedyShow`, `Hyperlocal_Electrician`)
+        - `itemName`: string (e.g., "KGF Chapter 3 Movie Ticket", "AC Repair Service")
+        - `providerName`: string (e.g., "PVR Cinemas", "Urban Company")
         - `venue`: string (Optional)
-        - `eventDateTime`: Timestamp
-        - `quantity`: number (e.g., number of tickets)
+        - `eventDateTime`: Timestamp (Or service slot time)
+        - `quantity`: number (e.g., number of tickets, or 1 for service)
         - `seatNumbers`: string (Optional, e.g., "A1, A2")
         - `totalAmount`: number
         - `paymentTransactionId`: string
         - `bookingReference`: string (Provider's booking ID)
-        - `status`: string (`Confirmed`, `Cancelled`)
+        - `status`: string (`Confirmed`, `Cancelled`, `Pending Confirmation`)
         - `ticketUrl`: string (Optional)
+        - `address`: map (For hyperlocal services - `line1`, `city`, `pincode`)
+        - `serviceDescription`: string (For hyperlocal - user's problem description)
         - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
 
 ### 11. `users/{userId}/savingsGoals`
     - **Document ID**: Auto-generated (`goalId`)
@@ -678,4 +752,3 @@ This document outlines the collections, subcollections, and document structures 
 ---
 
 This schema provides a solid foundation. Remember that as the app evolves, you might need to add more fields, collections, or adjust relationships. Indexing will also be critical for query performance as your data grows.
-
