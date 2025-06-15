@@ -65,6 +65,7 @@ This document outlines the collections, subcollections, and document structures 
      - `billerName`: string (Biller Name if applicable)
      - `identifier`: string (Consumer number, policy number, mobile for recharge, etc.)
      - `planId`: string (Recharge plan ID if applicable)
+     - `operatorReferenceId`: string (Reference ID from the recharge/bill payment operator) - Added
      - `loanId`: string (Reference to `microLoans` or `bnplStatements` document if applicable)
      - `bookingId`: string (Reference to a booking document if applicable)
      - `ticketId`: string (For support tickets related to this transaction)
@@ -104,21 +105,22 @@ This document outlines the collections, subcollections, and document structures 
      - `updatedAt`: Timestamp
 
 ### 5. `scheduledRecharges`
-   - **Document ID**: Auto-generated
+   - **Document ID**: Auto-generated (`scheduleId`)
    - **Fields**:
      - `userId`: string
-     - `type`: string (e.g., `mobile`, `dth`)
-     - `identifier`: string
+     - `type`: string (e.g., `mobile`, `dth`, `electricity`, `fastag`)
+     - `identifier`: string (Mobile number, DTH ID, Consumer number, Vehicle number)
      - `amount`: number
-     - `frequency`: string (`monthly`, `weekly`, `daily`)
+     - `frequency`: string (`monthly`, `weekly`)
      - `nextRunDate`: Timestamp (When the next recharge should occur)
-     - `billerId`: string (Optional)
-     - `planId`: string (Optional)
-     - `paymentSourceUpiId`: string (User's UPI ID for payment)
+     - `billerId`: string (From `billers` collection or external provider)
+     - `planId`: string (Optional, if a specific plan is to be recharged)
+     - `paymentSourceUpiId`: string (User's UPI ID for payment - backend needs to ensure it's valid)
      - `isActive`: boolean (User can pause/resume)
      - `createdAt`: Timestamp
      - `updatedAt`: Timestamp
      - `lastRunStatus`: string (`Success`, `Failed: Low Balance`, `Failed: Operator Error`) - Optional
+     - `lastRunTransactionId`: string (Reference to the transaction document of the last run) - Optional
      - `lastRunDate`: Timestamp - Optional
 
 ### 6. `offers`

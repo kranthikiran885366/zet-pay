@@ -7,11 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Ban, HardDrive, Ticket, TramFront, Play } from 'lucide-react';
+import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Ban, HardDrive, Ticket, TramFront, Play, AlarmClockOff } from 'lucide-react';
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge';
-// Removed contact service import as it's user-specific
-// import { getContacts, Payee } from '@/services/contacts';
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,21 +26,16 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
-// Removed wallet balance and user-specific transaction history service imports
-// import { getWalletBalance } from '@/services/wallet';
-// import { getTransactionHistory, Transaction, TransactionFilters } from '@/services/transactions';
-// Removed auth import
-// import { auth } from '@/lib/firebase';
-import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData } from '@/mock-data';
+import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData, mockMobileQuickActions } from '@/mock-data';
+import type { Transaction } from '@/services/types';
+import { auth } from '@/lib/firebase';
 
-// Helper to capitalize first letter
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-// Map types to icons and titles
 const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: string; identifierLabel: string; searchPlaceholder: string; recentLabel: string, billerTypeForAPI: string } } = {
   mobile: { icon: Smartphone, title: "Mobile Recharge", identifierLabel: "Mobile Number", searchPlaceholder: "Enter mobile number or name", recentLabel: "Recents & Contacts", billerTypeForAPI: "Mobile"},
   dth: { icon: Tv, title: "DTH Recharge", identifierLabel: "DTH Subscriber ID", searchPlaceholder: "Enter Customer ID or Mobile No.", recentLabel: "Recent DTH Providers", billerTypeForAPI: "Dth"},
-  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers", billerTypeForAPI: "Electricity" }, // Used for prepaid
+  electricity: { icon: Bolt, title: "Electricity Bill", identifierLabel: "Consumer Number", searchPlaceholder: "Enter Consumer Number", recentLabel: "Recent Billers", billerTypeForAPI: "Electricity" },
   fastag: { icon: RadioTower, title: "FASTag Recharge", identifierLabel: "Vehicle Number", searchPlaceholder: "Enter Vehicle Number (e.g. KA01AB1234)", recentLabel: "Recent FASTag Providers", billerTypeForAPI: "Fastag"},
   datacard: { icon: HardDrive, title: "Data Card Recharge", identifierLabel: "Data Card Number", searchPlaceholder: "Enter Data Card Number", recentLabel: "Recent Providers", billerTypeForAPI: "Datacard" },
   buspass: { icon: Ticket, title: "Bus Pass", identifierLabel: "Pass ID / Registered Mobile", searchPlaceholder: "Enter Pass ID or Mobile", recentLabel: "Recent Passes", billerTypeForAPI: "Buspass"},
@@ -50,24 +43,8 @@ const rechargeTypeDetails: { [key: string]: { icon: React.ElementType; title: st
 };
 
 
-const mockUsageHistory = {
-    averageMonthlyDataUsageGB: 50,
-    averageMonthlyCallsMinutes: 600,
-    preferredPlanType: 'balanced' as const,
-    budget: 300,
-};
-const mockCurrentPlan = {
-    expiryDate: addDays(new Date(), 10),
-    planName: "Active Plan: 2GB/Day",
-};
-// Removed mockSavedNumbers as it's user-specific
-// const mockSavedNumbers: Payee[] = [ ... ];
-const mockRecentDthProviders: Biller[] = mockBillersData.Dth || [];
-
-
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
     let timeout: ReturnType<typeof setTimeout> | null = null;
-
     return (...args: Parameters<F>): Promise<ReturnType<F>> =>
       new Promise(resolve => {
         if (timeout) {
@@ -80,14 +57,12 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 export default function RechargePage() {
   const params = useParams();
   const router = useRouter();
-
   let rechargePageType = 'mobile';
   if (typeof params.type === 'string' && rechargeTypeDetails[params.type]) {
     rechargePageType = params.type;
   } else if (Array.isArray(params.type) && rechargeTypeDetails[params.type[0]]) {
     rechargePageType = params.type[0];
   }
-
 
   const [billers, setBillers] = useState<Biller[]>([]);
   const [selectedBiller, setSelectedBiller] = useState<string>('');
@@ -98,7 +73,7 @@ export default function RechargePage() {
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isLoadingBillers, setIsLoadingBillers] = useState<boolean>(false);
+  const [isLoadingBillers, setIsLoadingBillers] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isManualOperatorSelect, setIsManualOperatorSelect] = useState(false);
   const [rechargePlans, setRechargePlans] = useState<RechargePlan[]>([]);
@@ -108,31 +83,17 @@ export default function RechargePage() {
   const [plansToCompare, setPlansToCompare] = useState<RechargePlan[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [showTariffModal, setShowTariffModal] = useState<RechargePlan | null>(null);
-  // Removed rechargeHistory and related states as they are user-specific
-  // const [rechargeHistory, setRechargeHistory] = useState<Transaction[]>([]);
-  // const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  // const [showHistory, setShowHistory] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>();
   const [scheduleFrequency, setScheduleFrequency] = useState<'monthly' | 'weekly' | undefined>();
   const [isScheduling, setIsScheduling] = useState(false);
   const [checkingActivationTxnId, setCheckingActivationTxnId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
-  // Removed accountBalance and related states
-  // const [accountBalance, setAccountBalance] = useState<number | null>(null);
-  // const [isBalanceLoading, setIsBalanceLoading] = useState(false);
-  const [bankStatus, setBankStatus] = useState<'Active' | 'Slow' | 'Down' | null>(null);
-  // Removed isLoggedIn state
-  // const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'upi' | 'card'>('wallet');
 
   const { toast } = useToast();
-
   const details = rechargeTypeDetails[rechargePageType] || rechargeTypeDetails.mobile;
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Moved Callback Definitions Up
-  // Removed fetchHistory as it's user-specific
-  // const fetchHistory = useCallback(async (num: string) => { ... }, []);
 
   const detectMobileOperator = useCallback(async () => {
     if (!identifier || !identifier.match(/^[6-9]\d{9}$/)) return;
@@ -147,9 +108,7 @@ export default function RechargePage() {
       else if (identifier.startsWith('70') || identifier.startsWith('80')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio'));
       else if (identifier.startsWith('91') || identifier.startsWith('92')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('vi'));
       else mockOperator = billers[0];
-
       const mockRegion = "Karnataka";
-
       if (mockOperator) {
         setDetectedOperator(mockOperator);
         setDetectedRegion(mockRegion);
@@ -167,74 +126,6 @@ export default function RechargePage() {
     }
   }, [identifier, billers, toast]);
 
-  const detectDthOperator = useCallback(async () => {
-    if (!identifier || identifier.length <= 5) return;
-    setIsDetecting(true);
-    setDetectedOperator(null);
-    setDetectedRegion(null);
-    setIsManualOperatorSelect(false);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      let mockOperator: Biller | undefined;
-      if (identifier.startsWith('1')) mockOperator = billers.find(b => b.billerId === 'tata-play');
-      else if (identifier.startsWith('2')) mockOperator = billers.find(b => b.billerId === 'dish-tv');
-      else if (identifier.startsWith('3')) mockOperator = billers.find(b => b.billerId === 'airtel-dth');
-      else mockOperator = billers.find(b => b.billerId === 'd2h');
-
-      if (mockOperator) {
-        setDetectedOperator(mockOperator);
-        setSelectedBiller(mockOperator.billerId);
-        toast({ title: "DTH Operator Detected", description: `${mockOperator.billerName}` });
-      } else {
-        throw new Error("Could not determine DTH operator from current biller list.");
-      }
-    } catch (error) {
-      console.error("Failed to detect DTH operator:", error);
-      toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect DTH operator. Please select manually." });
-      setIsManualOperatorSelect(true);
-    } finally {
-      setIsDetecting(false);
-    }
-  }, [identifier, billers, toast]);
-
-  const detectFastagOperator = useCallback(async () => {
-     if (!identifier || identifier.length <= 10) return;
-     setIsDetecting(true);
-     setDetectedOperator(null);
-     setIsManualOperatorSelect(false);
-     try {
-       await new Promise(resolve => setTimeout(resolve, 900));
-       let mockOperator: Biller | undefined;
-       if (identifier.toUpperCase().startsWith('KA')) {
-            mockOperator = billers.find(b => b.billerId === 'icici-fastag') || billers.find(b => b.billerId === 'axis-fastag');
-       } else if (identifier.toUpperCase().startsWith('MH')) {
-            mockOperator = billers.find(b => b.billerId === 'hdfc-fastag');
-       } else {
-            mockOperator = billers.find(b => b.billerId === 'paytm-fastag');
-       }
-        if (!mockOperator && billers.length > 0) mockOperator = billers[0];
-
-       if (mockOperator) {
-           setDetectedOperator(mockOperator);
-           setSelectedBiller(mockOperator.billerId);
-           toast({ title: "FASTag Issuer Detected", description: `${mockOperator.billerName}` });
-       } else {
-           throw new Error("Could not determine FASTag issuer bank from current biller list.");
-       }
-     } catch (error) {
-         console.error("Failed to detect FASTag issuer:", error);
-         toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect FASTag issuer. Please select manually." });
-         setIsManualOperatorSelect(true);
-     } finally {
-         setIsDetecting(false);
-     }
- }, [identifier, billers, toast]);
-
-  // Removed auth state check and wallet balance fetching
-  // useEffect(() => { ... auth.onAuthStateChanged ... }, []);
-  // useEffect(() => { ... fetchBalance ... }, [isLoggedIn]);
-
-
   useEffect(() => {
     async function fetchBillersData() {
       if (!details.billerTypeForAPI) {
@@ -242,14 +133,12 @@ export default function RechargePage() {
         setBillers(mockBillersData[details.billerTypeForAPI] || []);
         return;
       }
-
       setIsLoadingBillers(true);
       setError(null);
       try {
         const fetchedBillers = await getBillers(details.billerTypeForAPI);
         setBillers(fetchedBillers.length > 0 ? fetchedBillers : (mockBillersData[details.billerTypeForAPI] || []));
       } catch (err: any) {
-        // Removed check for "User not authenticated." as login is removed
         setError('Failed to load operators. Please try again.');
         setBillers(mockBillersData[details.billerTypeForAPI] || []);
         toast({ variant: "destructive", title: "Could not load operators" });
@@ -261,79 +150,48 @@ export default function RechargePage() {
     fetchBillersData();
   }, [details.billerTypeForAPI, toast]);
 
-   useEffect(() => {
-     // Removed user-specific history fetching logic
-     // if (shouldFetchHistory && isLoggedIn) { ... }
-
-     // Operator detection logic remains
+  useEffect(() => {
      if (rechargePageType === 'mobile' && identifier.match(/^[6-9]\d{9}$/) && !selectedBiller && !isManualOperatorSelect) {
        detectMobileOperator();
-     } else if (rechargePageType === 'dth' && identifier.length > 5 && !selectedBiller && !isManualOperatorSelect) {
-        detectDthOperator();
-     } else if (rechargePageType === 'fastag' && identifier.length > 10 && !selectedBiller && !isManualOperatorSelect) {
-        detectFastagOperator();
      }
-
      const isMobileInvalid = rechargePageType === 'mobile' && identifier && !identifier.match(/^[6-9]\d{9}$/);
-     const isDthInvalid = rechargePageType === 'dth' && identifier && identifier.length <= 5;
-     const isFastagInvalid = rechargePageType === 'fastag' && identifier && identifier.length <= 10;
-
-     if (isMobileInvalid || isDthInvalid || isFastagInvalid || !identifier) {
+     if (isMobileInvalid || !identifier) {
         setDetectedOperator(null);
         setDetectedRegion(null);
-        // Don't clear selectedBiller here if user is manually selecting
-        // setSelectedBiller('');
         setRechargePlans([]);
      }
-   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator, detectDthOperator, detectFastagOperator, selectedBiller]);
-
+   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator, selectedBiller]);
 
   const fetchRechargePlans = useCallback(async () => {
     const billerToFetch = selectedBiller || detectedOperator?.billerId;
     if (!billerToFetch) return;
-
     setIsPlanLoading(true);
     setRechargePlans([]);
     try {
-      console.log(`Fetching plans for ${selectedBillerName || detectedOperator?.billerName} (${billerToFetch}) - Type: ${rechargePageType}`);
       const fetchedPlans = await getRechargePlans(billerToFetch, rechargePageType, identifier);
-      if (fetchedPlans && fetchedPlans.length > 0) {
-        setRechargePlans(fetchedPlans);
-      } else {
-         if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
-         else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
-         else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
-         else setRechargePlans([]);
-         if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
-      }
+      setRechargePlans(fetchedPlans.length > 0 ? fetchedPlans : (rechargePageType === 'mobile' ? mockRechargePlansData : rechargePageType === 'dth' ? mockDthPlansData : rechargePageType === 'datacard' ? mockDataCardPlansData : []));
+      if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
     } catch (error) {
       console.error("Failed to fetch recharge plans:", error);
       toast({ variant: "destructive", title: "Could not load recharge plans" });
-      if (rechargePageType === 'mobile') setRechargePlans(mockRechargePlansData);
-      else if (rechargePageType === 'dth') setRechargePlans(mockDthPlansData);
-      else if (rechargePageType === 'datacard') setRechargePlans(mockDataCardPlansData);
-      else setRechargePlans([]);
+      setRechargePlans(rechargePageType === 'mobile' ? mockRechargePlansData : rechargePageType === 'dth' ? mockDthPlansData : rechargePageType === 'datacard' ? mockDataCardPlansData : []);
     } finally {
       setIsPlanLoading(false);
     }
-  }, [selectedBiller, detectedOperator, rechargePageType, identifier, toast, selectedBillerName]);
-
+  }, [selectedBiller, detectedOperator?.billerId, rechargePageType, identifier, toast]);
 
   useEffect(() => {
-    if (selectedBiller) {
+    if (selectedBiller || detectedOperator) {
       const biller = billers.find(b => b.billerId === selectedBiller) || detectedOperator;
       setSelectedBillerName(biller?.billerName || '');
-      if (['mobile', 'dth', 'fastag', 'datacard'].includes(rechargePageType)) {
+      if (['mobile', 'dth', 'datacard'].includes(rechargePageType)) {
         fetchRechargePlans();
       } else {
         setRechargePlans([]);
       }
-       // Removed fetchBankStatusForBiller as it's not relevant without user context for payment
-       // fetchBankStatusForBiller(selectedBiller);
     } else {
       setRechargePlans([]);
       setSelectedBillerName('');
-      setBankStatus(null);
     }
   }, [selectedBiller, rechargePageType, billers, detectedOperator, fetchRechargePlans]);
 
@@ -343,89 +201,60 @@ export default function RechargePage() {
       toast({ title: `Plan Selected: ${plan.category ? `(${plan.category}) ` : ''}₹${plan.price}`, description: plan.description });
       setIsCompareModalOpen(false);
       setShowTariffModal(null);
-      const paymentSection = document.getElementById('payment-section');
-      paymentSection?.scrollIntoView({ behavior: 'smooth' });
+      document.getElementById('payment-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleRecharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Removed login check: if (!isLoggedIn) { ... }
     if (!selectedBiller && !detectedOperator) {
-      setError("Please select an operator/provider or let it auto-detect.");
-      toast({ variant: "destructive", title: "Operator Missing" });
-      return;
+      toast({ variant: "destructive", title: "Operator Missing" }); return;
     }
     if (!identifier) {
-      setError(`Please enter a valid ${details.identifierLabel}.`);
-      toast({ variant: "destructive", title: "Identifier Missing" });
-      return;
+      toast({ variant: "destructive", title: "Identifier Missing" }); return;
     }
     if (!amount || Number(amount) <= 0) {
-      setError("Please enter a valid amount or select a plan.");
-      toast({ variant: "destructive", title: "Invalid Amount" });
-      return;
+      toast({ variant: "destructive", title: "Invalid Amount" }); return;
     }
-    // Removed wallet balance check: if (accountBalance !== null && Number(amount) > accountBalance) { ... }
-    // Removed bank status check: if (bankStatus === 'Down') { ... }
-
-
     setError(null);
     setIsLoading(true);
     const finalBillerId = selectedBiller || detectedOperator?.billerId;
-    console.log("Processing recharge:", { type: rechargePageType, billerId: finalBillerId, identifier, amount, couponCode });
-
+    if (!finalBillerId) {
+        toast({ variant: "destructive", title: "Operator Error", description: "Operator could not be determined."});
+        setIsLoading(false);
+        return;
+    }
     try {
-        if (!finalBillerId) {
-            throw new Error("Operator/Biller ID is undefined. Cannot proceed.");
-        }
-        // processRecharge will likely fail if backend requires auth and no user is passed
-        // This is an expected outcome if login is removed from client-side but backend still requires it.
-        const result = await processRecharge(rechargePageType, identifier, Number(amount), finalBillerId, selectedPlan?.planId, couponCode);
+        const result = await processRecharge(rechargePageType, identifier, Number(amount), finalBillerId, selectedPlan?.planId, couponCode, paymentMethod);
         toast({ title: `Recharge ${result.status}`, description: `Recharge for ${identifier} of ₹${amount} is ${result.status.toLowerCase()}. Txn ID: ${result.id}` });
         if (result.status === 'Completed' || result.status === 'Processing Activation') {
-             setAmount('');
-             setSelectedPlan(null);
-             setCouponCode('');
-             // Removed history fetch: fetchHistory(identifier);
-             if(result.status === 'Processing Activation' && result.id) {
-                // pollActivationStatus(result.id); // This might also require auth
-             }
+             setAmount(''); setSelectedPlan(null); setCouponCode('');
+             if(result.status === 'Processing Activation' && result.id) pollActivationStatus(result.id);
         } else {
-             throw new Error(`Recharge ${result.status || 'Failed'}`);
+             throw new Error(result.description || `Recharge ${result.status || 'Failed'}`);
         }
     } catch (err: any) {
          console.error("Recharge failed:", err);
-         let errorMessage = err.message || "Recharge failed. Please try again.";
-         if (err.message && err.message.toLowerCase().includes("user not authenticated")) {
-            errorMessage = "Authentication required to complete recharge. Please log in.";
-         }
-         setError(errorMessage);
-         toast({ variant: "destructive", title: "Recharge Failed", description: errorMessage });
+         setError(err.message || "Recharge failed. Please try again.");
+         toast({ variant: "destructive", title: "Recharge Failed", description: err.message });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // pollActivationStatus might also fail if backend requires auth
   const pollActivationStatus = async (txnId: string) => {
     setCheckingActivationTxnId(txnId);
-    let attempts = 0;
-    const maxAttempts = 5;
-    const intervalTime = 5000;
-
+    let attempts = 0; const maxAttempts = 5; const intervalTime = 5000;
     const check = async () => {
       attempts++;
       try {
-        const status = await checkActivationStatus(txnId);
-        toast({ description: `Activation status for ${txnId}: ${status}` });
-        if (status === 'Completed') {
+        const statusResult = await checkActivationStatus(txnId);
+        toast({ description: `Activation status for ${txnId}: ${statusResult}` });
+        if (statusResult === 'Completed') {
           toast({ title: "Activation Complete", description: `Recharge ${txnId} is now active.` });
           setCheckingActivationTxnId(null);
-          // fetchHistory(identifier);
-        } else if (status === 'Failed') {
+        } else if (statusResult === 'Failed') {
           toast({ variant: "destructive", title: "Activation Failed", description: `Recharge ${txnId} failed to activate.` });
           setCheckingActivationTxnId(null);
-          // fetchHistory(identifier);
         } else if (attempts < maxAttempts) {
           setTimeout(check, intervalTime);
         } else {
@@ -440,7 +269,6 @@ export default function RechargePage() {
     };
     setTimeout(check, intervalTime);
   };
-
 
    const { filteredPlansByCategory, planCategories } = useMemo(() => {
      let plans = rechargePlans;
@@ -464,139 +292,83 @@ export default function RechargePage() {
          : rechargePageType === 'datacard'
          ? ['Monthly', 'Work From Home', 'Add-On', 'Annual']
          : [];
-
      let dynamicCategories = [...baseCategories];
-
      const grouped = plans.reduce((acc, plan) => {
          let category = plan.category || 'Other';
-          if (rechargePageType === 'mobile') {
-            if (plan.isOffer) category = 'Offers';
-          }
+          if (rechargePageType === 'mobile' && plan.isOffer) category = 'Offers';
          if (!acc[category]) acc[category] = [];
          acc[category].push(plan);
          return acc;
      }, {} as Record<string, RechargePlan[]>);
-
-      if (rechargePageType === 'mobile') {
-         if (grouped['Offers'] && !dynamicCategories.includes('Offers')) {
-            dynamicCategories.unshift('Offers');
-         }
-      }
-
+      if (rechargePageType === 'mobile' && grouped['Offers'] && !dynamicCategories.includes('Offers')) dynamicCategories.unshift('Offers');
      let finalCategories = dynamicCategories.filter(cat => grouped[cat]?.length > 0);
-     if (grouped['Other']?.length > 0 && !finalCategories.includes('Other')) {
-        finalCategories.push('Other');
-     }
-
-     if(planSearchTerm && plans.length > 0) {
-         return { filteredPlansByCategory: { "Search Results": plans } , planCategories: ["Search Results"] };
-     }
+     if (grouped['Other']?.length > 0 && !finalCategories.includes('Other')) finalCategories.push('Other');
+     if(planSearchTerm && plans.length > 0) return { filteredPlansByCategory: { "Search Results": plans } , planCategories: ["Search Results"] };
      if (finalCategories.length === 0 && Object.keys(grouped).length > 0 && !planSearchTerm) {
          finalCategories = ["All Plans"];
          grouped["All Plans"] = rechargePlans;
      }
-
-     if (Object.keys(grouped).length === 0 && !isPlanLoading && !planSearchTerm) {
-         return { filteredPlansByCategory: {}, planCategories: [] };
-     }
-
+     if (Object.keys(grouped).length === 0 && !isPlanLoading && !planSearchTerm) return { filteredPlansByCategory: {}, planCategories: [] };
      return { filteredPlansByCategory: grouped, planCategories: finalCategories };
    }, [rechargePlans, planSearchTerm, isPlanLoading, rechargePageType]);
 
-
   const handleCompareCheckbox = (plan: RechargePlan, checked: boolean | 'indeterminate') => {
     if (checked === true) {
-      if (plansToCompare.length < 3) {
-        setPlansToCompare([...plansToCompare, plan]);
-      } else {
-        toast({ variant: "destructive", title: "Limit Reached", description: "You can compare up to 3 plans." });
-      }
+      if (plansToCompare.length < 3) setPlansToCompare([...plansToCompare, plan]);
+      else toast({ variant: "destructive", title: "Limit Reached", description: "You can compare up to 3 plans." });
     } else {
       setPlansToCompare(plansToCompare.filter(p => p.planId !== plan.planId));
     }
   };
 
   const openCompareModal = () => {
-    if (plansToCompare.length < 2) {
-      toast({ description: "Select at least 2 plans to compare." });
-      return;
-    }
+    if (plansToCompare.length < 2) { toast({ description: "Select at least 2 plans to compare." }); return; }
     setIsCompareModalOpen(true);
   };
 
-  const openTariffModal = (plan: RechargePlan) => {
-    setShowTariffModal(plan);
-  };
-
-
-  // Removed handleQuickRecharge and handleSelectSavedNumber as they depend on user-specific history/contacts
+  const openTariffModal = (plan: RechargePlan) => setShowTariffModal(plan);
 
    const handleScheduleRecharge = async () => {
-     // Removed login check: if (!isLoggedIn) { ... }
      if (!identifier || !amount || (!selectedBiller && !detectedOperator) || !scheduleFrequency || !scheduledDate) {
-       toast({ variant: 'destructive', title: 'Missing Details', description: 'Please fill identifier, amount, operator, date, and frequency to schedule.' });
-       return;
+       toast({ variant: 'destructive', title: 'Missing Details', description: 'Please fill identifier, amount, operator, date, and frequency to schedule.' }); return;
      }
      const finalBillerId = selectedBiller || detectedOperator?.billerId;
-     if (!finalBillerId) {
-         toast({ variant: 'destructive', title: 'Operator Error', description: 'Operator could not be determined.'});
-         return;
-     }
+     if (!finalBillerId) { toast({ variant: 'destructive', title: 'Operator Error', description: 'Operator could not be determined.'}); return; }
      setIsScheduling(true);
      try {
-       // This call will likely fail if backend requires auth
-       const result = await scheduleRecharge(identifier, Number(amount), scheduleFrequency, scheduledDate, finalBillerId, selectedPlan?.planId);
+       const result = await scheduleRecharge(rechargePageType, identifier, Number(amount), scheduleFrequency, scheduledDate, finalBillerId, selectedPlan?.planId);
        if (result.success) {
          toast({ title: 'Recharge Scheduled', description: `Recharge for ${identifier} scheduled ${scheduleFrequency} starting ${format(scheduledDate, 'PPP')}. Schedule ID: ${result.scheduleId}` });
-         setScheduledDate(undefined);
-         setScheduleFrequency(undefined);
+         setScheduledDate(undefined); setScheduleFrequency(undefined);
        } else {
          throw new Error(result.message || 'Failed to schedule recharge');
        }
      } catch (error: any) {
        console.error('Scheduling failed:', error);
-        let errorMessage = error.message || 'Could not schedule recharge.';
-         if (err.message && err.message.toLowerCase().includes("user not authenticated")) {
-            errorMessage = "Authentication required to schedule recharge. Please log in.";
-         }
-       toast({ variant: 'destructive', title: 'Scheduling Failed', description: errorMessage });
+       toast({ variant: 'destructive', title: 'Scheduling Failed', description: error.message || 'Could not schedule recharge.' });
      } finally {
        setIsScheduling(false);
      }
    };
 
    const handleApplyCoupon = () => {
-       if (couponCode.trim()) {
-         toast({ title: "Coupon Applied (Simulated)", description: `Coupon "${couponCode}" applied. Discount will reflect at payment if valid.` });
-       } else {
-         toast({ variant: "destructive", title: "No Coupon Code", description: "Please enter a coupon code to apply." });
-       }
+       if (couponCode.trim()) toast({ title: "Coupon Applied (Simulated)", description: `Coupon "${couponCode}" applied. Discount will reflect at payment if valid.` });
+       else toast({ variant: "destructive", title: "No Coupon Code", description: "Please enter a coupon code to apply." });
    };
 
     const handleCancelRecharge = async (transactionId: string) => {
-        // Removed login check: if (!isLoggedIn) { ... }
         setIsCancelling(transactionId);
         try {
-            // This call will likely fail if backend requires auth
             const result = await cancelRechargeService(transactionId);
-            if (result.success) {
-                 toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
-                 // fetchHistory(identifier); // User-specific, removed
-            } else {
-                 throw new Error(result.message || "Cancellation not possible at this time.");
-            }
+            if (result.success) toast({ title: "Cancellation Requested", description: result.message || "Your recharge cancellation request is being processed." });
+            else throw new Error(result.message || "Cancellation not possible.");
         } catch (error: any) {
-             console.error("Cancellation failed:", error);
-             let errorMessage = error.message;
-            if (err.message && err.message.toLowerCase().includes("user not authenticated")) {
-                errorMessage = "Authentication required to cancel. Please log in.";
-            }
-             toast({ variant: "destructive", title: "Cancellation Failed", description: errorMessage });
+            console.error("Cancellation failed:", error);
+            toast({ variant: "destructive", title: "Cancellation Failed", description: error.message });
         } finally {
             setIsCancelling(null);
         }
     }
-
 
   const operatorLogoUrl = useMemo(() => {
       const operator = detectedOperator || billers.find(b => b.billerId === selectedBiller);
@@ -604,37 +376,9 @@ export default function RechargePage() {
        return operator.logoUrl || `/logos/${operator.billerName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/gi, '')}.png`;
   }, [detectedOperator, selectedBiller, billers]);
 
-  const remainingValidityDays = useMemo(() => {
-    if (rechargePageType === 'mobile' && mockCurrentPlan?.expiryDate) {
-        const today = new Date();
-        const expiry = new Date(mockCurrentPlan.expiryDate);
-        today.setHours(0, 0, 0, 0);
-        expiry.setHours(0, 0, 0, 0);
-
-        if (!isValid(expiry) || isBefore(expiry, today)) {
-            return 0;
-        }
-        const diffDays = differenceInDays(expiry, today);
-        return diffDays;
-    }
-    return null;
-  }, [mockCurrentPlan, rechargePageType]);
-
-  const handleSelectRecentProvider = (provider: Biller) => {
-      setSelectedBiller(provider.billerId);
-      setDetectedOperator(provider);
-      setIsManualOperatorSelect(false);
-      setIdentifier('');
-      if (inputRef.current) inputRef.current.focus();
-  }
-
-
   const handleManualEditOperator = () => {
-     setIsManualOperatorSelect(true);
-      setDetectedOperator(null);
-      setDetectedRegion(null);
+     setIsManualOperatorSelect(true); setDetectedOperator(null); setDetectedRegion(null);
   }
-
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col">
@@ -646,7 +390,7 @@ export default function RechargePage() {
         </Link>
         <details.icon className="h-6 w-6" />
         <h1 className="text-lg font-semibold">{details.title}</h1>
-        <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={ isManualOperatorSelect ? undefined : (rechargePageType === 'mobile' ? detectMobileOperator : rechargePageType === 'dth' ? detectDthOperator : rechargePageType === 'fastag' ? detectFastagOperator : undefined )} disabled={isDetecting || isManualOperatorSelect || !identifier}>
+        <Button variant="ghost" size="icon" className="ml-auto text-primary-foreground hover:bg-primary/80" onClick={ isManualOperatorSelect ? undefined : (rechargePageType === 'mobile' ? detectMobileOperator : undefined )} disabled={isDetecting || isManualOperatorSelect || !identifier}>
              {isDetecting ? <Loader2 className="h-5 w-5 animate-spin"/> : <RefreshCw className="h-5 w-5"/>}
         </Button>
         <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80" onClick={() => alert('Help Clicked!')}>
@@ -668,11 +412,8 @@ export default function RechargePage() {
                         required
                         className="text-base h-11"
                     />
-                    {/* Removed saved numbers/recent providers as it's user-specific */}
                 </CardContent>
             </Card>
-
-            {/* Removed recharge history section */}
 
             {identifier && (
                 <Card className="shadow-md">
@@ -717,19 +458,12 @@ export default function RechargePage() {
                 </Card>
             )}
 
-
-            {selectedBiller && (
+            {(selectedBiller || detectedOperator) && ['mobile', 'dth', 'datacard'].includes(rechargePageType) && (
                     <Card className="shadow-md">
                         <CardHeader className="pb-2">
                             <div className="flex items-start justify-between flex-wrap gap-2">
                                 <div>
                                     <CardTitle className="text-md flex items-center gap-1">Browse Plans</CardTitle>
-                                    {rechargePageType === 'mobile' && mockCurrentPlan && remainingValidityDays !== null && (
-                                        <Badge variant={remainingValidityDays <= 3 ? "destructive" : "secondary"} className="mt-1 text-xs">
-                                            <CalendarDays className="h-3 w-3 mr-1"/>
-                                            Current plan expires in {remainingValidityDays} day{remainingValidityDays !== 1 ? 's' : ''} ({format(mockCurrentPlan.expiryDate, 'MMM d')})
-                                        </Badge>
-                                    )}
                                 </div>
                                 {plansToCompare.length >= 2 && (
                                     <Button variant="secondary" size="sm" onClick={openCompareModal} className="h-7 px-2 text-xs">
@@ -750,59 +484,43 @@ export default function RechargePage() {
                             <div className="flex items-center justify-center py-6">
                                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
                                 <p className="ml-2 text-sm text-muted-foreground">
-                                    Loading plans for {selectedBillerName}...
+                                    Loading plans for {selectedBillerName || detectedOperator?.billerName}...
                                 </p>
                             </div>
                             ) : planCategories.length === 0 && rechargePlans.length > 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No plans found matching your search in these categories.</p>
                             ) : rechargePlans.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName}.</p>
+                            <p className="text-sm text-muted-foreground text-center py-4">No plans available for {selectedBillerName || detectedOperator?.billerName}.</p>
                             ) : (
                             <Tabs defaultValue={planCategories[0]} className="w-full">
                                 <ScrollArea className="w-full pb-3">
                                     <TabsList className="flex w-max mb-4">
                                         {planCategories.map(category => (
                                             <TabsTrigger key={category} value={category} className="text-xs px-3 h-8 flex-shrink-0">
-                                                {category === 'Recommended' && rechargePageType === 'mobile' && <Star className="h-3 w-3 mr-1 text-yellow-500 fill-current" />}
-                                                {category === 'Offers' && rechargePageType === 'mobile' && <Gift className="h-3 w-3 mr-1 text-red-500" />}
                                                 {category}
                                             </TabsTrigger>
                                         ))}
                                     </TabsList>
                                     <ScrollBar orientation="horizontal" />
                                 </ScrollArea>
-
                                 {planCategories.map(category => (
                                     <TabsContent key={category} value={category} className="mt-0 space-y-2">
                                         {filteredPlansByCategory[category]?.map(plan => (
-                                        <Card key={plan.planId} className={cn(
-                                            "p-3 border rounded-lg cursor-pointer transition-all hover:border-primary/50",
-                                            selectedPlan?.planId === plan.planId ? 'border-primary ring-1 ring-primary bg-primary/5' : 'border-border'
-                                            )} onClick={() => handlePlanSelect(plan)}>
+                                        <Card key={plan.planId} className={cn("p-3 border rounded-lg cursor-pointer transition-all hover:border-primary/50", selectedPlan?.planId === plan.planId ? 'border-primary ring-1 ring-primary bg-primary/5' : 'border-border')} onClick={() => handlePlanSelect(plan)}>
                                             <div className="flex justify-between items-start gap-2">
-                                                <div>
-                                                    <p className="font-bold text-lg">₹{plan.price}</p>
-                                                    {plan.isOffer && <Badge variant="destructive" className="text-xs h-5 px-1.5 mr-2 shrink-0 mt-1">Offer</Badge>}
-                                                </div>
+                                                <div><p className="font-bold text-lg">₹{plan.price}</p></div>
                                             </div>
                                             <p className="text-sm mt-1 text-muted-foreground">{plan.description}</p>
                                             <div className="text-xs mt-2 text-muted-foreground flex items-start justify-between flex-wrap gap-x-4 gap-y-1">
                                                     <div>
                                                         <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Validity: {plan.validity}</div>
-                                                        {rechargePageType === 'mobile' && plan.data && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
-                                                        {rechargePageType === 'dth' && plan.channels && <div className="flex items-center gap-1"><Tv2 className="h-3 w-3"/> Channels: {plan.channels}</div>}
+                                                        {plan.data && <div className="flex items-center gap-1"><Smartphone className="h-3 w-3"/> Data: {plan.data}</div>}
                                                     </div>
                                                     <Button variant="link" size="xs" className="p-0 h-auto text-xs" onClick={(e) => { e.stopPropagation(); openTariffModal(plan); }}>View Details</Button>
                                             </div>
                                             <div className="mt-2">
-                                                <Checkbox
-                                                        id={`compare-${plan.planId}`}
-                                                        checked={plansToCompare.some(p => p.planId === plan.planId)}
-                                                        onCheckedChange={(checked) => handleCompareCheckbox(plan, checked as boolean)}
-                                                        disabled={plansToCompare.length >= 3 && !plansToCompare.some(p => p.planId === plan.planId)}
-                                                        aria-label={`Compare ${plan.description}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    /> <Label htmlFor={`compare-${plan.planId}`} className="text-xs ml-1 align-middle text-muted-foreground cursor-pointer" onClick={(e) => e.stopPropagation()}>Compare</Label>
+                                                <Checkbox id={`compare-${plan.planId}`} checked={plansToCompare.some(p => p.planId === plan.planId)} onCheckedChange={(checked) => handleCompareCheckbox(plan, checked as boolean)} disabled={plansToCompare.length >= 3 && !plansToCompare.some(p => p.planId === plan.planId)} aria-label={`Compare ${plan.description}`} onClick={(e) => e.stopPropagation()}/>
+                                                <Label htmlFor={`compare-${plan.planId}`} className="text-xs ml-1 align-middle text-muted-foreground cursor-pointer" onClick={(e) => e.stopPropagation()}>Compare</Label>
                                             </div>
                                         </Card>
                                         ))}
@@ -820,195 +538,69 @@ export default function RechargePage() {
                         <Label htmlFor="amount" className="text-sm font-medium text-muted-foreground">Or Enter Recharge Amount</Label>
                         <div className="relative mt-1">
                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-lg">₹</span>
-                            <Input
-                            id="amount"
-                            type="number"
-                            placeholder="Amount"
-                            value={amount}
-                            onChange={(e) => {setAmount(e.target.value); setSelectedPlan(null);}}
-                            required={!selectedPlan}
-                            min="1"
-                            step="0.01"
-                            className="pl-7 text-lg font-semibold h-11"
-                            disabled={(!selectedBiller && !detectedOperator) && !identifier}
-                            />
+                            <Input id="amount" type="number" placeholder="Amount" value={amount} onChange={(e) => {setAmount(e.target.value); setSelectedPlan(null);}} required={!selectedPlan} min="1" step="0.01" className="pl-7 text-lg font-semibold h-11" disabled={(!selectedBiller && !detectedOperator) && !identifier}/>
                         </div>
-                        {rechargePageType === 'mobile' && !selectedPlan && amount && (
-                            <Button variant="link" size="sm" className="p-0 h-auto text-xs mt-1" onClick={() => alert("Show Top-up Vouchers for this amount")}>
-                            Check Talktime Vouchers
-                            </Button>
-                        )}
                     </CardContent>
             </Card>
 
             <Card className="shadow-md">
                     <Accordion type="single" collapsible>
                         <AccordionItem value="schedule">
-                            <AccordionTrigger className="px-4 py-3 text-sm font-medium">
-                                <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-muted-foreground"/>
-                                    Schedule Recharge (Optional)
-                                </div>
-                            </AccordionTrigger>
+                            <AccordionTrigger className="px-4 py-3 text-sm font-medium">Schedule Recharge (Optional)</AccordionTrigger>
                             <AccordionContent className="px-4 pb-4">
                                 <div className="grid grid-cols-2 gap-3 mb-3">
                                     <div>
                                         <Label htmlFor="schedule-date" className="text-xs">Start Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                            <Button
-                                                id="schedule-date"
-                                                variant={"outline"}
-                                                className={cn(
-                                                "w-full justify-start text-left font-normal h-9 mt-1 text-xs",
-                                                !scheduledDate && "text-muted-foreground"
-                                                )}
-                                            >
-                                                <CalendarDays className="mr-2 h-4 w-4" />
-                                                {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
-                                            </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0">
-                                            <Calendar
-                                                mode="single"
-                                                selected={scheduledDate}
-                                                onSelect={setScheduledDate}
-                                                initialFocus
-                                                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0)) || date < new Date("1900-01-01")}
-                                            />
-                                            </PopoverContent>
-                                        </Popover>
+                                        <Popover><PopoverTrigger asChild><Button id="schedule-date" variant={"outline"} className={cn("w-full justify-start text-left font-normal h-9 mt-1 text-xs",!scheduledDate && "text-muted-foreground")}><CalendarDays className="mr-2 h-4 w-4" />{scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={scheduledDate} onSelect={setScheduledDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0)) || date < new Date("1900-01-01")}/></PopoverContent></Popover>
                                     </div>
                                     <div>
                                         <Label htmlFor="schedule-frequency" className="text-xs">Frequency</Label>
-                                        <Select value={scheduleFrequency} onValueChange={(value) => setScheduleFrequency(value as 'monthly' | 'weekly')}>
-                                            <SelectTrigger id="schedule-frequency" className="h-9 mt-1 text-xs">
-                                                <SelectValue placeholder="Select Frequency" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="monthly">Monthly</SelectItem>
-                                                <SelectItem value="weekly">Weekly</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Select value={scheduleFrequency} onValueChange={(value) => setScheduleFrequency(value as 'monthly' | 'weekly')}><SelectTrigger id="schedule-frequency" className="h-9 mt-1 text-xs"><SelectValue placeholder="Select Frequency" /></SelectTrigger><SelectContent><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
                                 </div>
-                                <Button
-                                    variant="secondary"
-                                    className="w-full h-9 text-sm"
-                                    onClick={handleScheduleRecharge}
-                                    disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)}
-                                >
-                                    {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
-                                    Schedule Recharge
+                                <Button variant="secondary" className="w-full h-9 text-sm" onClick={handleScheduleRecharge} disabled={!scheduledDate || !scheduleFrequency || isScheduling || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)}>
+                                    {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />} Schedule Recharge
                                 </Button>
-                                <p className="text-xs text-muted-foreground text-center mt-2">Recharge will occur automatically on the selected date and frequency.</p>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
             </Card>
 
-
             <Card className="shadow-md" id="payment-section">
                 <CardContent className="p-4 space-y-4">
-                    {/* Removed Wallet Balance and Bank Status as they are user-specific */}
-                    <Separator />
                     <div className="relative">
-                        <Input
-                            id="coupon"
-                            placeholder="Enter Coupon Code (Optional)"
-                            value={couponCode}
-                            onChange={(e) => setCouponCode(e.target.value)}
-                            className="pr-16 h-10"
-                        />
+                        <Input id="coupon" placeholder="Enter Coupon Code (Optional)" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} className="pr-16 h-10"/>
                         <Button variant="link" size="sm" className="absolute right-1 top-1/2 transform -translate-y-1/2 h-auto px-2 text-xs" onClick={handleApplyCoupon}>Apply</Button>
                     </div>
-                    <Button
-                        type="button"
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white h-11 text-base"
-                        disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator) || bankStatus === 'Down'}
-                        onClick={handleRecharge}
-                    >
+                     <div className="space-y-1">
+                        <Label htmlFor="paymentMethod" className="text-xs">Payment Method</Label>
+                        <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="wallet">Wallet</SelectItem>
+                                <SelectItem value="upi">UPI</SelectItem>
+                                <SelectItem value="card">Card (Coming Soon)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Button type="button" className="w-full bg-purple-600 hover:bg-purple-700 text-white h-11 text-base" disabled={isLoading || !identifier || !amount || Number(amount) <= 0 || (!selectedBiller && !detectedOperator)} onClick={handleRecharge}>
                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {bankStatus === 'Down' ? 'Operator Unavailable' : `Proceed to Pay ₹${amount || '0'}`}
+                        {`Proceed to Pay ₹${amount || '0'}`}
                     </Button>
-                    <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => alert("Temporary Freeze: Coming Soon!")}>
-                        <AlarmClockOff className="mr-2 h-4 w-4"/> Freeze Payments (e.g., 1 hour)
-                    </Button>
-
                 </CardContent>
             </Card>
 
-            <div className="text-center text-xs text-muted-foreground mt-6 space-y-1">
-                <p className="flex items-center justify-center gap-1"><ShieldCheck className="h-3 w-3 text-green-600"/> 100% Safe & Secure Payments</p>
-                <Link href="/support" className="hover:text-primary">
-                    PayFriend Customer Care | FAQs
-                </Link>
-            </div>
-
             <Dialog open={isCompareModalOpen} onOpenChange={setIsCompareModalOpen}>
-                <DialogContent className="sm:max-w-[90%] md:max-w-[600px]">
-                    <DialogHeader>
-                        <DialogTitle>Compare Plans ({plansToCompare.length})</DialogTitle>
-                        <DialogDescription>Compare the selected recharge plans side-by-side.</DialogDescription>
-                    </DialogHeader>
+                <DialogContent className="sm:max-w-[90%] md:max-w-[600px]"><DialogHeader><DialogTitle>Compare Plans ({plansToCompare.length})</DialogTitle><DialogDescription>Compare selected plans.</DialogDescription></DialogHeader>
                     <div className={`grid gap-2 py-4 grid-cols-${plansToCompare.length === 2 ? '2' : '3'}`}>
-                        {plansToCompare.map(plan => (
-                            <Card key={plan.planId} className="flex flex-col text-xs shadow-none border">
-                                <CardHeader className="p-2 bg-muted/50">
-                                    <CardTitle className="text-sm font-semibold">₹{plan.price}</CardTitle>
-                                    <CardDescription className="text-xs h-8 overflow-hidden">{plan.description}</CardDescription>
-                                    {plan.isOffer && <Badge variant="destructive" className="mt-1 w-fit">Offer</Badge>}
-                                </CardHeader>
-                                <CardContent className="p-2 space-y-1 flex-grow">
-                                    <p><strong>Validity:</strong> {plan.validity || 'N/A'}</p>
-                                    {plan.data && <p><strong>Data:</strong> {plan.data || 'N/A'}</p>}
-                                    {typeof plan.channels === 'string' && <p><strong>Channels:</strong> {plan.channels || 'N/A'}</p>}
-                                    {typeof plan.channels === 'number' && <p><strong>Channels:</strong> {plan.channels}</p>}
-                                    {plan.talktime !== undefined && <p><strong>Talktime:</strong> {plan.talktime === -1 ? 'UL' : `₹${plan.talktime}`}</p>}
-                                    {plan.sms !== undefined && <p><strong>SMS:</strong> {plan.sms === -1 ? 'UL' : plan.sms}</p>}
-                                    {plan.category && <p><strong>Category:</strong> {plan.category}</p>}
-                                </CardContent>
-                                <Button variant="default" size="sm" className="m-2 mt-auto h-7 text-xs" onClick={() => handlePlanSelect(plan)}>
-                                    Select Plan
-                                </Button>
-                            </Card>
-                        ))}
-                    </div>
-                    <DialogFooter className="sm:justify-between">
-                        <Button variant="ghost" size="sm" onClick={() => { setPlansToCompare([]); setIsCompareModalOpen(false);}}>Clear Selection</Button>
-                        <DialogClose asChild>
-                        <Button size="sm">Close</Button>
-                        </DialogClose>
-                    </DialogFooter>
+                        {plansToCompare.map(plan => (<Card key={plan.planId} className="flex flex-col text-xs shadow-none border"><CardHeader className="p-2 bg-muted/50"><CardTitle className="text-sm font-semibold">₹{plan.price}</CardTitle><CardDescription className="text-xs h-8 overflow-hidden">{plan.description}</CardDescription>{plan.isOffer && <Badge variant="destructive" className="mt-1 w-fit">Offer</Badge>}</CardHeader><CardContent className="p-2 space-y-1 flex-grow"><p><strong>Validity:</strong> {plan.validity || 'N/A'}</p>{plan.data && <p><strong>Data:</strong> {plan.data || 'N/A'}</p>}{typeof plan.channels === 'string' && <p><strong>Channels:</strong> {plan.channels || 'N/A'}</p>}{typeof plan.channels === 'number' && <p><strong>Channels:</strong> {plan.channels}</p>}{plan.talktime !== undefined && <p><strong>Talktime:</strong> {plan.talktime === -1 ? 'UL' : `₹${plan.talktime}`}</p>}{plan.sms !== undefined && <p><strong>SMS:</strong> {plan.sms === -1 ? 'UL' : plan.sms}</p>}{plan.category && <p><strong>Category:</strong> {plan.category}</p>}</CardContent><Button variant="default" size="sm" className="m-2 mt-auto h-7 text-xs" onClick={() => handlePlanSelect(plan)}>Select Plan</Button></Card>))}
+                    </div><DialogFooter className="sm:justify-between"><Button variant="ghost" size="sm" onClick={() => { setPlansToCompare([]); setIsCompareModalOpen(false);}}>Clear</Button><DialogClose asChild><Button size="sm">Close</Button></DialogClose></DialogFooter>
                 </DialogContent>
             </Dialog>
-
             <Dialog open={!!showTariffModal} onOpenChange={() => setShowTariffModal(null)}>
-                <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Tariff Details: ₹{showTariffModal?.price}</DialogTitle>
-                        <DialogDescription>{showTariffModal?.description}</DialogDescription>
-                        {showTariffModal?.isOffer && <Badge variant="destructive" className="mt-1 w-fit">Special Offer!</Badge>}
-                    </DialogHeader>
-                    <div className="py-4 text-sm space-y-2">
-                        <p><strong>Price:</strong> ₹{showTariffModal?.price}</p>
-                        <p><strong>Validity:</strong> {showTariffModal?.validity || 'N/A'}</p>
-                        {showTariffModal?.data && <p><strong>Data:</strong> {showTariffModal?.data || 'N/A'}</p>}
-                        {typeof showTariffModal?.channels === 'string' && <p><strong>Channels:</strong> {showTariffModal.channels || 'N/A'}</p>}
-                        {typeof showTariffModal?.channels === 'number' && <p><strong>Channels:</strong> {showTariffModal.channels}</p>}
-                        {showTariffModal?.talktime !== undefined && <p><strong>Talktime:</strong> {showTariffModal.talktime === -1 ? 'Unlimited' : `₹${showTariffModal.talktime}`}</p>}
-                        {showTariffModal?.sms !== undefined && <p><strong>SMS:</strong> {showTariffModal.sms === -1 ? 'Unlimited' : showTariffModal.sms}</p>}
-                        {showTariffModal?.category && <p><strong>Category:</strong> {showTariffModal?.category}</p>}
-                        {showTariffModal?.category === 'Roaming' && <Alert variant="default" className="mt-2"><AlertTriangle className="h-4 w-4 text-orange-500" /><AlertDescription className="text-xs ml-6">International Roaming pack. Ensure roaming services are active before travel.</AlertDescription></Alert>}
-                        {showTariffModal?.category === 'Top-up' && rechargePageType === 'mobile' && <Alert variant="default" className="mt-2"><Info className="h-4 w-4 text-blue-500" /><AlertDescription className="text-xs ml-6">Talktime will be added to your main balance. This plan may not extend validity.</AlertDescription></Alert>}
-                        <p className="text-xs text-muted-foreground pt-2">Note: Benefits are subject to operator terms and conditions.</p>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="secondary" onClick={() => { if (showTariffModal) handlePlanSelect(showTariffModal);}}>Select Plan</Button>
-                        <DialogClose asChild>
-                            <Button>Close</Button>
-                        </DialogClose>
-                    </DialogFooter>
+                <DialogContent className="sm:max-w-[425px]"><DialogHeader><DialogTitle>Tariff: ₹{showTariffModal?.price}</DialogTitle><DialogDescription>{showTariffModal?.description}</DialogDescription>{showTariffModal?.isOffer && <Badge variant="destructive" className="mt-1 w-fit">Offer!</Badge>}</DialogHeader>
+                    <div className="py-4 text-sm space-y-2"><p><strong>Price:</strong> ₹{showTariffModal?.price}</p><p><strong>Validity:</strong> {showTariffModal?.validity || 'N/A'}</p>{showTariffModal?.data && <p><strong>Data:</strong> {showTariffModal?.data || 'N/A'}</p>}{typeof showTariffModal?.channels === 'string' && <p><strong>Channels:</strong> {showTariffModal.channels || 'N/A'}</p>}{typeof showTariffModal?.channels === 'number' && <p><strong>Channels:</strong> {showTariffModal.channels}</p>}{showTariffModal?.talktime !== undefined && <p><strong>Talktime:</strong> {showTariffModal.talktime === -1 ? 'Unlimited' : `₹${showTariffModal.talktime}`}</p>}{showTariffModal?.sms !== undefined && <p><strong>SMS:</strong> {showTariffModal.sms === -1 ? 'Unlimited' : showTariffModal.sms}</p>}{showTariffModal?.category && <p><strong>Category:</strong> {showTariffModal?.category}</p>}{showTariffModal?.category === 'Roaming' && <Alert variant="default" className="mt-2"><AlertTriangle className="h-4 w-4 text-orange-500" /><AlertDescription className="text-xs ml-6">International Roaming pack.</AlertDescription></Alert>}{showTariffModal?.category === 'Top-up' && <Alert variant="default" className="mt-2"><Info className="h-4 w-4 text-blue-500" /><AlertDescription className="text-xs ml-6">Talktime will be added to your main balance.</AlertDescription></Alert>}<p className="text-xs text-muted-foreground pt-2">Note: Benefits are subject to operator terms.</p></div>
+                    <DialogFooter><Button variant="secondary" onClick={() => { if (showTariffModal) handlePlanSelect(showTariffModal);}}>Select Plan</Button><DialogClose asChild><Button>Close</Button></DialogClose></DialogFooter>
                 </DialogContent>
             </Dialog>
       </main>

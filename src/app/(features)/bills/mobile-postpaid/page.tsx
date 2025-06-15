@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,24 +9,28 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, BookUser, Loader2, Wallet, Info } from 'lucide-react'; // Placeholder Icon
 import Link from 'next/link';
-import { getBillers, Biller, processRecharge } from '@/services/recharge'; // Reuse recharge/biller service
-import { fetchBillAmount, processBillPayment } from '@/services/bills'; // Reuse bill payment service
+import { getBillers, Biller } from '@/services/recharge'; // Reuse recharge/biller service
+import { fetchBillDetails, processBillPayment } from '@/services/bills'; // Use new bills service
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
+import type { Transaction } from '@/services/types';
+import { useRouter } from 'next/navigation';
 
 export default function MobilePostpaidPage() {
     const [operators, setOperators] = useState<Biller[]>([]);
     const [selectedOperator, setSelectedOperator] = useState<string>('');
+    const [selectedOperatorName, setSelectedOperatorName] = useState<string>('');
     const [mobileNumber, setMobileNumber] = useState('');
     const [amount, setAmount] = useState<string>('');
-    const [fetchedAmount, setFetchedAmount] = useState<number | null>(null);
+    const [fetchedBillInfo, setFetchedBillInfo] = useState<{ amount: number | null; dueDate?: Date | null; consumerName?: string } | null>(null);
     const [isFetchingAmount, setIsFetchingAmount] = useState<boolean>(false);
     const [isLoadingOperators, setIsLoadingOperators] = useState(false);
     const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
+    const router = useRouter();
 
     // Fetch Mobile Operators (assuming type 'Mobile' or specific 'Postpaid')
     useEffect(() => {
@@ -33,8 +38,8 @@ export default function MobilePostpaidPage() {
             setIsLoadingOperators(true);
             setError(null);
             try {
-                // Use 'Mobile' type, backend/biller API should differentiate postpaid
-                const fetchedOperators = await getBillers('Mobile');
+                // Use 'Mobile Postpaid' type for specific billers, or 'Mobile' if backend handles differentiation
+                const fetchedOperators = await getBillers('Mobile Postpaid');
                 setOperators(fetchedOperators);
             } catch (err) {
                 setError('Failed to load operators. Please try again.');
@@ -52,7 +57,7 @@ export default function MobilePostpaidPage() {
         if (selectedOperator && mobileNumber && mobileNumber.match(/^[6-9]\d{9}$/)) {
             handleFetchBill();
         } else {
-            setFetchedAmount(null); // Clear if operator/number is invalid or cleared
+            setFetchedBillInfo(null); // Clear if operator/number is invalid or cleared
             setAmount('');
         }
          // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,15 +68,17 @@ export default function MobilePostpaidPage() {
         if (!selectedOperator || !mobileNumber) return;
         setIsFetchingAmount(true);
         setError(null);
-        setFetchedAmount(null);
+        setFetchedBillInfo(null);
         setAmount('');
+        const operator = operators.find(op => op.billerId === selectedOperator);
+        setSelectedOperatorName(operator?.billerName || '');
+
         try {
-            // Use fetchBillAmount service, backend needs to handle 'Mobile Postpaid' context
-            const billDetails = await fetchBillAmount(selectedOperator, mobileNumber);
-             if (billDetails !== null) {
-                 setFetchedAmount(billDetails);
-                 setAmount(billDetails.toString());
-                 toast({ title: "Bill Fetched", description: `Outstanding amount: ₹${billDetails.toFixed(2)}` });
+            const billDetails = await fetchBillDetails(selectedOperator, mobileNumber);
+             if (billDetails && billDetails.amount !== null) {
+                 setFetchedBillInfo(billDetails);
+                 setAmount(billDetails.amount.toString());
+                 toast({ title: "Bill Fetched", description: `Outstanding for ${billDetails.consumerName || mobileNumber}: ₹${billDetails.amount.toFixed(2)}${billDetails.dueDate ? ` (Due: ${format(new Date(billDetails.dueDate), 'PP')})` : ''}` });
              } else {
                  toast({ title: "Manual Entry Required", description: "Could not fetch bill details. Please enter the amount." });
              }
@@ -94,24 +101,24 @@ export default function MobilePostpaidPage() {
             return;
         }
         setIsProcessingPayment(true);
-        const operatorName = operators.find(o => o.billerId === selectedOperator)?.billerName || 'Mobile Postpaid';
+        const operatorName = selectedOperatorName || 'Mobile Postpaid';
         try {
-            // Use processBillPayment, backend needs to handle 'Mobile Postpaid' type
             const paymentDetails = {
                 billerId: selectedOperator,
                 identifier: mobileNumber,
                 amount: Number(amount),
-                billerType: 'Mobile Postpaid', // Specific type
+                billerType: 'Mobile Postpaid', 
                 billerName: operatorName,
             };
-            const transactionResult = await processBillPayment(paymentDetails);
+            const transactionResult = await processBillPayment(paymentDetails) as Transaction;
             if (transactionResult.status === 'Completed') {
-                toast({ title: "Payment Successful", description: `Paid ₹${amount} for ${operatorName} bill (${mobileNumber}).` });
+                toast({ title: "Payment Successful", description: `Paid ₹${amount} for ${operatorName} bill (${mobileNumber}). Txn ID: ${transactionResult.id}` });
                 setMobileNumber('');
                 setAmount('');
-                setFetchedAmount(null);
+                setFetchedBillInfo(null);
+                router.push('/history');
             } else {
-                 throw new Error(`Payment ${transactionResult.status}. ${transactionResult.description || ''}`);
+                 throw new Error(transactionResult.description || `Payment ${transactionResult.status}. Please check history for details.`);
             }
         } catch (err: any) {
             console.error("Mobile Postpaid payment failed:", err);
@@ -122,7 +129,7 @@ export default function MobilePostpaidPage() {
         }
     };
 
-    const isAmountInputDisabled = fetchedAmount !== null || isFetchingAmount || isProcessingPayment;
+    const isAmountInputDisabled = fetchedBillInfo?.amount !== null || isFetchingAmount || isProcessingPayment;
 
 
     return (
@@ -157,7 +164,7 @@ export default function MobilePostpaidPage() {
                                     <SelectContent>
                                         {operators.map((op) => (
                                             <SelectItem key={op.billerId} value={op.billerId}>
-                                                {op.logoUrl && <Image src={op.logoUrl} alt="" width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain"/>}
+                                                {op.logoUrl && <Image src={op.logoUrl} alt={op.billerName} width={16} height={16} className="inline-block mr-2 h-4 w-4 object-contain" data-ai-hint="operator logo"/>}
                                                 {op.billerName}
                                             </SelectItem>
                                         ))}
@@ -184,7 +191,7 @@ export default function MobilePostpaidPage() {
                             <div className="space-y-1">
                                  <div className="flex justify-between items-center">
                                     <Label htmlFor="amount">Amount (₹)</Label>
-                                    {fetchedAmount === null && !isFetchingAmount && (
+                                    {fetchedBillInfo?.amount === null && !isFetchingAmount && (
                                          <Button type="button" variant="link" size="sm" onClick={handleFetchBill} disabled={!selectedOperator || !mobileNumber || !mobileNumber.match(/^[6-9]\d{9}$/)}>
                                             Fetch Bill Amount
                                         </Button>
@@ -196,11 +203,11 @@ export default function MobilePostpaidPage() {
                                     <Input
                                         id="amount"
                                         type="number"
-                                        placeholder={isFetchingAmount ? "Fetching..." : (fetchedAmount === null ? "Enter Amount or Fetch Bill" : "Bill Amount Fetched")}
+                                        placeholder={isFetchingAmount ? "Fetching..." : (fetchedBillInfo?.amount === null ? "Enter Amount or Fetch Bill" : "Bill Amount Fetched")}
                                         value={amount}
                                         onChange={(e) => {
                                             setAmount(e.target.value);
-                                            if (fetchedAmount !== null) setFetchedAmount(null);
+                                            if (fetchedBillInfo?.amount !== null) setFetchedBillInfo(prev => prev ? {...prev, amount: null} : null); 
                                         }}
                                         required
                                         min="1"
@@ -209,8 +216,10 @@ export default function MobilePostpaidPage() {
                                         disabled={isAmountInputDisabled}
                                     />
                                 </div>
-                                {fetchedAmount !== null && (
-                                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3"/> Fetched bill amount: ₹{fetchedAmount.toFixed(2)}</p>
+                                {fetchedBillInfo?.amount !== null && fetchedBillInfo?.amount !== undefined && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3"/> Fetched bill: ₹{fetchedBillInfo.amount.toFixed(2)} for {fetchedBillInfo.consumerName || mobileNumber}.
+                                    {fetchedBillInfo.dueDate && ` Due: ${format(new Date(fetchedBillInfo.dueDate), 'PP')}.`}
+                                    </p>
                                 )}
                             </div>
 
@@ -235,3 +244,4 @@ export default function MobilePostpaidPage() {
         </div>
     );
 }
+
