@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for processing recharges and bill payments via the backend API.
  */
@@ -34,6 +35,12 @@ export interface RechargePlan {
     category?: string;
     channels?: string | number;
     // Add other fields returned by the API if necessary
+}
+
+export interface OperatorDetectionResult {
+    operator: Biller | null;
+    circle: string | null;
+    error?: string;
 }
 
 /**
@@ -181,16 +188,18 @@ export async function checkActivationStatus(transactionId: string): Promise<Tran
  * @returns A promise resolving to an object indicating success and a schedule ID from the backend.
  */
 export async function scheduleRecharge(
+    type: string, // Added type of recharge for scheduling
     identifier: string,
     amount: number,
     frequency: 'monthly' | 'weekly',
     startDate: Date,
     billerId?: string,
     planId?: string
-): Promise<{success: boolean; scheduleId: string}> {
-     console.log('Scheduling recharge via API:', { identifier, amount, frequency, startDate, billerId, planId });
+): Promise<{success: boolean; scheduleId: string; message?: string}> { // Added message to return type
+     console.log('Scheduling recharge via API:', { type, identifier, amount, frequency, startDate, billerId, planId });
 
      const payload = {
+        type, // Include type
         identifier,
         amount,
         frequency,
@@ -200,7 +209,7 @@ export async function scheduleRecharge(
      };
 
      try {
-         const result = await apiClient<{success: boolean; scheduleId: string}>('/recharge/schedule', {
+         const result = await apiClient<{success: boolean; scheduleId: string; message?: string}>('/recharge/schedule', {
              method: 'POST',
              body: JSON.stringify(payload),
          });
@@ -250,6 +259,27 @@ export async function cancelRechargeService(transactionId: string): Promise<{ su
      }
 }
 
+/**
+ * Detects the mobile operator and circle based on the mobile number via the backend API.
+ * @param mobileNumber The 10-digit mobile number.
+ * @returns A promise resolving to an OperatorDetectionResult object.
+ */
+export async function detectOperatorAndCircle(mobileNumber: string): Promise<OperatorDetectionResult> {
+    console.log(`Detecting operator for mobile number via API: ${mobileNumber}`);
+    if (!mobileNumber || !mobileNumber.match(/^[6-9]\d{9}$/)) {
+        return { operator: null, circle: null, error: "Invalid mobile number format." };
+    }
+    try {
+        const result = await apiClient<OperatorDetectionResult>('/recharge/detect-operator', {
+            method: 'POST',
+            body: JSON.stringify({ mobileNumber }),
+        });
+        return result;
+    } catch (error: any) {
+        console.error("Error detecting operator via API:", error);
+        return { operator: null, circle: null, error: error.message || "Could not detect operator." };
+    }
+}
 
 // Remove mock plan exports if no longer needed directly by components
 // export { mockRechargePlans, mockDthPlans, mockDataCardPlans };
