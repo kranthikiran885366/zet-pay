@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for processing bill payments.
  */
@@ -5,51 +6,65 @@
 import type { Transaction } from './types'; // Use the common Transaction interface
 import { apiClient } from '@/lib/apiClient';
 import { format } from 'date-fns';
-import { addTransaction } from '@/services/transactionLogger'; // Corrected: Import client-side logger
 
 export interface BillPaymentDetails {
     billerId: string;
-    identifier: string; // Consumer number, Policy number, Student ID, etc.
+    identifier: string; 
     amount: number;
-    billerType: string; // Electricity, Water, Insurance, Education etc.
-    billerName?: string; // Optional: For display/confirmation
+    billerType: string; 
+    billerName?: string; 
+    paymentMethod?: 'wallet' | 'upi' | 'card'; 
+    sourceAccountUpiId?: string; 
+    pin?: string; 
+    cardToken?: string; 
+    cvv?: string; 
+}
+
+export interface FetchedBillDetails {
+    amount: number | null;
+    dueDate?: Date | null;
+    consumerName?: string;
+    minAmountDue?: number;
+    status?: string; // e.g., 'DUE', 'PAID' from provider
 }
 
 /**
  * Fetches the outstanding bill details from the backend API.
- * The backend handles the actual interaction with BBPS or biller APIs.
  *
+ * @param billerType The type of bill (e.g., 'electricity', 'mobile-postpaid').
  * @param billerId Biller ID from BBPS or aggregator.
  * @param identifier Consumer number, account ID, policy number, student ID etc.
- * @param billType The specific type of bill (e.g., 'electricity', 'education') for the API path.
- * @returns A promise that resolves to bill details (amount, dueDate, etc.) or null if not found.
+ * @returns A promise that resolves to bill details or null if not found.
  */
-export async function fetchBillDetails(billerId: string, identifier: string): Promise<{ amount: number | null; dueDate?: Date | null; consumerName?: string } | null> {
-    console.log(`[Client Service] Fetching bill details via API for Biller: ${billerId}, Identifier: ${identifier}`);
-    // Backend needs to determine billType if not passed, or endpoint needs to accept it.
-    // For this example, we'll assume a generic detail fetch endpoint that might infer type or accept it in query/body.
-    // Let's assume a path like `/bills/details` and pass billerId/identifier as query params
-    const endpoint = `/bills/details/${billerId}/${identifier}`; // Path format from billsRoutes.js
+export async function fetchBillDetails(type: string, billerId: string, identifier: string): Promise<FetchedBillDetails | null> {
+    console.log(`[Client Service] Fetching bill details via API for Type: ${type}, Biller: ${billerId}, Identifier: ${identifier}`);
+    const endpoint = `/bills/details/${type.toLowerCase().replace(/\s+/g, '-')}/${identifier}?billerId=${billerId}`;
 
     try {
-        const result = await apiClient<{ success: boolean; message?: string; amount?: number; dueDate?: string; consumerName?: string }>(endpoint);
+        // The backend is expected to return an object that might look like:
+        // { success: boolean, message?: string, amount?: number, dueDate?: string, consumerName?: string, minAmountDue?: number, status?: string }
+        const result = await apiClient<{ success: boolean; message?: string; amount?: number; dueDate?: string; consumerName?: string; minAmountDue?: number; status?: string }>(endpoint);
 
-        if (result.success && result.amount !== undefined) {
+        // Check if the backend indicates success OR if an amount is present (even if success might be implicitly true)
+        // Also handle the case where amount is explicitly null for manual entry.
+        if (result.success === true || (result.amount !== undefined)) {
             return {
-                amount: result.amount,
+                amount: result.amount === undefined ? null : result.amount,
                 dueDate: result.dueDate ? new Date(result.dueDate) : null,
-                consumerName: result.consumerName
+                consumerName: result.consumerName,
+                minAmountDue: result.minAmountDue,
+                status: result.status,
             };
-        } else if (result.amount === null && result.message?.toLowerCase().includes("manual entry")){
-             console.log(`[Client Service] Bill details not found for ${billerId}, ${identifier}: ${result.message || 'Manual entry required.'}`);
+        } else if (result.message?.toLowerCase().includes("manual entry")) {
+             console.log(`[Client Service] Bill details not found for ${type}, ${billerId}, ${identifier}: ${result.message || 'Manual entry required.'}`);
              return { amount: null, dueDate: null, consumerName: undefined }; // Indicate manual entry needed
         }
          else {
-            console.log(`[Client Service] Bill details fetch failed for ${billerId}, ${identifier}: ${result.message || 'No amount returned.'}`);
-            return null; // Or throw specific error
+            console.log(`[Client Service] Bill details fetch failed for ${type}, ${billerId}, ${identifier}: ${result.message || 'No amount returned.'}`);
+            throw new Error(result.message || 'Failed to fetch bill details. It might be already paid or invalid.');
         }
     } catch (error: any) {
-        console.error(`Error fetching bill details for ${billerId}, ${identifier} via API:`, error);
+        console.error(`Error fetching bill details for type ${type}, Biller ${billerId}, ID ${identifier} via API:`, error);
         throw error;
     }
 }
@@ -65,7 +80,6 @@ export async function fetchBillDetails(billerId: string, identifier: string): Pr
  */
 export async function processBillPayment(paymentDetails: BillPaymentDetails): Promise<Transaction> {
     console.log("Processing bill payment via API:", paymentDetails);
-    // Ensure billerType is correctly formatted for the API endpoint
     const apiType = paymentDetails.billerType.toLowerCase().replace(/\s+/g, '-');
     const endpoint = `/bills/pay/${apiType}`;
 
@@ -79,9 +93,9 @@ export async function processBillPayment(paymentDetails: BillPaymentDetails): Pr
         return {
             ...resultTransaction,
             date: new Date(resultTransaction.date),
-             avatarSeed: resultTransaction.avatarSeed || resultTransaction.name?.toLowerCase().replace(/\s+/g, '') || resultTransaction.id,
-            createdAt: resultTransaction.createdAt ? new Date(resultTransaction.createdAt) : undefined,
-            updatedAt: resultTransaction.updatedAt ? new Date(resultTransaction.updatedAt) : undefined,
+            avatarSeed: resultTransaction.avatarSeed || resultTransaction.name?.toLowerCase().replace(/\s+/g, '') || resultTransaction.id,
+            createdAt: resultTransaction.createdAt ? new Date(resultTransaction.createdAt as string) : undefined,
+            updatedAt: resultTransaction.updatedAt ? new Date(resultTransaction.updatedAt as string) : undefined,
         };
     } catch (error: any) {
          console.error("Error processing bill payment via API:", error);
@@ -89,17 +103,3 @@ export async function processBillPayment(paymentDetails: BillPaymentDetails): Pr
     }
 }
 
-// This was incorrectly imported by the previous version.
-// The client-side should not directly call the backend's transactionLogger.
-// It should call its own addTransaction (if one exists for local state/optimistic updates)
-// or more commonly, rely on the backend to log the transaction after processBillPayment.
-// The current `processBillPayment` expects the backend to return the logged Transaction.
-// If `addTransaction` from `transactionLogger` was meant for some other client-side logging,
-// that service needs to be defined correctly for client-side use (e.g., using apiClient).
-// For now, removing the direct import from here as `processBillPayment` is the primary interaction.
-
-// If `addTransaction` in `src/services/transactionLogger.ts` is the CLIENT-SIDE function
-// that calls a backend endpoint to log a transaction, then it might be used if a payment
-// flow on the client needs to explicitly log something outside of what `processBillPayment` does.
-// However, for standard bill payments, `processBillPayment` should suffice as it expects the backend
-// to handle all logging.

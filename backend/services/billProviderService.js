@@ -1,7 +1,8 @@
 
 // backend/services/billProviderService.js
-// Placeholder for actual BBPS / Biller Aggregator interaction
 const { addDays, format } = require('date-fns'); 
+const redisClient = require('../config/redisClient');
+const CACHE_TTL_BILLERS = 3600 * 6; // 6 hours for biller list
 
 const mockBillersByType = {
     Electricity: [
@@ -58,28 +59,77 @@ const mockBillersByType = {
     'Mobile Postpaid': [ 
         { billerId: 'airtel-postpaid', billerName: 'Airtel Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/airtel.png' },
         { billerId: 'jio-postpaid', billerName: 'Jio Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/jio.png' },
+        { billerId: 'vi-postpaid', billerName: 'Vi Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/vi.png' },
+        { billerId: 'bsnl-postpaid', billerName: 'BSNL Postpaid', billerType: 'Mobile Postpaid', logoUrl: '/logos/bsnl.png' },
     ],
-    LPG: [ // Added LPG
+    LPG: [
         { billerId: 'indane', billerName: 'Indane Gas (IndianOil)', billerType: 'LPG', logoUrl: '/logos/indane.png', fixedPrice: 950.50 },
         { billerId: 'hp-gas', billerName: 'HP Gas', billerType: 'LPG', logoUrl: '/logos/hp_gas.png', fixedPrice: 945.00 },
         { billerId: 'bharat-gas', billerName: 'Bharat Gas', billerType: 'LPG', logoUrl: '/logos/bharat_gas.png', fixedPrice: 960.00 },
     ],
-    'Property Tax': [ // Added Property Tax
+    'Property Tax': [
         { billerId: 'bbmp-tax', billerName: 'BBMP Property Tax (Bangalore)', billerType: 'Property Tax', logoUrl: '/logos/bbmp.png' },
         { billerId: 'mcgm-tax', billerName: 'MCGM Property Tax (Mumbai)', billerType: 'Property Tax', logoUrl: '/logos/mcgm.png' },
     ]
 };
 
 async function fetchBillers(type) {
+    const cacheKey = `bill_billers_v2:${type}`;
     console.log(`[Bill Provider Sim] Fetching billers for type: ${type}`);
-    await new Promise(resolve => setTimeout(resolve, 400)); 
-    return mockBillersByType[type] || [];
+
+    try {
+        if (redisClient.isReady) {
+            const cachedData = await redisClient.get(cacheKey);
+            if (cachedData) {
+                console.log(`[Bill Provider Sim] Cache HIT for ${cacheKey}`);
+                return JSON.parse(cachedData);
+            }
+            console.log(`[Bill Provider Sim] Cache MISS for ${cacheKey}`);
+        } else {
+            console.warn('[Bill Provider Sim] Redis client not ready, skipping cache for billers.');
+        }
+    } catch (cacheError) {
+        console.error(`[Bill Provider Sim] Redis GET error for ${cacheKey}:`, cacheError);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 200)); // Simulate slight delay if not cached
+    const billers = mockBillersByType[type] || [];
+
+    try {
+        if (redisClient.isReady && billers.length > 0) {
+            await redisClient.set(cacheKey, JSON.stringify(billers), { EX: CACHE_TTL_BILLERS });
+            console.log(`[Bill Provider Sim] Stored ${cacheKey} in cache.`);
+        }
+    } catch (cacheSetError) {
+        console.error(`[Bill Provider Sim] Redis SET error for ${cacheKey}:`, cacheSetError);
+    }
+    return billers;
 }
 
 async function fetchBill(billerId, identifier, billType) {
     console.log(`[Bill Provider Sim] Fetching bill for Biller: ${billerId}, Identifier: ${identifier}, Type: ${billType}`);
     await new Promise(resolve => setTimeout(resolve, 1200)); 
 
+    // Mobile Postpaid Bill Fetch Simulation
+    if (billType === 'Mobile Postpaid') {
+        if (identifier === '9876543210' && billerId === 'airtel-postpaid') { // Example success
+            return {
+                success: true,
+                amount: parseFloat((Math.random() * 800 + 199).toFixed(2)),
+                dueDate: addDays(new Date(), Math.floor(Math.random() * 10) + 5),
+                consumerName: `Airtel User ${identifier.slice(-4)}`,
+                status: 'DUE'
+            };
+        } else if (identifier === '7012345678' && billerId === 'jio-postpaid') { // Example already paid
+             return { success: true, amount: 0, dueDate: null, consumerName: `Jio User ${identifier.slice(-4)}`, status: 'PAID', message: "Bill already paid or no outstanding amount." };
+        } else if (identifier === '9999999999') { // Example where details cannot be fetched
+            return { success: false, message: 'Could not fetch bill details for this mobile number. Please verify the number and operator, or enter amount manually.', amount: null };
+        } else { // Generic fallback for other numbers for demo
+            return { success: true, amount: parseFloat((Math.random() * 500 + 100).toFixed(2)), dueDate: addDays(new Date(), 7), consumerName: `User ${identifier.slice(-4)}`, status: 'DUE' };
+        }
+    }
+
+    // Existing mock logic for other bill types
     if (billerId === 'bescom' && identifier === '12345') {
         return { success: true, amount: 1350.75, dueDate: addDays(new Date(), 10), consumerName: 'Chandra Sekhar', status: 'DUE' };
     }
@@ -103,14 +153,29 @@ async function fetchBill(billerId, identifier, billType) {
     }
 
 
-    console.log(`[Bill Provider Sim] No mock bill found for ${billerId}, ${identifier}, ${billType}. Manual entry allowed.`);
-    return { success: false, message: 'Bill details not found. Manual entry allowed.', amount: null };
+    console.log(`[Bill Provider Sim] No specific mock bill found for ${billerId}, ${identifier}, ${billType}. Manual entry message.`);
+    return { success: false, message: 'Bill details not found. Please enter the amount manually.', amount: null };
 }
 
 async function payBill(details) {
     const { billerId, identifier, amount, type, transactionId } = details;
     console.log(`[Bill Provider Sim] Paying bill: Biller ${billerId}, ID ${identifier}, Amt ${amount}, Type ${type}, Ref ${transactionId}`);
     await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+    // Mobile Postpaid Payment Simulation
+    if (type === 'Mobile Postpaid') {
+        if (identifier.startsWith('00000')) { 
+             return { status: 'Failed', message: 'Payment for this mobile number failed at operator end.', operatorMessage: 'OPERATOR_REJECT_POSTPAID' };
+        }
+        const random = Math.random();
+        if (random < 0.05) {
+            return { status: 'Failed', message: 'Operator system temporarily unavailable for postpaid bill.', operatorMessage: 'POSTPAID_SYSTEM_DOWN' };
+        }
+        if (random < 0.15) {
+            return { status: 'Pending', message: 'Postpaid bill payment submitted, awaiting confirmation from operator.', operatorMessage: 'PENDING_POSTPAID_CONFIRMATION', billerReferenceId: `POSTPAID_PEND_${Date.now()}` };
+        }
+        return { status: 'Completed', message: `Mobile Postpaid bill of ₹${amount} for ${identifier} paid successfully.`, operatorMessage: 'SUCCESS', billerReferenceId: `POSTPAID_PAY_${Date.now()}` };
+    }
 
     if (billerId === 'fail-biller') {
          console.warn('[Bill Provider Sim] Bill payment failed (Simulated Biller).');
@@ -141,3 +206,4 @@ module.exports = {
     fetchBill,
     payBill,
 };
+
