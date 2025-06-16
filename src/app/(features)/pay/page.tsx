@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -8,21 +7,31 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Landmark, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Loader2, CheckCircle, XCircle, Info, Wallet, Landmark, HelpCircle, Ticket, CircleAlert, WifiOff, BadgeCheck, CreditCard } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { processUpiPayment, verifyUpiId, getLinkedAccounts, BankAccount, UpiTransactionResult, getBankStatus } from '@/services/upi';
 import type { Transaction } from '@/services/types';
-import { payViaWallet as payViaWalletApiService, getWalletBalance as getWalletBalanceService } from '@/services/wallet'; // Use Wallet Service
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { payViaWallet as payViaWalletApiService, getWalletBalance as getWalletBalanceService } from '@/services/wallet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { auth } from '@/lib/firebase';
-import { format } from "date-fns"; // Removed addBusinessDays as it's not used
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from '@/components/ui/separator';
 
-type PaymentSourceOption = 'wallet' | string;
+// Define the types of payment options
+interface PaymentOption {
+  id: string; // 'wallet', upiId for bank, or 'new_card'
+  type: 'wallet' | 'upi' | 'card';
+  name: string;
+  details?: string; // e.g., Masked account number or "Balance: X"
+  icon: React.ElementType;
+  disabled?: boolean;
+  bankStatus?: 'Active' | 'Slow' | 'Down';
+  pinLength?: number;
+  isDefault?: boolean;
+}
 
 export default function PayPage() {
   const searchParams = useSearchParams();
@@ -44,11 +53,9 @@ export default function PayPage() {
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const pinPromiseResolverRef = useRef<{ resolve: (pin: string | null) => void } | null>(null);
 
-  const [linkedAccounts, setLinkedAccounts] = useState<BankAccount[]>([]);
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [selectedPaymentSource, setSelectedPaymentSource] = useState<PaymentSourceOption>('');
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState<string | null>(null);
   const [isLoadingPaymentOptions, setIsLoadingPaymentOptions] = useState(true);
-  const [bankStatuses, setBankStatuses] = useState<Record<string, 'Active' | 'Slow' | 'Down'>>({});
 
 
   useEffect(() => {
@@ -78,35 +85,67 @@ export default function PayPage() {
       try {
         const [accounts, balance] = await Promise.all([
           getLinkedAccounts(),
-          getWalletBalanceService() // Use Wallet Service
+          getWalletBalanceService()
         ]);
-        setLinkedAccounts(accounts);
-        setWalletBalance(balance);
+
+        const options: PaymentOption[] = [];
+
+        if (balance !== null && balance >= 0) {
+          options.push({
+            id: 'wallet',
+            type: 'wallet',
+            name: 'Zet Pay Wallet',
+            details: `Balance: ₹${balance.toFixed(2)}`,
+            icon: Wallet,
+            disabled: balance < Number(amount || 0) && Number(amount || 0) > 0, // Disable if insufficient balance for current amount
+          });
+        }
 
         const statuses: Record<string, 'Active' | 'Slow' | 'Down'> = {};
         for (const acc of accounts) {
             const bankIdentifier = acc.upiId.split('@')[1];
+            let status: 'Active' | 'Slow' | 'Down' = 'Active';
             if (bankIdentifier) {
                 try {
-                    statuses[acc.upiId] = await getBankStatus(bankIdentifier);
+                    status = await getBankStatus(bankIdentifier);
                 } catch (statusError) {
                     console.warn(`Failed to get status for ${acc.upiId}:`, statusError);
-                    statuses[acc.upiId] = 'Active'; 
+                }
+            }
+            statuses[acc.upiId] = status;
+            options.push({
+              id: acc.upiId,
+              type: 'upi',
+              name: acc.bankName,
+              details: acc.accountNumber,
+              icon: Landmark,
+              disabled: status === 'Down',
+              bankStatus: status,
+              pinLength: acc.pinLength,
+              isDefault: acc.isDefault,
+            });
+        }
+        setPaymentOptions(options);
+        
+        // Set default selection
+        if (sourceUpi && options.find(opt => opt.id === sourceUpi && !opt.disabled)) {
+          setSelectedPaymentOptionId(sourceUpi);
+        } else {
+            const defaultUpi = options.find(opt => opt.type === 'upi' && opt.isDefault && !opt.disabled);
+            if (defaultUpi) {
+                setSelectedPaymentOptionId(defaultUpi.id);
+            } else {
+                const firstAvailableUpi = options.find(opt => opt.type === 'upi' && !opt.disabled);
+                if (firstAvailableUpi) {
+                    setSelectedPaymentOptionId(firstAvailableUpi.id);
+                } else if (options.find(opt => opt.id === 'wallet' && !opt.disabled)) {
+                    setSelectedPaymentOptionId('wallet');
+                } else if (options.length > 0 && !options[0].disabled) {
+                     setSelectedPaymentOptionId(options[0].id);
                 }
             }
         }
-        setBankStatuses(statuses);
-        
-        if (sourceUpi && accounts.find(acc => acc.upiId === sourceUpi)) {
-          setSelectedPaymentSource(sourceUpi);
-        } else if (accounts.length > 0) {
-          const defaultAccount = accounts.find(acc => acc.isDefault) || accounts[0];
-          setSelectedPaymentSource(defaultAccount.upiId);
-        } else if (balance !== null && balance > 0) { // Check if balance is not null
-          setSelectedPaymentSource('wallet');
-        } else {
-          setError("No payment methods available. Please link a bank account or add funds to your wallet.");
-        }
+
 
       } catch (err: any) {
         setError(err.message || "Failed to load payment options.");
@@ -117,7 +156,7 @@ export default function PayPage() {
     };
 
     fetchPaymentOptions();
-  }, [searchParams, router, toast]);
+  }, [searchParams, router, toast, amount]); // Added amount to re-check wallet disable state
 
   const promptForPin = (): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -128,8 +167,8 @@ export default function PayPage() {
   };
 
   const handlePinSubmit = () => {
-    const account = linkedAccounts.find(acc => acc.upiId === selectedPaymentSource);
-    const expectedLength = account?.pinLength;
+    const selectedOption = paymentOptions.find(opt => opt.id === selectedPaymentOptionId);
+    const expectedLength = selectedOption?.pinLength;
     const isValid = expectedLength ? upiPin.length === expectedLength : (upiPin.length === 4 || upiPin.length === 6);
 
     if (isValid && pinPromiseResolverRef.current) {
@@ -157,23 +196,20 @@ export default function PayPage() {
         toast({ variant: "destructive", title: "Not Logged In", description: "Please log in to proceed." });
         return;
     }
-    if (!selectedPaymentSource) {
+    const selectedOption = paymentOptions.find(opt => opt.id === selectedPaymentOptionId);
+    if (!selectedOption) {
       toast({ variant: "destructive", title: "Payment Method Required", description: "Please select a payment method." });
       return;
+    }
+    if (selectedOption.disabled) {
+        toast({ variant: "destructive", title: "Method Unavailable", description: `${selectedOption.name} is currently unavailable.` });
+        return;
     }
     if (!amount || Number(amount) <= 0) {
         toast({ variant: "destructive", title: "Invalid Amount", description: "Please enter a valid amount." });
         return;
     }
-    if (selectedPaymentSource === 'wallet' && walletBalance !== null && walletBalance < Number(amount)) {
-        toast({ variant: "destructive", title: "Insufficient Wallet Balance", description: "Please add funds to your wallet or choose another method." });
-        return;
-    }
-     if (selectedPaymentSource !== 'wallet' && bankStatuses[selectedPaymentSource] === 'Down') {
-        toast({ variant: "destructive", title: "Bank Server Down", description: "Selected bank is currently unavailable. Please try another method." });
-        return;
-    }
-
+    
     setIsProcessing(true);
     setShowConfirmation(true);
     setPaymentResult(null);
@@ -182,8 +218,18 @@ export default function PayPage() {
     try {
       let result: UpiTransactionResult;
 
-      if (selectedPaymentSource === 'wallet') {
-        const walletResult = await payViaWalletApiService(auth.currentUser.uid, recipientUpiId, Number(amount), note); // Use Wallet Service
+      if (selectedOption.type === 'wallet') {
+        const walletBalanceOption = paymentOptions.find(opt => opt.id === 'wallet');
+        if (walletBalanceOption && walletBalanceOption.details) {
+            const currentWalletBalance = parseFloat(walletBalanceOption.details.replace(/[^0-9.]/g, ''));
+            if (currentWalletBalance < Number(amount)) {
+                toast({ variant: "destructive", title: "Insufficient Wallet Balance", description: "Please add funds or choose another method." });
+                setIsProcessing(false);
+                setShowConfirmation(false); // Stay on payment page
+                return;
+            }
+        }
+        const walletResult = await payViaWalletApiService(auth.currentUser.uid, recipientUpiId, Number(amount), note);
         result = {
             success: walletResult.success,
             transactionId: walletResult.transactionId,
@@ -192,7 +238,7 @@ export default function PayPage() {
             status: walletResult.success ? 'Completed' : 'Failed',
             message: walletResult.message,
         };
-      } else {
+      } else if (selectedOption.type === 'upi') {
         const enteredPin = await promptForPin();
         if (enteredPin === null) {
             setIsProcessing(false);
@@ -204,17 +250,24 @@ export default function PayPage() {
           Number(amount),
           enteredPin,
           note,
-          selectedPaymentSource,
+          selectedOption.id, // This is the sourceAccountUpiId
           isStealthScan
         );
+      } else { // 'card' or other types
+          throw new Error("Selected payment method type is not yet implemented for processing.");
       }
       
       setPaymentResult(result);
 
       if (result.success || result.status === 'Completed' || result.status === 'FallbackSuccess') {
         toast({ title: "Payment Successful!", description: `Sent ₹${amount} to ${recipientName || recipientUpiId}.`, duration: 5000 });
-        if (selectedPaymentSource === 'wallet' || result.usedWalletFallback) {
-            getWalletBalanceService().then(setWalletBalance).catch(console.error); // Use Wallet Service
+        if (selectedOption.type === 'wallet' || result.usedWalletFallback) {
+            // Refresh wallet balance display
+            getWalletBalanceService().then(newBalance => {
+                 setPaymentOptions(prevOpts => prevOpts.map(opt => 
+                    opt.id === 'wallet' ? {...opt, details: `Balance: ₹${newBalance.toFixed(2)}`, disabled: newBalance < Number(amount || 0)} : opt
+                ));
+            }).catch(console.error);
         }
       } else {
         setError(result.message || `Payment ${result.status || 'Failed'}`);
@@ -236,17 +289,15 @@ export default function PayPage() {
   };
 
   const getPaymentSourceDetails = () => {
-    if (selectedPaymentSource === 'wallet') {
-        return `Zet Pay Wallet (Balance: ₹${walletBalance?.toFixed(2) || '0.00'})`;
-    }
-    const account = linkedAccounts.find(acc => acc.upiId === selectedPaymentSource);
-    return account ? `${account.bankName} - ${account.accountNumber}` : 'Unknown UPI Account';
+    const selectedOpt = paymentOptions.find(opt => opt.id === selectedPaymentOptionId);
+    if (!selectedOpt) return "Unknown Source";
+    return `${selectedOpt.name} ${selectedOpt.details ? `(${selectedOpt.details})` : ''}`;
   };
 
-  const selectedAccountForPin = linkedAccounts.find(acc => acc.upiId === selectedPaymentSource);
+  const selectedUpiAccountForPin = paymentOptions.find(opt => opt.id === selectedPaymentOptionId && opt.type === 'upi');
 
 
-  if (isLoadingPaymentOptions) {
+  if (isLoadingPaymentOptions && !error) {
     return (
         <div className="min-h-screen flex items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -268,14 +319,22 @@ export default function PayPage() {
         {!showConfirmation ? (
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Pay to {recipientName || recipientUpiId}</CardTitle>
-              <CardDescription>{recipientUpiId}</CardDescription>
+              <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10 border">
+                      <AvatarImage src={`https://picsum.photos/seed/${recipientUpiId}/40/40`} alt={recipientName || recipientUpiId} data-ai-hint="recipient avatar"/>
+                      <AvatarFallback>{(recipientName || recipientUpiId || 'R').charAt(0).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-lg">Paying {recipientName || recipientUpiId}</CardTitle>
+                    <CardDescription className="text-xs">{recipientUpiId}</CardDescription>
+                  </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               <div className="space-y-1">
-                <Label htmlFor="amount">Amount (₹)</Label>
+                <Label htmlFor="amount" className="sr-only">Amount (₹)</Label>
                 <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-lg">₹</span>
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-2xl">₹</span>
                     <Input
                         id="amount"
                         type="number"
@@ -285,7 +344,7 @@ export default function PayPage() {
                         required
                         min="1"
                         step="0.01"
-                        className="pl-7 text-2xl font-bold h-14"
+                        className="pl-10 text-3xl font-bold h-16 text-center"
                         disabled={searchParams.get('am') !== null || isProcessing}
                     />
                 </div>
@@ -304,52 +363,65 @@ export default function PayPage() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label htmlFor="paymentSource">Pay Using</Label>
-                <Select value={selectedPaymentSource} onValueChange={(value) => setSelectedPaymentSource(value as PaymentSourceOption)} disabled={isLoadingPaymentOptions || linkedAccounts.length === 0}>
-                    <SelectTrigger id="paymentSource" disabled={isLoadingPaymentOptions}>
-                         <SelectValue placeholder={isLoadingPaymentOptions ? "Loading methods..." : "Select Payment Method"}/>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {linkedAccounts.map(acc => (
-                            <SelectItem key={acc.upiId} value={acc.upiId} disabled={bankStatuses[acc.upiId] === 'Down'}>
-                                <div className="flex items-center justify-between w-full">
-                                    <span className="flex items-center gap-2">
-                                        <Landmark className="h-4 w-4 text-muted-foreground"/>
-                                        {acc.bankName} - {acc.accountNumber} {acc.isDefault && <Badge variant="outline" className="ml-1 text-xs">Primary</Badge>}
-                                    </span>
-                                    {bankStatuses[acc.upiId] === 'Slow' && <Badge variant="secondary" className="ml-2 text-xs bg-yellow-100 text-yellow-700">Slow</Badge>}
-                                    {bankStatuses[acc.upiId] === 'Down' && <Badge variant="destructive" className="ml-2 text-xs">Down</Badge>}
-                                </div>
-                            </SelectItem>
-                        ))}
-                        {walletBalance !== null && walletBalance >= 0 && ( // Show wallet if balance is 0 or more
-                             <SelectItem value="wallet">
-                                <div className="flex items-center gap-2">
-                                    <Wallet className="h-4 w-4 text-muted-foreground"/>
-                                    <span>Zet Pay Wallet (Balance: ₹{walletBalance.toFixed(2)})</span>
-                                </div>
-                            </SelectItem>
-                        )}
-                        {linkedAccounts.length === 0 && (walletBalance === null || walletBalance <= 0) && (
-                             <SelectItem value="none" disabled>No payment methods</SelectItem>
-                        )}
-                    </SelectContent>
-                </Select>
-                {selectedPaymentSource !== 'wallet' && bankStatuses[selectedPaymentSource] === 'Down' && (
-                    <p className="text-xs text-destructive pt-1">Selected bank server is down. Please choose another method.</p>
+              <Separator/>
+
+              <div className="space-y-2">
+                <Label>Pay Using</Label>
+                {isLoadingPaymentOptions && <div className="text-center text-sm text-muted-foreground p-4"><Loader2 className="h-5 w-5 animate-spin inline mr-2"/>Loading payment methods...</div>}
+                {!isLoadingPaymentOptions && paymentOptions.length === 0 && !error && (
+                    <Alert variant="default">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>No Payment Methods</AlertTitle>
+                        <AlertDescription>
+                            Please link a bank account in UPI settings or add funds to your Zet Pay Wallet to make payments.
+                        </AlertDescription>
+                    </Alert>
                 )}
-                 {selectedPaymentSource !== 'wallet' && bankStatuses[selectedPaymentSource] === 'Slow' && (
-                    <p className="text-xs text-yellow-600 pt-1">Selected bank server is slow. Payment might take longer.</p>
-                 )}
+                {!isLoadingPaymentOptions && paymentOptions.map(option => (
+                    <Button
+                        key={option.id}
+                        variant={selectedPaymentOptionId === option.id ? "default" : "outline"}
+                        className={cn(
+                            "w-full justify-start h-auto py-2.5 px-3 text-left items-center gap-3",
+                            selectedPaymentOptionId === option.id && "ring-2 ring-primary ring-offset-1",
+                            option.disabled && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => !option.disabled && setSelectedPaymentOptionId(option.id)}
+                        disabled={option.disabled || isProcessing}
+                    >
+                        <option.icon className={cn("h-6 w-6 flex-shrink-0", selectedPaymentOptionId === option.id ? "text-primary-foreground" : "text-primary")} />
+                        <div className="flex-grow">
+                            <p className="font-medium text-sm">{option.name}</p>
+                            {option.details && <p className="text-xs text-muted-foreground">{option.details}</p>}
+                        </div>
+                        {option.isDefault && option.type === 'upi' && <Badge variant="outline" className="text-xs ml-auto">Primary</Badge>}
+                        {option.bankStatus && option.bankStatus !== 'Active' && (
+                            <Badge variant={option.bankStatus === 'Slow' ? "secondary" : "destructive"} className={cn("text-xs ml-auto", option.bankStatus === 'Slow' ? "bg-yellow-100 text-yellow-700" : "")}>
+                                {option.bankStatus}
+                            </Badge>
+                        )}
+                    </Button>
+                ))}
+                 {/* Conceptual Credit/Debit Card Option */}
+                 <Button
+                    variant={selectedPaymentOptionId === 'card_placeholder' ? "default" : "outline"}
+                    className="w-full justify-start h-auto py-2.5 px-3 text-left items-center gap-3 opacity-50 cursor-not-allowed"
+                    disabled // Keep disabled until implemented
+                >
+                    <CreditCard className="h-6 w-6 text-primary" />
+                    <div>
+                        <p className="font-medium text-sm">Credit/Debit Card</p>
+                        <p className="text-xs text-muted-foreground">Pay using saved or new card (Coming Soon)</p>
+                    </div>
+                </Button>
               </div>
 
-              {error && <Alert variant="destructive"><CircleAlert className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+              {error && !showConfirmation && <Alert variant="destructive" className="mt-4"><CircleAlert className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
 
               <Button
                 onClick={handlePayment}
-                className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white"
-                disabled={isProcessing || isLoadingPaymentOptions || !selectedPaymentSource || !amount || Number(amount) <=0 || (selectedPaymentSource !== 'wallet' && bankStatuses[selectedPaymentSource] === 'Down')}
+                className="w-full bg-[#32CD32] hover:bg-[#2AAE2A] text-white mt-6 h-11 text-base"
+                disabled={isProcessing || isLoadingPaymentOptions || !selectedPaymentOptionId || !amount || Number(amount) <=0 || paymentOptions.find(opt => opt.id === selectedPaymentOptionId)?.disabled}
               >
                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 {isProcessing ? 'Processing...' : 'Pay Now'}
@@ -396,7 +468,7 @@ export default function PayPage() {
               <Button className="w-full" onClick={() => router.push('/')}>Done</Button>
               <Button variant="link" onClick={() => router.push('/history')}>View History</Button>
               {(paymentResult.status === 'Failed' || error) && (
-                <Button variant="outline" className="w-full" onClick={()={() => { setShowConfirmation(false); setPaymentResult(null); setError(null); }}>Try Again</Button>
+                <Button variant="outline" className="w-full" onClick={() => { setShowConfirmation(false); setPaymentResult(null); setError(null); }}>Try Again</Button>
               )}
                {(paymentResult.status === 'Failed' && paymentResult.ticketId) && (
                     <Link href={`/support?ticketId=${paymentResult.ticketId}`} passHref>
@@ -420,7 +492,7 @@ export default function PayPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Enter UPI PIN</AlertDialogTitle>
             <AlertDialogDescription>
-                Enter your {selectedAccountForPin?.pinLength || '4 or 6'} digit UPI PIN for {selectedAccountForPin?.bankName || 'your account'} to authorize payment of ₹{Number(amount).toFixed(2)}.
+                Enter your {selectedUpiAccountForPin?.pinLength || '4 or 6'} digit UPI PIN for {selectedUpiAccountForPin?.bankName || 'your account'} to authorize payment of ₹{Number(amount).toFixed(2)}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
@@ -429,11 +501,11 @@ export default function PayPage() {
               id="pin-input-dialog"
               type="password"
               inputMode="numeric"
-              maxLength={selectedAccountForPin?.pinLength || 6}
+              maxLength={selectedUpiAccountForPin?.pinLength || 6}
               value={upiPin}
               onChange={(e) => setUpiPin(e.target.value.replace(/\D/g, ''))}
               className="text-center text-xl tracking-[0.3em]"
-              placeholder={selectedAccountForPin?.pinLength === 4 ? "****" : "******"}
+              placeholder={selectedUpiAccountForPin?.pinLength === 4 ? "****" : "******"}
               autoFocus
             />
           </div>
@@ -441,9 +513,9 @@ export default function PayPage() {
             <AlertDialogCancel onClick={handlePinCancel}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handlePinSubmit} 
                  disabled={!(
-                    (selectedAccountForPin?.pinLength === 4 && upiPin.length === 4) ||
-                    (selectedAccountForPin?.pinLength === 6 && upiPin.length === 6) ||
-                    (!selectedAccountForPin?.pinLength && (upiPin.length === 4 || upiPin.length === 6))
+                    (selectedUpiAccountForPin?.pinLength === 4 && upiPin.length === 4) ||
+                    (selectedUpiAccountForPin?.pinLength === 6 && upiPin.length === 6) ||
+                    (!selectedUpiAccountForPin?.pinLength && (upiPin.length === 4 || upiPin.length === 6))
                 )}>
                 <Lock className="mr-2 h-4 w-4" /> Confirm Payment
             </AlertDialogAction>
