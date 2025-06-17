@@ -5,7 +5,8 @@
 
 import admin from 'firebase-admin'; // Use admin SDK
 const db = admin.firestore();
-import blockchainLogger from './blockchainLogger'; // Import the backend blockchain service using relative path
+// Import the REAL blockchainLogger service
+import blockchainLogger from './blockchainLogger'; // This now refers to the service that would use Web3/Ethers
 import { sendToUser } from '../server'; // Correct path to import WebSocket sender from backend server.js
 import type { Transaction } from './types'; // Import shared Transaction type (adjust path if needed)
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'; // Use Admin SDK Timestamp and FieldValue
@@ -32,8 +33,9 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const dataToSave = {
             ...rest,
             userId: userId,
-            date: FieldValue.serverTimestamp(), // Use server timestamp for the main transaction date
+            date: FieldValue.serverTimestamp(), 
             avatarSeed: rest.avatarSeed || (rest.name || `tx_${Date.now()}`).toLowerCase().replace(/\s+/g, ''),
+            // Ensure null for fields not provided instead of undefined, if schema expects null
             billerId: rest.billerId ?? null,
             upiId: rest.upiId ?? null,
             loanId: rest.loanId ?? null,
@@ -55,11 +57,12 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
             stealthScan: (rest as any).stealthScan ?? false,
         };
 
-        Object.keys(dataToSave).forEach(key => {
-            if (dataToSave[key as keyof typeof dataToSave] === undefined) {
-                 delete dataToSave[key as keyof typeof dataToSave];
-            }
-        });
+        // Explicitly remove undefined keys to avoid Firestore errors if strict mode is enabled
+        // Object.keys(dataToSave).forEach(key => {
+        //     if (dataToSave[key as keyof typeof dataToSave] === undefined) {
+        //          delete dataToSave[key as keyof typeof dataToSave];
+        //     }
+        // });
 
 
         const docRef = await transactionsColRef.add(dataToSave);
@@ -76,13 +79,14 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
         const finalTransaction: Transaction = {
             id: docRef.id,
             ...savedData,
+            // Convert Timestamps to JS Dates for further processing if needed, but keep as ISO for WS
             date: (savedData.date as Timestamp).toDate(),
             createdAt: (savedData.createdAt as Timestamp).toDate(),
             updatedAt: (savedData.updatedAt as Timestamp).toDate(),
-        } as Transaction;
+        } as Transaction; // Cast to Transaction type
 
 
-        const wsPayload = {
+        const wsPayload = { // Prepare payload for WebSocket with ISO date strings
             ...finalTransaction,
             date: finalTransaction.date.toISOString(),
             createdAt: finalTransaction.createdAt?.toISOString(),
@@ -101,29 +105,32 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
              console.error("[Backend Logger] sendToUser function is not available from server.js. Cannot send WebSocket update.");
         }
 
-
+        // Log to REAL Blockchain (conceptual - blockchainLogger now points to a real interaction service)
+        // The data passed to blockchainLogger should be a hash or minimal, non-sensitive data.
         const blockchainPayloadForLog = {
             userId: finalTransaction.userId,
             type: finalTransaction.type,
             amount: finalTransaction.amount,
-            date: finalTransaction.date.toISOString(),
+            date: finalTransaction.date.toISOString(), // Use ISO string
             recipient: finalTransaction.upiId || finalTransaction.billerId || undefined,
             name: finalTransaction.name,
             description: finalTransaction.description,
             status: finalTransaction.status,
             originalId: finalTransaction.id, // Use Firestore ID as originalId
-            ticketId: finalTransaction.ticketId
+            ticketId: finalTransaction.ticketId // Or bookingId etc.
         };
 
         blockchainLogger.logTransaction(finalTransaction.id, blockchainPayloadForLog)
             .then(hash => {
                 if (hash) {
-                    docRef.update({ blockchainHash: hash, updatedAt: FieldValue.serverTimestamp() }).catch(err => console.error("[Backend Logger] Failed to update tx with blockchain hash:", err));
+                    // Update Firestore transaction with the real blockchain hash
+                    docRef.update({ blockchainHash: hash, updatedAt: FieldValue.serverTimestamp() })
+                        .catch(err => console.error("[Backend Logger] Failed to update tx with real blockchain hash:", err));
                 }
             })
-            .catch(err => console.error("[Backend Logger] Blockchain logging failed:", err));
+            .catch(err => console.error("[Backend Logger] Real Blockchain logging failed:", err));
 
-        return finalTransaction;
+        return finalTransaction; // Return the JS Date version for internal backend use
 
     } catch (error: any) {
         console.error(`[Backend Logger] Error logging transaction for user ${userId}:`, error);
@@ -134,7 +141,8 @@ export async function addTransaction(transactionData: Partial<Omit<Transaction, 
 
 /**
  * Logs transaction details to the blockchain via the blockchainLogger service.
- * Separated for clarity and potential independent use.
+ * This function's implementation is now primarily within blockchainLogger.ts.
+ * This is kept for semantic separation if ever needed for direct calls, but addTransaction handles it.
  *
  * @param {string} transactionId The unique ID of the transaction from our system.
  * @param {Transaction} data The full transaction data object, expecting JS Dates.
@@ -153,3 +161,5 @@ export async function logTransactionToBlockchain(transactionId: string, data: Tr
         return null;
     }
 }
+
+    

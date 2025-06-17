@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -9,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Ban, HardDrive, Ticket, TramFront, Play, AlarmClockOff } from 'lucide-react';
 import Link from 'next/link';
-import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge, checkActivationStatus, cancelRechargeService, getRechargePlans } from '@/services/recharge';
+import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge as scheduleRechargeService, checkActivationStatus, cancelRechargeService, getRechargePlans, detectOperatorAndCircle as detectOperatorService } from '@/services/recharge';
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,7 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
-import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData, mockMobileQuickActions } from '@/mock-data';
+import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData, mockMobileQuickActions } from '@/mock-data'; // Ensure paths are correct
 import type { Transaction } from '@/services/types';
 import { auth } from '@/lib/firebase';
 
@@ -72,7 +73,7 @@ export default function RechargePage() {
   const [detectedOperator, setDetectedOperator] = useState<Biller | null>(null);
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false); // General loading for payment
   const [isLoadingBillers, setIsLoadingBillers] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isManualOperatorSelect, setIsManualOperatorSelect] = useState(false);
@@ -90,57 +91,81 @@ export default function RechargePage() {
   const [checkingActivationTxnId, setCheckingActivationTxnId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'upi' | 'card'>('wallet');
+  const [isClientOffline, setIsClientOffline] = useState(false);
+
 
   const { toast } = useToast();
   const details = rechargeTypeDetails[rechargePageType] || rechargeTypeDetails.mobile;
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Offline detection
+   useEffect(() => {
+        const handleOnline = () => setIsClientOffline(false);
+        const handleOffline = () => {
+            setIsClientOffline(true);
+            toast({variant: "destructive", title: "You are Offline", description: "Please check your internet connection."});
+        };
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [toast]);
+
+
   const detectMobileOperator = useCallback(async () => {
+    if (isClientOffline) { toast({ variant: "destructive", title: "Offline", description: "Cannot detect operator while offline."}); return; }
     if (!identifier || !identifier.match(/^[6-9]\d{9}$/)) return;
     setIsDetecting(true);
     setDetectedOperator(null);
     setDetectedRegion(null);
     setIsManualOperatorSelect(false);
     try {
+      // const result = await detectOperatorService(identifier); // Call the actual service
+      // Simulate service call for now
       await new Promise(resolve => setTimeout(resolve, 1000));
       let mockOperator: Biller | undefined;
       if (identifier.startsWith('98') || identifier.startsWith('99')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('airtel'));
       else if (identifier.startsWith('70') || identifier.startsWith('80')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('jio'));
       else if (identifier.startsWith('91') || identifier.startsWith('92')) mockOperator = billers.find(b => b.billerName.toLowerCase().includes('vi'));
       else mockOperator = billers[0];
-      const mockRegion = "Karnataka";
-      if (mockOperator) {
-        setDetectedOperator(mockOperator);
-        setDetectedRegion(mockRegion);
-        setSelectedBiller(mockOperator.billerId);
-        toast({ title: "Operator & Region Detected", description: `${mockOperator.billerName} - ${mockRegion}` });
+      const mockRegion = "Karnataka"; // Mock region
+
+      const result = { operator: mockOperator, circle: mockRegion, error: mockOperator ? null : "Operator not found" };
+
+      if (result.operator) {
+        setDetectedOperator(result.operator);
+        setDetectedRegion(result.circle);
+        setSelectedBiller(result.operator.billerId); // Auto-select
+        toast({ title: "Operator & Region Detected", description: `${result.operator.billerName} - ${result.circle}` });
       } else {
-        throw new Error("Could not determine operator from current biller list.");
+        throw new Error(result.error || "Could not determine operator from current biller list.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to detect mobile operator/region:", error);
-      toast({ variant: "destructive", title: "Detection Failed", description: "Could not detect operator/region. Please select manually." });
-      setIsManualOperatorSelect(true);
+      toast({ variant: "destructive", title: "Detection Failed", description: error.message || "Could not detect operator/region. Please select manually." });
+      setIsManualOperatorSelect(true); // Fallback to manual selection
     } finally {
       setIsDetecting(false);
     }
-  }, [identifier, billers, toast]);
+  }, [identifier, billers, toast, isClientOffline]);
 
   useEffect(() => {
     async function fetchBillersData() {
       if (!details.billerTypeForAPI) {
         setIsLoadingBillers(false);
-        setBillers(mockBillersData[details.billerTypeForAPI] || []);
+        setBillers(mockBillersData[details.billerTypeForAPI as keyof typeof mockBillersData] || []);
         return;
       }
       setIsLoadingBillers(true);
       setError(null);
       try {
         const fetchedBillers = await getBillers(details.billerTypeForAPI);
-        setBillers(fetchedBillers.length > 0 ? fetchedBillers : (mockBillersData[details.billerTypeForAPI] || []));
+        setBillers(fetchedBillers.length > 0 ? fetchedBillers : (mockBillersData[details.billerTypeForAPI as keyof typeof mockBillersData] || []));
       } catch (err: any) {
         setError('Failed to load operators. Please try again.');
-        setBillers(mockBillersData[details.billerTypeForAPI] || []);
+        setBillers(mockBillersData[details.billerTypeForAPI as keyof typeof mockBillersData] || []);
         toast({ variant: "destructive", title: "Could not load operators" });
         console.error(err);
       } finally {
@@ -160,25 +185,26 @@ export default function RechargePage() {
         setDetectedRegion(null);
         setRechargePlans([]);
      }
-   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator, selectedBiller]);
+   }, [identifier, rechargePageType, isManualOperatorSelect, billers, detectMobileOperator]);
 
   const fetchRechargePlans = useCallback(async () => {
+    if (isClientOffline) { toast({ variant: "destructive", title: "Offline", description: "Cannot fetch plans while offline."}); return; }
     const billerToFetch = selectedBiller || detectedOperator?.billerId;
     if (!billerToFetch) return;
     setIsPlanLoading(true);
     setRechargePlans([]);
     try {
       const fetchedPlans = await getRechargePlans(billerToFetch, rechargePageType, identifier);
-      setRechargePlans(fetchedPlans.length > 0 ? fetchedPlans : (rechargePageType === 'mobile' ? mockRechargePlansData : rechargePageType === 'dth' ? mockDthPlansData : rechargePageType === 'datacard' ? mockDataCardPlansData : []));
+      setRechargePlans(fetchedPlans.length > 0 ? fetchedPlans : (rechargePageType === 'mobile' ? mockRechargePlansData[billerToFetch as keyof typeof mockRechargePlansData] || [] : rechargePageType === 'dth' ? mockDthPlansData[billerToFetch as keyof typeof mockDthPlansData] || [] : rechargePageType === 'datacard' ? mockDataCardPlansData[billerToFetch as keyof typeof mockDataCardPlansData] || [] : []));
       if (fetchedPlans.length === 0) toast({description: "No plans found from provider, showing common plans."})
     } catch (error) {
       console.error("Failed to fetch recharge plans:", error);
       toast({ variant: "destructive", title: "Could not load recharge plans" });
-      setRechargePlans(rechargePageType === 'mobile' ? mockRechargePlansData : rechargePageType === 'dth' ? mockDthPlansData : rechargePageType === 'datacard' ? mockDataCardPlansData : []);
+      setRechargePlans(rechargePageType === 'mobile' ? mockRechargePlansData[billerToFetch as keyof typeof mockRechargePlansData] || [] : rechargePageType === 'dth' ? mockDthPlansData[billerToFetch as keyof typeof mockDthPlansData] || [] : rechargePageType === 'datacard' ? mockDataCardPlansData[billerToFetch as keyof typeof mockDataCardPlansData] || [] : []);
     } finally {
       setIsPlanLoading(false);
     }
-  }, [selectedBiller, detectedOperator?.billerId, rechargePageType, identifier, toast]);
+  }, [selectedBiller, detectedOperator?.billerId, rechargePageType, identifier, toast, isClientOffline]);
 
   useEffect(() => {
     if (selectedBiller || detectedOperator) {
@@ -206,6 +232,7 @@ export default function RechargePage() {
 
   const handleRecharge = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isClientOffline) { toast({ variant: "destructive", title: "Offline", description: "Cannot process recharge while offline."}); return; }
     if (!selectedBiller && !detectedOperator) {
       toast({ variant: "destructive", title: "Operator Missing" }); return;
     }
@@ -242,9 +269,11 @@ export default function RechargePage() {
   };
 
   const pollActivationStatus = async (txnId: string) => {
+    if (isClientOffline) { toast({ title: "Offline", description: "Activation status check paused while offline."}); return; }
     setCheckingActivationTxnId(txnId);
     let attempts = 0; const maxAttempts = 5; const intervalTime = 5000;
     const check = async () => {
+      if (isClientOffline) { toast({ description: `Status check for ${txnId} paused (Offline).` }); setCheckingActivationTxnId(null); return; }
       attempts++;
       try {
         const statusResult = await checkActivationStatus(txnId);
@@ -329,6 +358,7 @@ export default function RechargePage() {
   const openTariffModal = (plan: RechargePlan) => setShowTariffModal(plan);
 
    const handleScheduleRecharge = async () => {
+     if (isClientOffline) { toast({ variant: "destructive", title: "Offline", description: "Cannot schedule recharge while offline."}); return; }
      if (!identifier || !amount || (!selectedBiller && !detectedOperator) || !scheduleFrequency || !scheduledDate) {
        toast({ variant: 'destructive', title: 'Missing Details', description: 'Please fill identifier, amount, operator, date, and frequency to schedule.' }); return;
      }
@@ -336,7 +366,7 @@ export default function RechargePage() {
      if (!finalBillerId) { toast({ variant: 'destructive', title: 'Operator Error', description: 'Operator could not be determined.'}); return; }
      setIsScheduling(true);
      try {
-       const result = await scheduleRecharge(rechargePageType, identifier, Number(amount), scheduleFrequency, scheduledDate, finalBillerId, selectedPlan?.planId);
+       const result = await scheduleRechargeService(rechargePageType, identifier, Number(amount), scheduleFrequency, scheduledDate, finalBillerId, selectedPlan?.planId);
        if (result.success) {
          toast({ title: 'Recharge Scheduled', description: `Recharge for ${identifier} scheduled ${scheduleFrequency} starting ${format(scheduledDate, 'PPP')}. Schedule ID: ${result.scheduleId}` });
          setScheduledDate(undefined); setScheduleFrequency(undefined);
@@ -357,6 +387,7 @@ export default function RechargePage() {
    };
 
     const handleCancelRecharge = async (transactionId: string) => {
+        if (isClientOffline) { toast({ variant: "destructive", title: "Offline", description: "Cannot cancel recharge while offline."}); return; }
         setIsCancelling(transactionId);
         try {
             const result = await cancelRechargeService(transactionId);
@@ -579,7 +610,7 @@ export default function RechargePage() {
                             <SelectContent>
                                 <SelectItem value="wallet">Wallet</SelectItem>
                                 <SelectItem value="upi">UPI</SelectItem>
-                                <SelectItem value="card">Card (Coming Soon)</SelectItem>
+                                <SelectItem value="card" disabled>Card (Coming Soon)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -607,3 +638,7 @@ export default function RechargePage() {
     </div>
   );
 }
+
+</description>
+    <content><![CDATA[
+
