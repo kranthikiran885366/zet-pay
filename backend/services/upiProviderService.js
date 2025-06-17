@@ -1,196 +1,199 @@
 
 /**
- * @fileOverview SIMULATED UPI Provider Service (PSP/Bank Integration) - Now conceptually real
+ * @fileOverview SIMULATED UPI Provider Service (PSP/Bank Integration) - REFACTORED FOR REAL API CONCEPT
+ * This service would interact with a secure SDK/API from a licensed PSP.
  */
 
-const { addDays, format } = require('date-fns');
+const axios = require('axios'); // Example HTTP client
 
-// SIMULATED REAL UPI PROVIDER SERVICE
-// This service would interact with a secure SDK/API from a licensed PSP (e.g., NPCI, or a bank providing UPI APIs).
-// API Keys and secrets would be stored in .env and used here.
+// Helper to simulate a mock API response or throw specific errors for unimplemented real calls
+async function simulateOrGetMock(key, mockLogic, realApiCallLogic, useMockOverride = false) {
+    if (process.env.USE_REAL_UPI_PROVIDER_API === 'true' && !useMockOverride) {
+        try {
+            return await realApiCallLogic();
+        } catch (error) {
+            console.warn(`[UPI Provider] Real API call for ${key} failed: ${error.message}. Falling back to mock behavior.`);
+            // Simulate the error structure that real API might throw or use mock logic
+            if (error.message.includes("Not Implemented")) { // If it's our "Not Implemented" error
+                 return await mockLogic(); // Fallback to detailed mock logic
+            }
+            // For other real API errors, we might re-throw or return a generic error structure
+            throw new Error(`Real API for ${key} is currently unavailable or failed: ${error.message}`);
+        }
+    }
+    // If real API is not enabled or mock override is true
+    console.log(`[UPI Provider] Using MOCK behavior for ${key}.`);
+    return await mockLogic();
+}
 
-/**
- * Simulates the account discovery process during bank linking with a real PSP.
- * @param {string} userId User ID (often derived from mobile number used for binding).
- */
-const simulateAccountDiscovery = async (userId) => {
-    console.log(`[Real PSP Sim] Calling REAL PSP for account discovery for user associated with ${userId}...`);
-    // const pspResponse = await RealPspSdk.discoverAccounts({ mobileNumber: userMobile });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('[Real PSP Sim] REAL Account discovery simulation complete.');
-};
 
-/**
- * Links a bank account with the real PSP, generates UPI ID.
- * @param {object} details - { userId, bankName, accountNumber, accountType, ifsc }
- * @returns {Promise<object>} - { success, upiId, maskedAccountNumber, message, pinLength }
- */
 const linkAccountWithPsp = async ({ userId, bankName, accountNumber, accountType, ifsc }) => {
-    console.log(`[Real PSP Sim] Calling REAL PSP to link account: User ${userId}, Bank ${bankName}, Acc ${String(accountNumber).slice(-4)}`);
-    // const pspResponse = await RealPspSdk.linkBankAccount({ userId, bankDetails: { name: bankName, accNo: accountNumber, ifsc, type: accountType } });
-    // if (!pspResponse.success) throw new Error(pspResponse.error.message);
-    // return { success: true, upiId: pspResponse.data.vpa, maskedAccountNumber: pspResponse.data.maskedAcc, ... };
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    const bankHandle = bankName.toLowerCase().includes('sbi') ? 'oksbi' :
-                       bankName.toLowerCase().includes('icici') ? 'okicici' :
-                       bankName.toLowerCase().includes('hdfc') ? 'okhdfcbank' : 'okaxis'; 
-    const generatedUpiId = `${userId.substring(0,4)}${String(accountNumber).slice(-4)}@${bankHandle}`;
-    console.log(`[Real PSP Sim] REAL Account linked with PSP. UPI ID: ${generatedUpiId}`);
-    return {
-        success: true,
-        upiId: generatedUpiId,
-        maskedAccountNumber: `xxxx${String(accountNumber).slice(-4)}`,
-        message: "REAL Account linked and UPI ID generated with PSP.",
-        pinLength: (Math.random() > 0.5 ? 6:4)
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for account linking
+        // const pspResponse = await axios.post(`${process.env.PSP_API_URL}/linkAccount`, { userId, bankName, accountNumber, ifsc, accountType }, { headers: { 'X-PSP-Auth': process.env.PSP_API_KEY }});
+        // if (!pspResponse.data.success) throw new Error(pspResponse.data.message);
+        // return { success: true, upiId: pspResponse.data.vpa, maskedAccountNumber: pspResponse.data.maskedAcc, pinLength: pspResponse.data.pinLength || 4, message: "Account linked with PSP." };
+        console.error(`[UPI Provider] REAL linkAccountWithPsp NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP account linking.");
     };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const bankHandle = bankName.toLowerCase().includes('sbi') ? 'oksbi' : bankName.toLowerCase().includes('icici') ? 'okicici' : 'okaxis';
+        const generatedUpiId = `${userId.substring(0,4)}${String(accountNumber).slice(-4)}@${bankHandle}`;
+        return { success: true, upiId: generatedUpiId, maskedAccountNumber: `xxxx${String(accountNumber).slice(-4)}`, pinLength: (Math.random() > 0.5 ? 6:4), message: "Account linked (Mock)." };
+    };
+    return simulateOrGetMock(`linkAccount_${bankName}`, mockLogic, realApiCallLogic);
 };
 
-/**
- * Deregisters a UPI ID with the real PSP.
- * @param {string} upiId
- * @returns {Promise<object>}
- */
 const deregisterUpiId = async (upiId) => {
-    console.log(`[Real PSP Sim] Calling REAL PSP to deregister UPI ID ${upiId}...`);
-    // await RealPspSdk.deregisterVpa({ vpa: upiId });
-    await new Promise(resolve => setTimeout(resolve, 500));
-    console.log(`[Real PSP Sim] REAL UPI ID ${upiId} deregistered.`);
-    return { success: true, message: "REAL UPI ID deregistered from provider." };
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP to deregister UPI ID
+        // await axios.post(`${process.env.PSP_API_URL}/deregisterVpa`, { vpa: upiId }, { headers: { 'X-PSP-Auth': process.env.PSP_API_KEY }});
+        // return { success: true, message: "UPI ID deregistered from provider." };
+        console.error(`[UPI Provider] REAL deregisterUpiId NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP UPI ID deregistration.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return { success: true, message: "UPI ID deregistered (Mock)." };
+    };
+    return simulateOrGetMock(`deregisterUpiId_${upiId}`, mockLogic, realApiCallLogic);
 };
 
-/**
- * Verifies a recipient's UPI ID with the real PSP.
- * @param {string} upiId
- * @returns {Promise<object>} - { accountHolderName, isMerchant }
- */
 const verifyRecipient = async (upiId) => {
-    console.log(`[Real PSP Sim] Calling REAL PSP to verify UPI ID: ${upiId}`);
-    // const pspResponse = await RealPspSdk.verifyVpa({ vpa: upiId });
-    // if (!pspResponse.valid) throw new Error(pspResponse.error.message || "Invalid UPI ID");
-    // return { accountHolderName: pspResponse.data.accountHolderName, isMerchant: pspResponse.data.isMerchantVpa };
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    if (!upiId || typeof upiId !== 'string' || !upiId.includes('@')) {
-        const error = new Error("Invalid UPI ID format.");
-        error.code = 'UPI_INVALID_ID_FORMAT_REAL';
-        throw error;
-    }
-    // Further mock simulations for different UPI ID states
-    // ... (same mock logic as before for 'invalid', 'unknown', etc.)
-    const namePart = upiId.split('@')[0].replace(/[._]/g, ' ').trim();
-    const verifiedName = namePart.split(' ').filter(part => part.length > 0).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-    console.log(`[Real PSP Sim] REAL Verified Name: ${verifiedName || 'Verified User (Real)'}`);
-    return { accountHolderName: verifiedName || "Verified User (Real)", isMerchant: Math.random() > 0.7 };
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for VPA verification
+        // const pspResponse = await axios.get(`${process.env.PSP_API_URL}/verifyVpa?vpa=${upiId}`, { headers: { 'X-PSP-Auth': process.env.PSP_API_KEY }});
+        // if (!pspResponse.data.valid) { const err = new Error(pspResponse.data.message || "Invalid UPI ID"); err.code = 'UPI_ID_NOT_FOUND_REAL'; throw err; }
+        // return { accountHolderName: pspResponse.data.accountHolderName, isMerchant: pspResponse.data.isMerchant };
+        console.error(`[UPI Provider] REAL verifyRecipient NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP VPA verification.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        if (!upiId || !upiId.includes('@')) { const err = new Error("Invalid UPI ID format (Mock)."); err.code = 'UPI_INVALID_ID_FORMAT'; throw err; }
+        if (upiId.toLowerCase().includes("unknown@")) { const err = new Error("UPI ID not found (Mock)."); err.code = 'UPI_ID_NOT_FOUND'; throw err; }
+        const namePart = upiId.split('@')[0].replace(/[._]/g, ' ').trim();
+        const verifiedName = namePart.split(' ').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+        return { accountHolderName: verifiedName || "Verified User (Mock)", isMerchant: Math.random() > 0.7 };
+    };
+    return simulateOrGetMock(`verifyRecipient_${upiId}`, mockLogic, realApiCallLogic);
 };
 
-/**
- * Initiates a payment with the real PSP.
- * @param {object} details - { userId, sourceUpiId, recipientUpiId, amount, pin, note }
- * @returns {Promise<object>} - { status, message, pspTransactionId, npciErrorCode, mightBeDebited }
- */
 const initiatePayment = async ({ userId, sourceUpiId, recipientUpiId, amount, pin, note }) => {
-     console.log(`[Real PSP Sim] Calling REAL PSP for payment from ${sourceUpiId} to ${recipientUpiId} for ₹${amount}, User: ${userId}`);
-     // const pspResponse = await RealPspSdk.initiatePayment({ fromVpa: sourceUpiId, toVpa: recipientUpiId, amount, mpin: pin, remarks: note, clientTxnId: uniqueId() });
-     // Handle pspResponse.status, pspResponse.data.npciTxnId, pspResponse.data.npciErrorCode etc.
-     await new Promise(resolve => setTimeout(resolve, 1200));
-
-     // Mock logic for PIN validation and various error scenarios (same as before)
-     // ...
-     if (!pin || (pin !== '1234' && pin !== '123456' && pin !== '0000' && pin !== '000000')) {
-          const error = new Error('Incorrect UPI PIN (Real PSP).');
-          error.pspErrorCode = 'M4_REAL'; error.npciErrorCode = 'ZM_REAL'; error.mightBeDebited = false;
-          throw error;
-     }
-     // Other error simulations...
-     if (recipientUpiId.toLowerCase().includes('limitexceeded_real')) {
-          const error = new Error('Daily UPI transaction limit exceeded (Real PSP).');
-          error.pspErrorCode = 'L1_REAL'; error.npciErrorCode = 'U09_REAL'; error.mightBeDebited = false;
-          throw error;
-     }
-
-
-     if (Math.random() < 0.02) { // Lower failure rate
-         const error = new Error('Payment failed due to an unexpected bank error (Real PSP).');
-         error.pspErrorCode = 'G9_REAL'; error.npciErrorCode = 'Z9_REAL'; error.mightBeDebited = Math.random() < 0.1;
-          throw error;
-     }
-      if (Math.random() < 0.03) {
-          return { status: 'Pending', message: 'Transaction is Pending Confirmation (Real PSP)', pspTransactionId: `REAL_PSP_PENDING_${Date.now()}`, npciErrorCode: 'BP_REAL', mightBeDebited: true };
-      }
-
-     const pspTransactionId = `REAL_PSP_UPI_${Date.now()}`;
-     console.log(`[Real PSP Sim] REAL Payment successful to ${recipientUpiId}. Txn ID: ${pspTransactionId}`);
-     return { status: 'Completed', message: 'Transaction Successful (Real PSP)', pspTransactionId, npciErrorCode: '00_REAL', mightBeDebited: false };
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for payment initiation
+        // This is complex and involves PIN encryption, device binding, and handling various NPCI response codes.
+        // const pspResponse = await RealPspSdk.initiatePayment({ fromVpa: sourceUpiId, toVpa: recipientUpiId, amount, mpin: encryptedPin, remarks: note, clientTxnId: `ZETPAY_${Date.now()}` });
+        // // Map pspResponse.status, pspResponse.data.npciTxnId, pspResponse.data.npciErrorCode to standard format
+        // return { status: mappedStatus, message: pspResponse.message, pspTransactionId: pspResponse.pspTxId, npciErrorCode: pspResponse.npciRrn, mightBeDebited: pspResponse.isDebitUncertain };
+        console.error(`[UPI Provider] REAL initiatePayment NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP payment initiation.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        if (!pin || (pin !== '1234' && pin !== '123456' && pin !== '0000' && pin !== '000000')) { const err = new Error('Incorrect UPI PIN (Mock).'); err.code = 'ZM'; err.mightBeDebited = false; throw err; }
+        if (recipientUpiId.toLowerCase().includes('limitexceeded')) { const err = new Error('Daily UPI transaction limit exceeded (Mock).'); err.code = 'U09'; err.mightBeDebited = false; throw err; }
+        if (recipientUpiId.toLowerCase().includes('bankdown')) { const err = new Error('Recipient bank server down (Mock).'); err.code = 'U16'; err.mightBeDebited = Math.random() < 0.2; throw err; }
+        if (Math.random() < 0.03) { const err = new Error('Payment failed due to an unexpected bank error (Mock).'); err.code = 'Z9'; err.mightBeDebited = Math.random() < 0.1; throw err; }
+        if (Math.random() < 0.05) return { status: 'Pending', message: 'Transaction is Pending Confirmation (Mock)', pspTransactionId: `MOCK_PSP_PENDING_${Date.now()}`, code: 'BP', mightBeDebited: true };
+        return { status: 'Completed', message: 'Transaction Successful (Mock)', pspTransactionId: `MOCK_PSP_UPI_${Date.now()}`, code: '00', mightBeDebited: false };
+    };
+    return simulateOrGetMock(`initiatePayment_${recipientUpiId}`, mockLogic, realApiCallLogic);
  };
 
- /**
- * Checks account balance with the real PSP.
- * @param {string} upiId
- * @param {string} pin
- * @param {string} userId
- * @returns {Promise<number>}
- */
- const checkAccountBalance = async (upiId, pin, userId) => {
-     console.log(`[Real PSP Sim] Calling REAL PSP for balance check for ${upiId}, User: ${userId}`);
-     // const pspResponse = await RealPspSdk.checkBalance({ vpa: upiId, mpin: pin });
-     // if (!pspResponse.success) throw new Error(pspResponse.error.message);
-     // return pspResponse.data.balance;
-     await new Promise(resolve => setTimeout(resolve, 500));
-     if (!pin || (pin !== '1234' && pin !== '123456' && pin !== '0000' && pin !== '000000')) {
-          const error = new Error('Incorrect UPI PIN (Real PSP).'); error.code = 'UPI_INCORRECT_PIN_REAL'; throw error;
-     }
-     const balance = parseFloat((Math.random() * 50000 + 100).toFixed(2));
-     console.log(`[Real PSP Sim] REAL Balance for ${upiId}: ${balance}`);
-     return balance;
+const checkAccountBalance = async (upiId, pin, userId) => {
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for balance check
+        // const pspResponse = await RealPspSdk.checkBalance({ vpa: upiId, mpin: encryptedPin });
+        // if (!pspResponse.success) throw new Error(pspResponse.error.message);
+        // return pspResponse.data.balance;
+        console.error(`[UPI Provider] REAL checkAccountBalance NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP balance check.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!pin || (pin !== '1234' && pin !== '123456' && pin !== '0000' && pin !== '000000')) { const err = new Error('Incorrect UPI PIN (Mock).'); err.code = 'ZM_BAL'; throw err; }
+        return parseFloat((Math.random() * 50000 + 100).toFixed(2));
+    };
+    return simulateOrGetMock(`checkBalance_${upiId}`, mockLogic, realApiCallLogic);
  };
 
-/**
- * Initiates a secure debit with the real PSP (e.g., for wallet recovery via mandate).
- * @param {string} upiId
- * @param {number} amount
- * @param {string} reason
- * @returns {Promise<object>}
- */
- const initiateDebit = async (upiId, amount, reason) => {
-     console.log(`[Real PSP Sim] Calling REAL PSP for SECURE DEBIT of ₹${amount} from ${upiId} for: ${reason}`);
-     // const pspResponse = await RealPspSdk.debitAccount({ vpa: upiId, amount, mandateId: relevantMandate, remarks: reason });
-     // if (!pspResponse.success) throw new Error(pspResponse.error.message);
-     // return { success: true, transactionId: pspResponse.data.npciTxnId, pspTransactionId: pspResponse.data.pspTxnId };
-     await new Promise(resolve => setTimeout(resolve, 1000));
-     const success = Math.random() > 0.05; // Higher success for critical debits
-     if (!success) {
-         const error = new Error('Automated debit failed (Real PSP - e.g., insufficient funds or mandate issue).');
-         error.code = 'AUTO_DEBIT_FAILED_REAL'; throw error;
-     }
-     const transactionId = `REAL_DEBIT_${Date.now()}`;
-     console.log(`[Real PSP Sim] REAL Secure debit successful. Txn ID: ${transactionId}`);
-     return { success: true, transactionId, pspTransactionId: transactionId };
+const initiateDebit = async (upiId, amount, reason) => {
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for secure debit (e.g., via mandate)
+        // const pspResponse = await RealPspSdk.debitAccount({ vpa: upiId, amount, mandateId: relevantMandate, remarks: reason });
+        // if (!pspResponse.success) throw new Error(pspResponse.error.message);
+        // return { success: true, transactionId: pspResponse.data.npciTxnId, pspTransactionId: pspResponse.data.pspTxnId };
+        console.error(`[UPI Provider] REAL initiateDebit NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP secure debit.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const success = Math.random() > 0.05;
+        if (!success) { const err = new Error('Automated debit failed (Mock - e.g., insufficient funds or mandate issue).'); err.code = 'AUTO_DEBIT_FAILED'; throw err; }
+        return { success: true, transactionId: `MOCK_DEBIT_${Date.now()}`, pspTransactionId: `MOCK_PSP_DEBIT_${Date.now()}` };
+    };
+    return simulateOrGetMock(`initiateDebit_${upiId}`, mockLogic, realApiCallLogic);
  };
 
- /**
- * Sets or changes UPI PIN with the real PSP.
- * @param {object} details - { userId, upiId, oldPin, newPin, bankAccountDetails }
- * @returns {Promise<object>}
- */
- const setOrChangeUpiPin = async ({ userId, upiId, oldPin, newPin, bankAccountDetails }) => {
-    console.log(`[Real PSP Sim] Calling REAL PSP for Set/Change UPI PIN for User ${userId}, UPI ID ${upiId}.`);
-    // const pspResponse = await RealPspSdk.setPin({ vpa: upiId, oldPin, newPin, deviceDetails, bankConsentDetails: bankAccountDetails });
-    // if (!pspResponse.success) throw new Error(pspResponse.error.message);
-    // return { success: true, message: "UPI PIN set/changed successfully (Real PSP)." };
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    if (!oldPin && !bankAccountDetails) {
-        return { success: false, message: "Bank account details required for first time PIN set (Real PSP)." };
-    }
-    if (oldPin && oldPin !== '1234' && oldPin !== '123456') {
-        return { success: false, message: "Incorrect old UPI PIN (Real PSP)." };
-    }
-    console.log(`[Real PSP Sim] REAL UPI PIN for ${upiId} set/changed successfully.`);
-    return { success: true, message: 'REAL UPI PIN set/changed successfully.' };
+const setOrChangeUpiPin = async ({ userId, upiId, oldPin, newPin, bankAccountDetails }) => {
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for Set/Change UPI PIN
+        // This involves secure device binding, OTP verification, and debit card details for new PIN set.
+        // const pspResponse = await RealPspSdk.setPin({ vpa: upiId, oldPin: encryptedOldPin, newPin: encryptedNewPin, deviceDetails, bankConsentDetails: bankAccountDetails });
+        // if (!pspResponse.success) throw new Error(pspResponse.error.message);
+        // return { success: true, message: "UPI PIN set/changed successfully." };
+        console.error(`[UPI Provider] REAL setOrChangeUpiPin NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP Set/Change UPI PIN.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (!oldPin && !bankAccountDetails) return { success: false, message: "Bank account details required for first time PIN set (Mock)." };
+        if (oldPin && oldPin !== '1234' && oldPin !== '123456') return { success: false, message: "Incorrect old UPI PIN (Mock)." };
+        return { success: true, message: 'UPI PIN set/changed successfully (Mock).' };
+    };
+    return simulateOrGetMock(`setUpiPin_${upiId}`, mockLogic, realApiCallLogic);
 };
+
+const simulateEnableUpiLite = async (userId, linkedAccountUpiId) => {
+    // This is a conceptual placeholder. Real UPI Lite enablement is complex.
+    console.log(`[UPI Provider] Simulating REAL PSP enabling UPI Lite for ${userId} with ${linkedAccountUpiId}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return { success: true, message: 'UPI Lite enabled with PSP (Mock).' };
+};
+
+const simulateDisableUpiLite = async (userId, linkedAccountUpiId, balanceToTransfer) => {
+    // Conceptual placeholder.
+    console.log(`[UPI Provider] Simulating REAL PSP disabling UPI Lite for ${userId}. Transferring ₹${balanceToTransfer} to ${linkedAccountUpiId}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return { success: true, message: 'UPI Lite disabled and balance transferred with PSP (Mock).' };
+};
+
+const initiateMandateSetup = async (details) => {
+    const realApiCallLogic = async () => {
+        // TODO: Implement REAL API call to PSP for mandate setup.
+        // This involves user redirection to bank/PSP page or using PSP SDK for authentication.
+        // const pspResponse = await RealPspSdk.createMandate(details);
+        // return { success: pspResponse.success, mandateUrn: pspResponse.urn, pspReferenceId: pspResponse.pspRef, status: pspResponse.status, message: pspResponse.message };
+        console.error(`[UPI Provider] REAL initiateMandateSetup NOT IMPLEMENTED.`);
+        throw new Error("Not Implemented: Real PSP mandate setup.");
+    };
+    const mockLogic = async () => {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const randomStatus = Math.random() > 0.2 ? 'Pending Approval' : 'Active';
+        return { success: true, mandateUrn: `MOCKURN${Date.now()}`, pspReferenceId: `MOCKPSPMAND${Date.now()}`, status: randomStatus, message: 'Mandate setup initiated with PSP (Mock).' };
+    };
+    return simulateOrGetMock(`initiateMandate`, mockLogic, realApiCallLogic);
+};
+// Placeholder for pause, resume, cancel mandate functions - they'd follow similar pattern
+const pauseMandate = async (mandateUrn) => { /* ... Real API Call ... */ await new Promise(resolve => setTimeout(resolve, 500)); return { success: true, message: 'Mandate paused (Mock).' }; };
+const resumeMandate = async (mandateUrn) => { /* ... Real API Call ... */ await new Promise(resolve => setTimeout(resolve, 500)); return { success: true, message: 'Mandate resumed (Mock).' }; };
+const cancelMandate = async (mandateUrn) => { /* ... Real API Call ... */ await new Promise(resolve => setTimeout(resolve, 500)); return { success: true, message: 'Mandate cancelled (Mock).' }; };
 
 
 module.exports = {
-    simulateAccountDiscovery,
+    // simulateAccountDiscovery, // This function seems not used and can be removed or marked internal
     linkAccountWithPsp,
     deregisterUpiId,
     verifyRecipient,
@@ -198,37 +201,10 @@ module.exports = {
     checkAccountBalance,
     initiateDebit,
     setOrChangeUpiPin,
-    initiateMandateSetup: async (details) => {
-        console.log('[Real PSP Sim] REAL PSP: Initiating mandate setup:', details);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const randomStatus = Math.random() > 0.2 ? 'Pending Approval' : 'Active';
-        return { success: true, mandateUrn: `REALURN${Date.now()}`, referenceId: `REALPSPMAND${Date.now()}`, status: randomStatus, message: 'REAL Mandate setup initiated with PSP.' };
-    },
-    pauseMandate: async (mandateUrn) => {
-        console.log('[Real PSP Sim] REAL PSP: Pausing mandate:', mandateUrn);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return { success: true, message: 'REAL Mandate paused successfully with PSP.' };
-    },
-    resumeMandate: async (mandateUrn) => {
-        console.log('[Real PSP Sim] REAL PSP: Resuming mandate:', mandateUrn);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return { success: true, message: 'REAL Mandate resumed successfully with PSP.' };
-    },
-    cancelMandate: async (mandateUrn) => {
-        console.log('[Real PSP Sim] REAL PSP: Cancelling mandate:', mandateUrn);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return { success: true, message: 'REAL Mandate cancelled successfully with PSP.' };
-    },
-     simulateEnableUpiLite: async (userId, linkedAccountUpiId) => {
-        console.log(`[Real PSP Sim] REAL PSP: Enabling UPI Lite for ${userId} with ${linkedAccountUpiId}`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return { success: true, message: 'REAL UPI Lite enabled with PSP.' };
-    },
-    simulateDisableUpiLite: async (userId, linkedAccountUpiId, balanceToTransfer) => {
-        console.log(`[Real PSP Sim] REAL PSP: Disabling UPI Lite for ${userId}. Transferring ₹${balanceToTransfer} to ${linkedAccountUpiId}`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return { success: true, message: 'REAL UPI Lite disabled and balance transferred with PSP.' };
-    },
+    initiateMandateSetup,
+    pauseMandate,
+    resumeMandate,
+    cancelMandate,
+    simulateEnableUpiLite,
+    simulateDisableUpiLite,
 };
-
-    

@@ -1,121 +1,157 @@
 
 /**
- * @fileOverview BACKEND service for blockchain interaction (SIMULATED).
+ * @fileOverview BACKEND service for blockchain interaction - REFACTORED FOR REAL API CONCEPT
+ * This service would use Web3.js/Ethers.js to interact with a real blockchain.
  */
 
-import axios from 'axios'; // Example: Using axios if calling an external service
+import axios from 'axios'; // Keep for potential helper calls, but core logic would be Web3/Ethers
 
-const BLOCKCHAIN_API_ENDPOINT = process.env.BLOCKCHAIN_API_ENDPOINT || 'http://localhost:5001/log'; // Example logging service endpoint
+// Environment variables for blockchain interaction
+const BLOCKCHAIN_NODE_URL = process.env.BLOCKCHAIN_NODE_URL; // e.g., Infura/Alchemy RPC URL
+const BLOCKCHAIN_PRIVATE_KEY = process.env.BLOCKCHAIN_PRIVATE_KEY; // Private key of the account funding transactions
+const BLOCKCHAIN_CONTRACT_ADDRESS = process.env.BLOCKCHAIN_CONTRACT_ADDRESS; // Address of your logging smart contract
+// const LOGGING_CONTRACT_ABI = require('./LoggingContractABI.json'); // ABI of your smart contract
+
+// TODO: Import Web3.js or Ethers.js when implementing real blockchain calls
+// const Web3 = require('web3');
+// let web3Instance;
+// let loggingContractInstance;
+
+// if (BLOCKCHAIN_NODE_URL && BLOCKCHAIN_CONTRACT_ADDRESS && LOGGING_CONTRACT_ABI) {
+//     try {
+//         web3Instance = new Web3(new Web3.providers.HttpProvider(BLOCKCHAIN_NODE_URL));
+//         loggingContractInstance = new web3Instance.eth.Contract(LOGGING_CONTRACT_ABI, BLOCKCHAIN_CONTRACT_ADDRESS);
+//         console.log("[Blockchain Logger] Web3 instance and contract initialized for REAL interaction.");
+//     } catch (e) {
+//         console.error("[Blockchain Logger] Failed to initialize Web3/Contract instance:", e.message);
+//     }
+// } else {
+//     console.warn("[Blockchain Logger] Blockchain environment variables (NODE_URL, CONTRACT_ADDRESS, ABI) not fully set. REAL logging will be disabled/mocked.");
+// }
 
 interface BlockchainLogData {
     userId: string;
-    type: string; // e.g., 'Recharge', 'Sent', 'Bill Payment'
-    amount: number; // Can be positive or negative
-    date: string; // ISO String timestamp of the original transaction
-    recipient?: string; // e.g., Mobile number, UPI ID, Biller ID
-    name?: string; // e.g., Payee name, Biller name
+    type: string;
+    amount: number;
+    date: string; // ISO Date string
+    recipient?: string;
+    name?: string;
     description?: string;
-    status?: string; // e.g., 'Completed', 'Failed', 'Pending'
+    status?: string;
     originalId?: string; // Original Firestore transaction ID
-    ticketId?: string; // Optional, like a booking reference
-    // Add other relevant fields to log, e.g., operatorReferenceId for recharges
+    ticketId?: string;
     operatorReferenceId?: string;
 }
 
 interface BlockchainTransactionInfo {
-    loggedData: any; // The actual data retrieved from the blockchain
-    blockchainTimestamp: string; // Timestamp from the block
+    loggedData: any;
+    blockchainTimestamp: string;
     blockNumber: number;
-    // Add other relevant blockchain metadata
 }
 
 /**
- * Logs transaction data to the blockchain (SIMULATED).
- * This function is called by the backend transaction logger.
+ * Logs a hash of transaction data to the blockchain.
  *
  * @param transactionId The unique ID of the transaction from our system (usually Firestore ID).
- * @param data The data object to be logged. This should be a summary, not all PII.
- *             Key details to hash: transactionId, userId, amount, type, timestamp, recipientIdentifier, status.
+ * @param data The data object to be logged/hashed.
  * @returns A promise that resolves with the blockchain transaction hash (or null if simulation/failure).
  */
 export async function logTransaction(transactionId: string, data: BlockchainLogData): Promise<string | null> {
-    // For real logging, hash sensitive parts or only log a reference hash.
-    // Example of data to potentially hash and log:
-    const dataToHash = {
-        original_system_id: transactionId,
-        user_ref: data.userId.substring(0, 8), // Partial user ID for privacy
-        type: data.type,
-        amount_abs: Math.abs(data.amount), // Log absolute amount for consistency on chain
-        currency: "INR", // Assuming INR
-        status: data.status,
-        timestamp_orig: data.date, // Original transaction timestamp
-        // Optionally include a hash of more detailed, sensitive parts if needed for off-chain verification
-        // details_hash: crypto.createHash('sha256').update(JSON.stringify({ recipient: data.recipient, name: data.name })).digest('hex'),
+    // Data to be hashed and potentially logged:
+    // Focus on essential, non-PII data, or a hash of more comprehensive data.
+    const dataToLog = {
+        appTransactionId: transactionId,
+        eventType: data.type,
+        eventStatus: data.status,
+        timestamp: data.date, // Original transaction timestamp
+        // Optional: A hash of other details if you don't want to log them plainly
+        // detailsHash: crypto.createHash('sha250').update(JSON.stringify({ userId: data.userId, amount: data.amount, recipient: data.recipient})).digest('hex'),
     };
+    const logEntryString = JSON.stringify(dataToLog); // Convert to string for hashing or direct logging
 
-    console.log(`[Blockchain Logger SIM] Logging transaction ID: ${transactionId}. Data to hash/log (conceptually):`, dataToHash);
-    // In a real implementation:
-    // 1. Connect to the blockchain node/service (e.g., Hyperledger Fabric Gateway, Web3 provider for Ethereum/Polygon).
-    // 2. Prepare the transaction data according to the smart contract ABI (e.g., a hash of `dataToHash`).
-    // 3. Submit the transaction to the smart contract (e.g., contract.submitTransaction('logTransaction', transactionId, hashedDataString)).
-    // 4. Handle potential errors (connection issues, contract errors, endorsement failures, gas fees).
-    // 5. Return the blockchain transaction hash/ID upon success.
+    console.log(`[Blockchain Logger] Preparing to log REAL transaction ID: ${transactionId}. Data: ${logEntryString.substring(0,100)}...`);
 
-    try {
-        // Simulate interaction, maybe call a mock logging service if BLOCKCHAIN_API_ENDPOINT is set
-        if (BLOCKCHAIN_API_ENDPOINT !== 'http://localhost:5001/log' && process.env.NODE_ENV !== 'test') {
-            // const response = await axios.post(BLOCKCHAIN_API_ENDPOINT, {
-            //     primary_id: transactionId,
-            //     payload: dataToHash, // Send the conceptual data/hash
-            //     timestamp: new Date().toISOString(),
-            // });
-            // console.log("[Blockchain Logger SIM] Response from external logger:", response.data);
-        }
-        await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 100)); // Simulate network/processing delay
-
-        const mockTxHash = `0xSIM_${[...Array(60)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`;
-        console.log(`[Blockchain Logger SIM] Transaction ${transactionId} logged successfully. Mock Hash: ${mockTxHash}`);
+    if (process.env.USE_REAL_BLOCKCHAIN !== 'true' || !BLOCKCHAIN_NODE_URL || !BLOCKCHAIN_PRIVATE_KEY || !BLOCKCHAIN_CONTRACT_ADDRESS) {
+        console.warn(`[Blockchain Logger] REAL Blockchain logging NOT ENABLED or configured. Using mock hash.`);
+        await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 100));
+        const mockTxHash = `0xSIM_BLOCKCHAIN_${[...Array(40)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+        console.log(`[Blockchain Logger] Transaction ${transactionId} MOCK logged. Hash: ${mockTxHash}`);
         return mockTxHash;
-    } catch (error) {
-        if (axios.isAxiosError(error)) {
-             console.error(`[Blockchain Logger SIM] Axios error logging transaction ${transactionId}:`, error.response?.data || error.message);
-        } else if (error instanceof Error){
-             console.error(`[Blockchain Logger SIM] Generic error logging transaction ${transactionId}:`, error.message);
-        } else {
-            console.error(`[Blockchain Logger SIM] Unknown error logging transaction ${transactionId}:`, error);
+    }
+
+    // TODO: Implement REAL Blockchain logging using Web3.js or Ethers.js
+    // 1. Ensure web3Instance and loggingContractInstance are initialized.
+    // 2. Get the account from BLOCKCHAIN_PRIVATE_KEY.
+    // 3. Estimate gas for the smart contract function call.
+    // 4. Send the transaction:
+    // try {
+    //     const account = web3Instance.eth.accounts.privateKeyToAccount(BLOCKCHAIN_PRIVATE_KEY);
+    //     web3Instance.eth.accounts.wallet.add(account); // Add account to local wallet
+    //     const gasPrice = await web3Instance.eth.getGasPrice();
+    //     const txConfig = {
+    //         from: account.address,
+    //         gasPrice: gasPrice,
+    //         // gas: await loggingContractInstance.methods.addLogEntry(transactionId, logEntryString).estimateGas({ from: account.address }),
+    //         gas: 200000, // Set a reasonable gas limit, or estimate
+    //     };
+    //     const receipt = await loggingContractInstance.methods.addLogEntry(transactionId, logEntryString).send(txConfig);
+    //     console.log(`[Blockchain Logger] Transaction ${transactionId} logged to REAL blockchain. Hash: ${receipt.transactionHash}`);
+    //     return receipt.transactionHash;
+    // } catch (error) {
+    //     console.error(`[Blockchain Logger] REAL Blockchain Error logging transaction ${transactionId}:`, error.message);
+    //     return null; // Or throw
+    // }
+    console.error(`[Blockchain Logger] REAL Blockchain logging for logTransaction NOT IMPLEMENTED.`);
+    throw new Error("Real logTransaction API not configured.");
+}
+
+/**
+ * Retrieves transaction details from the blockchain (SIMULATED - REAL implementation needs contract interaction).
+ */
+export async function getTransactionInfo(transactionId: string): Promise<BlockchainTransactionInfo | null> {
+    console.log(`[Blockchain Logger] Fetching REAL info for transaction ${transactionId}`);
+     if (process.env.USE_REAL_BLOCKCHAIN !== 'true' || !BLOCKCHAIN_NODE_URL) {
+        console.warn(`[Blockchain Logger] REAL Blockchain info fetch NOT ENABLED. Using mock.`);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (transactionId.includes('_') || transactionId.length > 15) {
+            return { loggedData: { appTransactionId: transactionId, eventType: 'MockType', eventStatus: 'Completed' }, blockchainTimestamp: new Date().toISOString(), blockNumber: Math.floor(Math.random() * 1000000) };
         }
         return null;
     }
+    // TODO: Implement REAL blockchain query using transactionId or a blockchain hash
+    // Example:
+    // try {
+    //     const logData = await loggingContractInstance.methods.getLogEntry(transactionId).call();
+    //     // Parse logData and fetch block details
+    //     return { loggedData: JSON.parse(logData.entryData), blockchainTimestamp: new Date(Number(logData.timestamp) * 1000).toISOString(), blockNumber: Number(logData.blockNumber) };
+    // } catch (error) {
+    //     console.error(`[Blockchain Logger] REAL Blockchain Error fetching info for ${transactionId}:`, error.message);
+    //     return null;
+    // }
+    console.error(`[Blockchain Logger] REAL Blockchain info fetch for getTransactionInfo NOT IMPLEMENTED.`);
+    throw new Error("Real getTransactionInfo API not configured.");
 }
 
 /**
- * Retrieves transaction details from the blockchain via the backend API (SIMULATED).
- *
- * @param transactionId The ID used when logging the transaction (usually Firestore ID).
- * @returns A promise resolving to the logged data or null if not found.
- */
-export async function getTransactionInfo(transactionId: string): Promise<BlockchainTransactionInfo | null> {
-    console.log(`[Blockchain Logger SIM] Fetching info for transaction ${transactionId}`);
-    await new Promise(resolve => setTimeout(resolve, 100));
-    if (transactionId.startsWith('TXN_') || transactionId.includes('_') || transactionId.length > 15) {
-        return {
-            loggedData: { original_system_id: transactionId, user_ref: 'mockUser', type: 'MockType', amount_abs: 123.45, status: 'Completed' },
-            blockchainTimestamp: new Date(Date.now() - Math.random() * 100000000).toISOString(),
-            blockNumber: Math.floor(Math.random() * 1000000),
-        };
-    }
-    return null;
-}
-
-/**
- * Verifies a transaction on the blockchain (SIMULATED).
- * @param transactionId The ID of the transaction to verify.
- * @returns A promise resolving to true if valid, false otherwise.
+ * Verifies a transaction on the blockchain (SIMULATED - REAL implementation needs contract interaction).
  */
 export async function verifyTransaction(transactionId: string): Promise<boolean> {
-     console.log(`[Blockchain Logger SIM] Verifying transaction ${transactionId}`);
-     await new Promise(resolve => setTimeout(resolve, 50));
-     return (transactionId.includes('_') || transactionId.length > 15) && Math.random() > 0.1;
+     console.log(`[Blockchain Logger] Verifying REAL transaction ${transactionId}`);
+      if (process.env.USE_REAL_BLOCKCHAIN !== 'true' || !BLOCKCHAIN_NODE_URL) {
+        console.warn(`[Blockchain Logger] REAL Blockchain verification NOT ENABLED. Using mock.`);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return (transactionId.includes('_') || transactionId.length > 15) && Math.random() > 0.1;
+    }
+    // TODO: Implement REAL blockchain verification, e.g., check if log exists and matches expected data
+    // try {
+    //     const logData = await loggingContractInstance.methods.getLogEntry(transactionId).call();
+    //     return !!logData && !!logData.entryData; // Basic check if entry exists
+    // } catch (error) {
+    //     console.error(`[Blockchain Logger] REAL Blockchain Error verifying ${transactionId}:`, error.message);
+    //     return false;
+    // }
+    console.error(`[Blockchain Logger] REAL Blockchain verification for verifyTransaction NOT IMPLEMENTED.`);
+    throw new Error("Real verifyTransaction API not configured.");
 }
 
 export default {
@@ -123,7 +159,3 @@ export default {
     getTransactionInfo,
     verifyTransaction,
 };
-
-</description>
-    <content><![CDATA[
-
