@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { sendOtpToPhoneNumber, verifyOtpAndSignIn, updateNewUserProfile, VerifyOtpResult } from '@/services/auth';
-import { Loader2, LogIn, Phone, MessageSquare, UserPlus, ArrowLeft } from 'lucide-react';
+import { Loader2, LogIn, Phone, MessageSquare, UserPlus, ArrowLeft, Mail } from 'lucide-react'; // Added Mail
 import { auth } from '@/lib/firebase';
 import type { ConfirmationResult, RecaptchaVerifier as FirebaseRecaptchaVerifierType } from 'firebase/auth';
-import { RecaptchaVerifier } from 'firebase/auth';
+import { RecaptchaVerifier } from 'firebase/auth'; // Keep this direct import
 
 export default function LoginPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -23,66 +23,47 @@ export default function LoginPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [isNewUserFlowActive, setIsNewUserFlowActive] = useState(false);
   const [confirmationResultState, setConfirmationResultState] = useState<ConfirmationResult | null>(null);
-  const [currentUserForSetup, setCurrentUserForSetup] = useState<any | null>(null); // Using 'any' as Firebase User type can be complex
+  const [currentUserForSetup, setCurrentUserForSetup] = useState<any | null>(null);
 
   const router = useRouter();
   const { toast } = useToast();
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const [recaptchaVerifier, setRecaptchaVerifier] = useState<FirebaseRecaptchaVerifierType | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && auth && recaptchaContainerRef.current && !recaptchaVerifier) {
-      console.log("LoginPage: Initializing RecaptchaVerifier...");
+  const initializeRecaptcha = useCallback(() => {
+    if (typeof window !== 'undefined' && auth && recaptchaContainerRef.current) {
+      if (recaptchaVerifier) {
+        recaptchaVerifier.clear();
+        console.log("LoginPage: Cleared previous RecaptchaVerifier instance.");
+      }
       try {
-        const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
+        console.log("LoginPage: Initializing new RecaptchaVerifier...");
+        const newVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
           'size': 'invisible',
           'callback': (response: any) => {
             console.log("reCAPTCHA solved successfully (invisible):", response);
-            // This callback is for invisible reCAPTCHA, usually triggered before sending OTP.
-            // If using Send OTP button, this might not be strictly necessary for that button's click action
-            // but it's good to have the setup.
           },
           'expired-callback': () => {
             toast({ variant: 'destructive', title: 'reCAPTCHA Expired', description: 'Please try sending OTP again.' });
-            // Re-render reCAPTCHA if it was visible, or re-initialize if needed for invisible
-            // For invisible, Firebase typically handles re-verification on next action.
-            setRecaptchaVerifier(null); // Force re-initialization on next attempt
-            initializeRecaptcha();
+            setRecaptchaVerifier(null); // Will trigger re-initialization via useEffect
           }
         });
-        setRecaptchaVerifier(verifier);
-        console.log("LoginPage: RecaptchaVerifier initialized.");
+        setRecaptchaVerifier(newVerifier);
+        console.log("LoginPage: New RecaptchaVerifier initialized.");
       } catch (error) {
         console.error("Error initializing RecaptchaVerifier:", error);
         toast({ variant: 'destructive', title: 'reCAPTCHA Error', description: 'Failed to initialize reCAPTCHA. Please refresh or check console.' });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recaptchaVerifier]); // Re-run if recaptchaVerifier becomes null
+  }, [toast]); // Removed recaptchaVerifier from deps to avoid loop on clear
 
-
-  const initializeRecaptcha = useCallback(() => {
-    if (typeof window !== 'undefined' && auth && recaptchaContainerRef.current) {
-        if (recaptchaVerifier) { // Clear previous instance if any
-            recaptchaVerifier.clear();
-        }
-        try {
-             const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
-                'size': 'invisible',
-                'callback': (response: any) => console.log("reCAPTCHA re-solved:", response),
-                'expired-callback': () => {
-                  toast({ variant: 'destructive', title: 'reCAPTCHA Expired', description: 'Please try sending OTP again.' });
-                  setRecaptchaVerifier(null);
-                  initializeRecaptcha(); // Retry initialization
-                }
-             });
-            setRecaptchaVerifier(verifier);
-        } catch(error) {
-             console.error("Error re-initializing RecaptchaVerifier:", error);
-        }
+  useEffect(() => {
+    // Initialize reCAPTCHA when component mounts or if verifier becomes null
+    if (!recaptchaVerifier) {
+      initializeRecaptcha();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recaptchaVerifier]); // Re-run if recaptchaVerifier becomes null
+  }, [recaptchaVerifier, initializeRecaptcha]);
 
 
   const handleSendOtp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -98,16 +79,10 @@ export default function LoginPage() {
     }
     setIsLoading(true);
     try {
-      // Ensure reCAPTCHA is rendered (for invisible, this means it's ready)
-      // If not already rendered and cleared, render it
-      if (recaptchaVerifier && !recaptchaVerifier.verificationId) {
-         // For invisible, this might be automatic, but explicit call if needed
-         // await recaptchaVerifier.render(); // This line might cause issues if not correctly handled. Firebase handles render usually.
-      }
       const confirmationResult = await sendOtpToPhoneNumber(phoneNumber, recaptchaVerifier);
       setConfirmationResultState(confirmationResult);
       setOtpSent(true);
-      setIsNewUserFlowActive(false);
+      setIsNewUserFlowActive(false); // Reset new user flow on new OTP send
       toast({ title: 'OTP Sent', description: `An OTP has been sent to ${phoneNumber}.` });
     } catch (error: any) {
       toast({
@@ -116,8 +91,8 @@ export default function LoginPage() {
         description: error.message || 'Could not send OTP. Check console for Firebase errors or reCAPTCHA issues.',
       });
       console.error("Send OTP Error Details:", error);
-      recaptchaVerifier.clear(); // Clear the reCAPTCHA widget
-      initializeRecaptcha(); // Re-initialize for next attempt
+      // Re-initialize reCAPTCHA on failure
+      setRecaptchaVerifier(null);
     } finally {
       setIsLoading(false);
     }

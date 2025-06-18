@@ -7,7 +7,7 @@ import {
     onAuthStateChanged,
     User,
     signInWithPhoneNumber,
-    RecaptchaVerifier as FirebaseRecaptchaVerifierType,
+    RecaptchaVerifier as FirebaseRecaptchaVerifierType, // Keep this direct import
     ConfirmationResult,
     updateProfile as updateFirebaseProfile,
     getAdditionalUserInfo // Import this to check if user is new
@@ -15,7 +15,7 @@ import {
 import { auth } from '@/lib/firebase';
 import { apiClient } from '@/lib/apiClient';
 import type { UserProfile } from './types';
-import { upsertUserProfile as upsertUserProfileService } from './user'; // Renamed to avoid conflict
+import { upsertUserProfile as upsertUserProfileService } from './user';
 
 // --- Auth State Observation ---
 
@@ -75,8 +75,6 @@ export async function verifyOtpAndSignIn(confirmationResult: ConfirmationResult,
             console.log("[Auth Service] New user detected via getAdditionalUserInfo.");
         } else {
             console.log("[Auth Service] Existing user logged in.");
-            // For existing users, backend profile might already exist or will be updated on first protected API call.
-            // No need to call verifyTokenAndGetProfile here unless specific data is immediately needed and not available on Firebase User object.
         }
 
         return { user, isNewUser };
@@ -101,16 +99,18 @@ export async function updateNewUserProfile(user: User, name: string, email?: str
         await updateFirebaseProfile(user, { displayName: name });
         console.log("[Auth Service] Firebase Auth profile (displayName) updated for new user.");
 
-        // Upsert profile in Firestore via our user service (which calls the backend)
-        // The backend's /api/users/profile (PUT) endpoint handles upserting based on the authenticated user's UID.
-        // It will create a new profile if one doesn't exist or update an existing one.
+        // Upsert profile in Firestore via our user service
         await upsertUserProfileService({
             name,
-            email: email || undefined, // Send undefined if email is empty, backend can handle it
+            email: email || undefined,
             phone: user.phoneNumber || undefined,
-            avatarUrl: user.photoURL || undefined, // Include avatar if Firebase has one
-            kycStatus: 'Not Verified', // Default for new users
-            notificationsEnabled: true, // Default
+            avatarUrl: user.photoURL || undefined,
+            kycStatus: 'Not Verified',
+            notificationsEnabled: true,
+            appLockEnabled: false,
+            biometricEnabled: false,
+            isSmartWalletBridgeEnabled: false,
+            smartWalletBridgeLimit: 0,
         });
         console.log("[Auth Service] Firestore profile upserted via user service for new user.");
     } catch (error: any) {
@@ -141,8 +141,6 @@ export async function logout(): Promise<void> {
     try {
         await signOut(auth);
         console.log("[Auth Service] Firebase logout successful.");
-        // Optionally call a backend endpoint to invalidate server-side session if any
-        // await apiClient('/auth/logout', { method: 'POST' });
     } catch (error) {
         console.error("[Auth Service] Firebase logout error:", error);
         throw new Error("Logout failed. Please try again.");
@@ -152,12 +150,9 @@ export async function logout(): Promise<void> {
 export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
     console.log("[Auth Service] Verifying token and fetching profile via API...");
     try {
-        // apiClient already handles token inclusion.
-        // Backend /api/auth/verify should verify the token and return user profile data.
         const result = await apiClient<{ user?: UserProfile }>('/auth/verify');
         if (result && result.user) {
             console.log("[Auth Service] Token verified, profile received from API:", result.user.id);
-            // Convert date strings from API to Date objects for client-side consistency
             return {
                 ...result.user,
                 createdAt: result.user.createdAt ? new Date(result.user.createdAt as string) : undefined,
@@ -170,10 +165,8 @@ export async function verifyTokenAndGetProfile(): Promise<UserProfile | null> {
     } catch (error: any) {
         console.error("[Auth Service] Error verifying token or fetching profile via API:", error.message);
         if (error.message === "User not authenticated.") {
-            // This specific message indicates the token was likely invalid or missing when apiClient tried to get it.
             return null;
         }
-        // Re-throw other API client errors (like network issues or 5xx from backend)
         throw error;
     }
 }

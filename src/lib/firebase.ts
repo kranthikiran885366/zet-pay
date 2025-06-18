@@ -1,42 +1,43 @@
 
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth, getIdToken as getFirebaseIdToken, User } from 'firebase/auth'; // Import User type and getIdToken
+import { getAuth, Auth, getIdToken as getFirebaseIdToken, User } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAnalytics, Analytics } from "firebase/analytics"; // Added Analytics
+import { getAnalytics, Analytics } from "firebase/analytics";
 
-// User-provided Firebase configuration. This will be used directly.
+// User-provided Firebase configuration.
 const userProvidedConfig = {
-  apiKey: "AIzaSyDmTwsxQyZsx27XnL8-12neJpE2xo_1988",
-  authDomain: "zepto-app-e24e9.firebaseapp.com",
-  projectId: "zepto-app-e24e9",
-  storageBucket: "zepto-app-e24e9.firebasestorage.app",
-  messagingSenderId: "791189785756",
-  appId: "1:791189785756:web:3fc5bcf88667ae08407159",
-  measurementId: "G-06L18DPJ3Q"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_FALLBACK_API_KEY", // Use ENV var or fallback
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "your-project-id.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "your-project-id",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "your-project-id.appspot.com",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_SENDER_ID",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "YOUR_APP_ID",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID // Optional
 };
 
-// Directly use the user-provided config.
-// If environment variables (e.g., NEXT_PUBLIC_FIREBASE_API_KEY) are set in .env,
-// they will be IGNORED by this client-side setup.
-// The user must ensure the values in `userProvidedConfig` are correct for their Firebase project.
-const firebaseConfig = {
-  apiKey: userProvidedConfig.apiKey,
-  authDomain: userProvidedConfig.authDomain,
-  projectId: userProvidedConfig.projectId,
-  storageBucket: userProvidedConfig.storageBucket,
-  messagingSenderId: userProvidedConfig.messagingSenderId,
-  appId: userProvidedConfig.appId,
-  measurementId: userProvidedConfig.measurementId,
-};
-
-// Log which config is being used
-if (typeof window !== 'undefined') {
-  console.log(`[Firebase Setup] Initializing Firebase client. Using explicitly provided config. API Key (masked): ${firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 4) + "..." + firebaseConfig.apiKey.substring(firebaseConfig.apiKey.length - 4) : "N/A"}`);
-  if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY && process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== userProvidedConfig.apiKey) {
-      console.warn("[Firebase Setup] Note: Environment variable NEXT_PUBLIC_FIREBASE_API_KEY is set but IS NOT being used for client-side config. Using the hardcoded values from `userProvidedConfig` in `src/lib/firebase.ts` instead.");
-  } else if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-      console.info("[Firebase Setup] Note: NEXT_PUBLIC_FIREBASE_API_KEY environment variable is not set. Using hardcoded values from `userProvidedConfig` in `src/lib/firebase.ts`.");
+// Validate that essential config values are present
+if (userProvidedConfig.apiKey === "YOUR_FALLBACK_API_KEY" || userProvidedConfig.projectId === "your-project-id") {
+  if (typeof window !== 'undefined') { // Only log in browser
+    console.warn(
+      "[Firebase Setup] Using fallback Firebase config values. " +
+      "Please ensure your NEXT_PUBLIC_FIREBASE_ environment variables are correctly set in your .env.local file " +
+      "or update the hardcoded values in src/lib/firebase.ts for development if preferred."
+    );
   }
+}
+
+const firebaseConfig = userProvidedConfig;
+
+if (typeof window !== 'undefined') {
+  console.log(
+    `[Firebase Setup] Initializing Firebase client. Using ${
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "environment variables" : "hardcoded fallback values"
+    }. API Key (masked): ${
+      firebaseConfig.apiKey
+        ? firebaseConfig.apiKey.substring(0, 4) + "..." + firebaseConfig.apiKey.substring(firebaseConfig.apiKey.length - 4)
+        : "NOT SET"
+    }`
+  );
 }
 
 
@@ -50,13 +51,12 @@ if (typeof window !== 'undefined') {
   if (!getApps().length) {
     try {
       app = initializeApp(firebaseConfig);
-      console.log("[Firebase Setup] Firebase initialized successfully with provided config.");
+      console.log("[Firebase Setup] Firebase initialized successfully.");
     } catch (e: any) {
       console.error("[Firebase Setup] CRITICAL: Firebase initialization failed:", e.message, "Config used:", firebaseConfig);
-      // Consider adding a UI notification for critical failure
       const errorDiv = document.createElement('div');
       errorDiv.style.cssText = "position:fixed;top:0;left:0;width:100%;padding:10px;background:red;color:white;text-align:center;z-index:9999;";
-      errorDiv.innerText = "Error: Could not initialize Firebase. App may not work correctly. Please check console (F12).";
+      errorDiv.innerText = "Error: Could not initialize Firebase. App may not work correctly. Please check console (F12) and your Firebase configuration in .env.local or src/lib/firebase.ts.";
       document.body.prepend(errorDiv);
     }
   } else {
