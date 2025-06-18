@@ -1,4 +1,3 @@
-
 # PayFriend Project Structure
 
 This document outlines the folder and file structure of the PayFriend super app project.
@@ -44,7 +43,7 @@ This document outlines the folder and file structure of the PayFriend super app 
 │   │   ├── upiController.js
 │   │   ├── userController.js
 │   │   ├── vaultController.js
-│   │   └── walletController.ts  // Assuming .ts is preferred if both exist
+│   │   └── walletController.ts
 │   ├── middleware/
 │   │   ├── asyncHandler.js
 │   │   ├── authMiddleware.js
@@ -79,17 +78,17 @@ This document outlines the folder and file structure of the PayFriend super app 
 │   │   ├── shoppingRoutes.js
 │   │   ├── supportRoutes.js
 │   │   ├── templeRoutes.js
-│   │   ├── transactionRoutes.ts // Assuming .ts is preferred
+│   │   ├── transactionRoutes.ts
 │   │   ├── travelRoutes.js
 │   │   ├── upiRoutes.js
 │   │   ├── userRoutes.js
 │   │   ├── vaultRoutes.js
-│   │   └── walletRoutes.ts      // Assuming .ts is preferred
+│   │   └── walletRoutes.ts
 │   └── services/
 │       ├── auth.js
 │       ├── bankStatusService.js
 │       ├── billProviderService.js
-│       ├── blockchainLogger.ts    // Assuming .ts is preferred
+│       ├── blockchainLogger.ts
 │       ├── bnpl.js
 │       ├── bookingProviderService.js
 │       ├── cards.js
@@ -106,38 +105,126 @@ This document outlines the folder and file structure of the PayFriend super app 
 │       ├── paymentGatewayService.js
 │       ├── pocket-money.js
 │       ├── rechargeProviderService.js
-│       ├── recoveryService.ts     // Assuming .ts is preferred
+│       ├── recoveryService.ts
 │       ├── reminderService.js
 │       ├── scanService.js
 │       ├── shoppingProviderService.js
+│       ├── smsNotificationService.js
 │       ├── temple.js
-│       ├── templeService.js        // Mock data for temple
-│       ├── transactionLogger.ts   // Assuming .ts is preferred
+│       ├── templeService.js
+│       ├── transactionLogger.ts
 │       ├── travelProviderService.js
 │       ├── upi.js
 │       ├── upiLite.js
 │       ├── upiProviderService.js
 │       ├── user.js
 │       ├── vaultService.js
-│       └── wallet.ts              // Assuming .ts is preferred
+│       └── wallet.ts
 ├── public/
-│   └── (Static assets like images, fonts, if any - not listed in context but typical)
+│   ├── logos/ (Assumed, contains image assets for operators, banks etc.)
+│   │    ├── airtel.png
+│   │    ├── jio.png
+│   │    ├── vi.png
+│   │    ├── bsnl.png
+│   │    ├── tataplay.png
+│   │    ├── dishtv.png
+│   │    ├── d2h.png
+│   │    ├── paytm.png
+│   │    ├── icici.png
+│   │    ├── hdfc.png
+│   │    ├── axis.png
+│   │    ├── bescom.png
+│   │    ├── mseb.png
+│   │    ├── tneb.png
+│   │    ├── lic.png
+│   │    ├── hdfc_life.png
+│   │    ├── star_health.png
+│   │    ├── bajaj_allianz.png
+│   │    ├── default-operator.png
+│   │    ├── default-airline.png
+│   │    ├── support_agent.png
+│   │    ├── bmtc.png
+│   │    ├── best.png
+│   │    ├── namma_metro.png
+│   │    ├── dmrc.png
+│   │    ├── hathway.png
+│   │    ├── den.png
+│   │    ├── mygate.png
+│   │    ├── nobroker.png
+│   │    ├── sports_club.png
+│   │    ├── golf_club.png
+│   │    ├── akshayapatra.png
+│   │    ├── cry.png
+│   │    ├── indane.png
+│   │    ├── hp_gas.png
+│   │    ├── bharat_gas.png
+│   │    ├── bbmp.png
+│   │    ├── mcgm.png
+│   │    ├── googleplay.png
+│   │    ├── freefire.png
+│   │    ├── pubg.png
+│   │    ├── amazon.png
+│   │    ├── flipkart.png
+│   │    ├── myntra.png
+│   │    ├── bms.png
+│   │    ├── appstore.png
+│   │    ├── uber.png
+│   │    ├── default-gift.png
+│   │    ├── abc_school.png
+│   │    ├── xyz_college.png
+│   │    ├── uni_example.png
+│   │    ├── aplus_coaching.png
+│   │    ├── upi-sm.png
+│   │    ├── gpay-sm.png
+│   │    ├── phonepe-sm.png
+│   │    ├── paytm-sm.png
+│   │    ├── indigo.png
+│   │    ├── vistara.png
+│   │    ├── airindia.png
+│   │    ├── spicejet.png
+│   │    └── akasa.png
+│   ├── images/ (Assumed for other images)
+│   │    ├── tickets/train_ticket_thumb.png
+│   │    ├── tickets/movie_ticket_thumb.png
+│   │    ├── bills/electricity_bill_thumb.png
+│   │    ├── prasadam/tirupati_laddu.jpg
+│   │    ├── prasadam/tirupati_vada.jpg
+│   │    ├── prasadam/shirdi_packet.jpg
+│   │    ├── prasadam/vaishno_devi_prasad.jpg
+│   │    ├── prasadam/default.jpg
+│   │    ├── events/vaishno_devi_yatra.jpg
+│   │    ├── events/diwali_pooja.jpg
+│   │    ├── events/default.jpg
+│   │    ├── accom/tirupati_srinivasam.jpg
+│   │    ├── accom/tirupati_madhavam.jpg
+│   │    ├── accom/shirdi_sai_ashram.jpg
+│   │    ├── accom/default.jpg
+│   │    ├── audio/aarti.jpg
+│   │    ├── audio/mantra.jpg
+│   │    ├── venues/venue1.jpg
+│   │    ├── venues/venue2.jpg
+│   │    ├── venues/venue3.jpg
+│   │    ├── venues/venue4.jpg
+│   │    └── venues/default.jpg
+│   └── audio/ (Assumed for mock audio files)
+│       ├── om_jai_jagdish.mp3
+│       └── gayatri_mantra.mp3
 ├── src/
 │   ├── ai/
 │   │   ├── genkit.ts
 │   │   └── flows/
 │   │       ├── conversational-action.ts
 │   │       ├── gift-suggestion-flow.ts
-│   │       ├── recharge-plan-recommendation.ts
-│   │       ├── smart-payee-suggestion.ts
-│   │       └── spending-analysis.ts
+│   │   ├── recharge-plan-recommendation.ts
+│   │   ├── smart-payee-suggestion.ts
+│   │   └── spending-analysis.ts
 │   ├── app/
 │   │   ├── globals.css
 │   │   ├── layout.tsx
-│   │   ├── middleware.ts  // As per specified path
+│   │   ├── middleware.ts
 │   │   ├── not-found.tsx
-│   │   ├── page.tsx         // Home page
-│   │   ├── error.tsx        // Root error boundary
+│   │   ├── page.tsx
+│   │   ├── error.tsx
 │   │   ├── documentation/page.tsx
 │   │   ├── emergency/page.tsx
 │   │   ├── forgot-password/page.tsx
@@ -157,7 +244,8 @@ This document outlines the folder and file structure of the PayFriend super app 
 │   │       ├── bills/
 │   │       │   ├── [type]/page.tsx
 │   │       │   ├── education/page.tsx
-│   │       │   └── mobile-postpaid/page.tsx
+│   │       │   ├── mobile-postpaid/page.tsx
+│   │       │   └── subscription/page.tsx
 │   │       ├── bnpl/page.tsx
 │   │       ├── cab/page.tsx
 │   │       ├── cable-tv/page.tsx
@@ -178,6 +266,9 @@ This document outlines the folder and file structure of the PayFriend super app 
 │   │       │   ├── group/page.tsx
 │   │       │   ├── sports/page.tsx
 │   │       │   └── watchparty/page.tsx
+│   │       ├── food/
+│   │       │   ├── page.tsx
+│   │       │   └── [restaurantId]/page.tsx
 │   │       ├── fuel/page.tsx
 │   │       ├── goals/page.tsx
 │   │       ├── gold/page.tsx
@@ -257,6 +348,9 @@ This document outlines the folder and file structure of the PayFriend super app 
 │   │       ├── rent-vehicle/page.tsx
 │   │       ├── scan/page.tsx
 │   │       ├── services/page.tsx
+│   │       ├── shopping/
+│   │       │   ├── online/page.tsx
+│   │       │   └── grocery/page.tsx (Placeholder, assuming it exists)
 │   │       ├── sip-reminders/page.tsx
 │   │       ├── smart-schedule/page.tsx
 │   │       ├── stocks/page.tsx
@@ -366,40 +460,58 @@ This document outlines the folder and file structure of the PayFriend super app 
 │       ├── bills.ts
 │       ├── blockchainLogger.ts
 │       ├── bnpl.ts
-│       ├── booking.ts
-│       ├── cards.ts
-│       ├── cash-withdrawal.ts
-│       ├── contacts.ts
-│       ├── creditScore.ts
-│       ├── entertainment.ts
-│       ├── favorites.ts
-│       ├── healthcare.ts
-│       ├── hyperlocal.ts
-│       ├── liveTracking.ts
-│       ├── loans.ts
-│       ├── offers.ts
-│       ├── payments.ts
-│       ├── pocket-money.ts
-│       ├── recharge.ts
-│       ├── recovery.ts
-│       ├── reminders.ts
-│       ├── scan.ts
-│       ├── shopping.ts
-│       ├── switch.ts
-│       ├── temple.ts
-│       ├── transactionLogger.ts
-│       ├── transactions.ts
-│       ├── travel.ts
-│       ├── types.ts
-│       ├── upi.ts
-│       ├── upiLite.ts
-│       ├── user.ts
-│       ├── vouchers.ts
-│       └── wallet.ts
+│   │   ├── booking.ts
+│   │   ├── cards.ts
+│   │   ├── cash-withdrawal.ts
+│   │   ├── contacts.ts
+│   │   ├── creditScore.ts
+│   │   ├── entertainment.ts
+│   │   ├── favorites.ts
+│   │   ├── healthcare.ts
+│   │   ├── hyperlocal.ts
+│   │   ├── liveTracking.ts
+│   │   ├── loans.ts
+│   │   ├── offers.ts
+│   │   ├── payments.ts
+│   │   ├── pocket-money.ts
+│   │   ├── recharge.ts
+│   │   ├── recovery.ts
+│   │   ├── reminders.ts
+│   │   ├── scan.ts
+│   │   ├── shopping.ts
+│   │   ├── switch.ts
+│   │   ├── temple.ts
+│   │   ├── transactionLogger.ts
+│   │   ├── transactions.ts
+│   │   ├── travel.ts
+│   │   ├── types.ts
+│   │   ├── upi.ts
+│   │   ├── upiLite.ts
+│   │   ├── user.ts
+│   │   ├── vouchers.ts
+│   │   └── wallet.ts
 ├── .env
 ├── .vscode/
 │   └── settings.json
 ├── README.md
+├── AI_SMART_FEATURES.MD
+├── CUSTOMER_SUPPORT_FEATURES.MD
+├── ENTERTAINMENT_EVENTS_FEATURE.MD
+├── FINANCIAL_SERVICES_FEATURE.MD
+├── FOOD_ORDERING_FEATURES.MD
+├── GENERAL_BILL_PAYMENT_FEATURE.MD
+├── HEALTHCARE_WELLNESS_FEATURES.MD
+├── HYPERLOCAL_SERVICES_FEATURE.MD
+├── MOBILE_RECHARGE_FEATURE.MD
+├── MUNICIPAL_SERVICES_FEATURE.MD
+├── OFFERS_REWARDS_LOYALTY_FEATURES.MD
+├── PROJECT_STRUCTURE.md
+├── SECURITY_CONVENIENCE_FEATURES.md
+├── SHOPPING_ECOMMERCE_FEATURES.MD
+├── TEMPLE_SPIRITUAL_SERVICES_FEATURE.MD
+├── TRAVEL_TRANSIT_FEATURES.MD
+├── UPI_WALLET_FEATURES.MD
+├── ZETPAY_SUPERAPP_OVERVIEW.MD
 ├── components.json
 ├── firestore.schemas.md
 ├── next.config.js
@@ -408,4 +520,4 @@ This document outlines the folder and file structure of the PayFriend super app 
 └── tsconfig.json
 ```
 
-*Note: This structure is based on the files explicitly mentioned or inferred from previous interactions. Some typical frontend asset folders like `public/images` or `public/fonts` are assumed but not explicitly listed if not provided in context.*
+*Note: This structure is based on the files explicitly mentioned or inferred from previous interactions. Some typical frontend asset folders like `public/images` or `public/fonts` are assumed but not explicitly listed if not provided in context. File extensions (.js vs .ts) in the backend are based on your provided context, with a preference for .ts if both were mentioned for similar files.*
