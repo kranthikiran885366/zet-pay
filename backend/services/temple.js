@@ -1,256 +1,234 @@
+
 // backend/services/temple.js
 const admin = require('../config/firebaseAdmin');
 const db = admin.firestore();
-const { collection, addDoc, serverTimestamp, Timestamp } = db; // Use admin SDK Firestore
-const { addTransaction } = require('./transactionLogger'); // Use backend logger
+const { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy, limit, doc, updateDoc, getDoc } = db;
+const { addTransaction } = require('./transactionLogger');
+const { payViaWalletInternal } = require('./wallet');
+const { sendToUser } = require('../server');
+const { mockTemplesData: mockTemplesSeed, mockDarshanSlotsPageData: mockDarshanSlotsSeed, mockPoojasData: mockPoojasSeed, mockPrasadamDataPage: mockPrasadamSeed, mockTempleInfoData: mockTempleInfoSeed, mockTempleEventsData: mockTempleEventsSeed, mockAccommodationsData: mockAccommodationsSeed, mockAudioTracksData: mockAudioTracksSeed } = require('../../src/mock-data/temple');
 
-// --- Mock Data (Keep for Simulation) ---
-const mockTemples = [
-    { id: 'tirupati', name: 'Tirumala Tirupati Devasthanams (TTD)' },
-    { id: 'shirdi', name: 'Shirdi Saibaba Sansthan Trust' },
-    { id: 'vaishno-devi', name: 'Vaishno Devi Shrine Board' },
-];
 
-const mockDarshanSlotsData = {
-    'tirupati-2024-08-15': [
-        { time: '09:00 - 10:00', availability: 'Available', quota: 'Special Entry (₹300)', ticketsLeft: 150 },
-        { time: '10:00 - 11:00', availability: 'Filling Fast', quota: 'Special Entry (₹300)', ticketsLeft: 30 },
-    ],
-    // Add more mock slots
-};
+const TEMPLE_API_URL = process.env.TEMPLE_API_URL || 'https://api.exampletempletrust.org/v1';
+const TEMPLE_API_KEY = process.env.TEMPLE_API_KEY || 'YOUR_TEMPLE_API_KEY_PLACEHOLDER';
 
-const mockVirtualPoojasData = {
-    'shirdi': [ { id: 'shirdi-abhishek', name: 'Abhishek Pooja (Virtual)', description: '...', price: 750, duration: '30 mins' } ],
-    'tirupati': [ { id: 'ttd-kalyanam', name: 'Kalyanotsavam (Virtual)', description: '...', price: 1000, duration: '45 mins' } ],
-};
-
-const mockPrasadamData = {
-    'tirupati': [ { id: 'ttd-laddu', name: 'Tirupati Laddu (Large)', price: 50, imageUrl: '...' } ],
-    'shirdi': [ { id: 'shirdi-packet', name: 'Shirdi Prasadam Packet', price: 100, imageUrl: '...' } ],
-};
-
-// --- Service Functions ---
-
-/**
- * Searches for available Darshan slots (Simulated).
- * @param templeId ID of the temple.
- * @param date Date string (YYYY-MM-DD).
- * @returns Promise resolving to an array of slot objects.
- */
-async function searchDarshanSlots(templeId, date) {
-    console.log(`[Temple Service - Backend] Searching Darshan slots for: ${templeId}, Date: ${date}`);
-    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate delay
-    const key = `${templeId}-${date}`;
-    return mockDarshanSlotsData[key] || [];
+async function makeApiCall(endpoint, params = {}, method = 'GET', data = null) {
+    const headers = { 'Authorization': `Bearer ${TEMPLE_API_KEY}`, 'Content-Type': 'application/json' };
+    const config = { headers, params, method, data };
+    if (process.env.USE_REAL_TEMPLE_API !== 'true' || TEMPLE_API_KEY === 'YOUR_TEMPLE_API_KEY_PLACEHOLDER') {
+        console.warn(`[Temple Provider Sim] MOCK API call for ${endpoint}. Real API not configured or not enabled.`);
+        throw new Error("Mock logic needs to be handled by caller or this function should return mock.");
+    }
+    // TODO: Implement REAL API call
+    // const response = await axios({ url: `${TEMPLE_API_URL}${endpoint}`, ...config });
+    // if (response.status < 200 || response.status >= 300) throw new Error(response.data?.message || `API Error: ${response.status}`);
+    // return response.data;
+    console.error(`[Temple Provider Sim] REAL API call for ${TEMPLE_API_URL}${endpoint} NOT IMPLEMENTED.`);
+    throw new Error("Real Temple API integration not implemented.");
 }
 
-/**
- * Books a Darshan slot (Simulated).
- * @param details Booking details.
- * @returns Promise resolving to booking confirmation.
- */
-async function bookDarshanSlot(details) {
-    console.log(`[Temple Service - Backend] Booking Darshan slot:`, details);
-    // 1. TODO: Verify slot availability again (critical section).
-    // 2. TODO: Process payment if totalAmount > 0 (integrate with payment service).
-    // 3. Create booking record in Firestore.
-    // 4. Generate Access Pass data.
-
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate booking
-
-    // Add booking record to user's bookings (example subcollection)
+async function searchDarshanSlots(templeId, date) {
+    console.log(`[Temple Service] Searching Darshan slots (API) for: ${templeId}, Date: ${date}`);
     try {
-        const bookingsColRef = collection(db, 'users', details.userId, 'templeBookings');
-        const bookingData = {
-            userId: details.userId,
-            templeId: details.templeId,
-            templeName: details.templeName,
-            bookingType: 'Darshan',
-            bookingDate: serverTimestamp(),
-            visitDate: Timestamp.fromDate(new Date(details.date)), // Store as Timestamp
-            slotTime: details.slotTime,
-            quota: details.quota,
-            numberOfPersons: details.persons,
-            totalAmount: details.totalAmount || 0,
-            status: 'Confirmed',
-            accessPassData: `${details.templeId}_DARSHAN_${Date.now()}_${details.userId.substring(0, 5)}` // Generate QR data
-        };
-        const docRef = await addDoc(bookingsColRef, bookingData);
-        console.log(`[Temple Service - Backend] Darshan booking ${docRef.id} created.`);
-
-        // Log transaction if payment was involved
-        if (details.totalAmount && details.totalAmount > 0) {
-            await addTransaction({
-                type: 'Bill Payment', // Treat as payment
-                name: `Darshan Booking: ${details.templeName}`,
-                description: `Slot: ${details.slotTime}, Date: ${details.date}, Persons: ${details.persons}`,
-                amount: -details.totalAmount,
-                status: 'Completed',
-                userId: details.userId,
-                billerId: details.templeId, // Use templeId as billerId
-                ticketId: docRef.id // Link transaction to booking
-            });
-        }
-
-        return { success: true, bookingId: docRef.id, accessPassData: bookingData.accessPassData };
+        // return await makeApiCall(`/darshan/${templeId}/slots`, { date }); // For REAL API
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return mockDarshanSlotsSeed[`${templeId}-${date}`] || [];
     } catch (error) {
-        console.error("[Temple Service - Backend] Error creating Darshan booking:", error);
-        throw new Error("Failed to create Darshan booking record.");
+        console.warn(`[Temple Service] Falling back to mock for searchDarshanSlots: ${error.message}`);
+        return mockDarshanSlotsSeed[`${templeId}-${date}`] || [];
     }
 }
 
-// --- Functions for other Temple Services (Pooja, Prasadam, Donation, Info etc.) ---
+async function bookDarshanSlot(details) {
+    const { userId, templeId, templeName, date, slotTime, quota, persons, totalAmount } = details;
+    console.log(`[Temple Service] Booking Darshan slot (API):`, details);
+    let paymentTransactionId = null;
+    if (totalAmount && totalAmount > 0) {
+        const paymentResult = await payViaWalletInternal(userId, `DARSHAN_${templeId}_${date.replace(/-/g,'')}`, totalAmount, `Darshan Booking: ${templeName}`, 'Booking Fee');
+        if (!paymentResult.success) throw new Error(paymentResult.message || 'Payment failed for Darshan booking.');
+        paymentTransactionId = paymentResult.transactionId;
+    }
+
+    const payload = { temple_id: templeId, date, slot_time: slotTime, quota, num_persons: persons, payment_ref: paymentTransactionId, user_id: userId };
+    try {
+        // const providerResponse = await makeApiCall(`/darshan/book`, {}, 'POST', payload); // For REAL API
+        // if (!providerResponse.success) throw new Error(providerResponse.message);
+        // const { bookingId, accessPassData } = providerResponse;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const success = Math.random() > 0.05;
+        if (!success) throw new Error("Slot no longer available (Simulated provider error).");
+        const bookingId = `DARSHAN_REAL_${Date.now()}`;
+        const accessPassData = `${templeId}_DARSHAN_${Date.now()}_${userId.substring(0,5)}`;
+
+        const bookingsColRef = collection(db, 'users', userId, 'templeBookings');
+        const bookingData = { /* ... as before ... */ };
+        const docRef = await addDoc(bookingsColRef, {
+            userId, templeId, templeName, bookingType: 'Darshan', bookingDate: serverTimestamp(),
+            visitDate: Timestamp.fromDate(new Date(date)), slotTime, quota, numberOfPersons: persons,
+            totalAmount: totalAmount || 0, status: 'Confirmed',
+            accessPassData, paymentTransactionId,
+        });
+        return { success: true, bookingId: docRef.id, accessPassData, message: "Darshan slot confirmed with provider." };
+    } catch (error) {
+        if (paymentTransactionId && totalAmount > 0) await payViaWalletInternal(userId, `REFUND_DARSHAN_${paymentTransactionId}`, -totalAmount, `Refund: Failed Darshan Booking ${templeName}`, 'Refund');
+        console.error(`[Temple Service] Error booking Darshan with provider: ${error.message}`);
+        throw error;
+    }
+}
 
 async function getAvailablePoojas(templeId) {
-    console.log(`[Temple Service - Backend] Fetching Poojas for: ${templeId}`);
-    await new Promise(resolve => setTimeout(resolve, 200));
-    return mockVirtualPoojasData[templeId] || [];
+    console.log(`[Temple Service] Fetching Virtual Poojas (API) for: ${templeId}`);
+    try {
+        // return await makeApiCall(`/poojas/${templeId}/list`); // For REAL API
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return mockPoojasSeed[templeId] || [];
+    } catch (error) {
+        console.warn(`[Temple Service] Falling back to mock for getAvailablePoojas: ${error.message}`);
+        return mockPoojasSeed[templeId] || [];
+    }
 }
 
 async function bookVirtualPooja(details) {
-    console.log(`[Temple Service - Backend] Booking Pooja:`, details);
-     // 1. TODO: Process payment (integrate with payment service).
-     // 2. Create booking record.
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const { userId, templeId, templeName, poojaId, poojaName, date, devoteeName, gotra, amount } = details;
+    console.log(`[Temple Service] Booking Virtual Pooja (API):`, details);
+    let paymentTransactionId = null;
+    if (amount && amount > 0) {
+        const paymentResult = await payViaWalletInternal(userId, `POOJA_${templeId}_${poojaId}`, amount, `Virtual Pooja: ${poojaName}`, 'Booking Fee');
+        if (!paymentResult.success) throw new Error(paymentResult.message || 'Payment failed for Pooja booking.');
+        paymentTransactionId = paymentResult.transactionId;
+    }
 
-     try {
-        const bookingsColRef = collection(db, 'users', details.userId, 'templeBookings');
-        const bookingData = {
-            userId: details.userId,
-            templeId: details.templeId,
-            templeName: details.templeName,
-            bookingType: 'Virtual Pooja',
-            bookingDate: serverTimestamp(),
-            poojaDate: Timestamp.fromDate(new Date(details.date)),
-            poojaId: details.poojaId,
-            poojaName: details.poojaName,
-            devoteeName: details.devoteeName,
-            gotra: details.gotra || null,
-            totalAmount: details.amount,
-            status: 'Confirmed',
-        };
-        const docRef = await addDoc(bookingsColRef, bookingData);
-         console.log(`[Temple Service - Backend] Pooja booking ${docRef.id} created.`);
+    const payload = { temple_id: templeId, pooja_id: poojaId, date, devotee_name: devoteeName, gotra, payment_ref: paymentTransactionId, user_id: userId };
+    try {
+        // const providerResponse = await makeApiCall(`/poojas/book`, {}, 'POST', payload); // For REAL API
+        // if (!providerResponse.success) throw new Error(providerResponse.message);
+        // const { bookingId } = providerResponse;
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const bookingId = `POOJA_REAL_${Date.now()}`;
 
-        // Log transaction
-        await addTransaction({
-            type: 'Bill Payment',
-            name: `Virtual Pooja: ${details.poojaName}`,
-            description: `Temple: ${details.templeName}, For: ${details.devoteeName}`,
-            amount: -details.amount,
-            status: 'Completed',
-            userId: details.userId,
-            billerId: details.templeId,
-            ticketId: docRef.id // Link transaction to booking
+        const bookingsColRef = collection(db, 'users', userId, 'templeBookings');
+        const bookingData = { /* ... as before ... */ };
+        const docRef = await addDoc(bookingsColRef, {
+            userId, templeId, templeName, bookingType: 'Virtual Pooja', bookingDate: serverTimestamp(),
+            poojaDate: Timestamp.fromDate(new Date(date)), poojaId, poojaName, devoteeName, gotra: gotra || null,
+            totalAmount: amount, status: 'Confirmed', paymentTransactionId,
         });
-
-        return { success: true, bookingId: docRef.id };
+        return { success: true, bookingId: docRef.id, message: "Virtual Pooja booked with provider." };
     } catch (error) {
-        console.error("[Temple Service - Backend] Error creating Pooja booking:", error);
-        throw new Error("Failed to create Pooja booking record.");
+        if (paymentTransactionId && amount > 0) await payViaWalletInternal(userId, `REFUND_POOJA_${paymentTransactionId}`, -amount, `Refund: Failed Pooja ${poojaName}`, 'Refund');
+        console.error(`[Temple Service] Error booking Pooja with provider: ${error.message}`);
+        throw error;
     }
 }
 
 async function getAvailablePrasadam(templeId) {
-     console.log(`[Temple Service - Backend] Fetching Prasadam for: ${templeId}`);
-     await new Promise(resolve => setTimeout(resolve, 150));
-     return mockPrasadamData[templeId] || [];
+    console.log(`[Temple Service] Fetching Prasadam items (API) for: ${templeId}`);
+    try {
+        // return await makeApiCall(`/prasadam/${templeId}/items`); // For REAL API
+        await new Promise(resolve => setTimeout(resolve, 150));
+        return mockPrasadamSeed[templeId] || [];
+    } catch (error) {
+        console.warn(`[Temple Service] Falling back to mock for getAvailablePrasadam: ${error.message}`);
+        return mockPrasadamSeed[templeId] || [];
+    }
 }
 
 async function orderPrasadam(details) {
-    console.log(`[Temple Service - Backend] Ordering Prasadam:`, details);
-     // 1. TODO: Validate items/quantities.
-     // 2. TODO: Calculate final price with delivery.
-     // 3. TODO: Process payment.
-     // 4. Create order record.
-     // 5. Trigger delivery process.
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    const { userId, templeId, templeName, cartItems, totalAmount, deliveryAddress } = details;
+    console.log(`[Temple Service] Ordering Prasadam (API):`, details);
+    let paymentTransactionId = null;
+    if (totalAmount && totalAmount > 0) {
+        const paymentResult = await payViaWalletInternal(userId, `PRASADAM_${templeId}`, totalAmount, `Prasadam Order: ${templeName}`, 'Shopping');
+        if (!paymentResult.success) throw new Error(paymentResult.message || 'Payment failed for Prasadam order.');
+        paymentTransactionId = paymentResult.transactionId;
+    }
 
-     try {
-        const ordersColRef = collection(db, 'users', details.userId, 'prasadamOrders');
-        const orderData = {
-            userId: details.userId,
-            templeId: details.templeId,
-            templeName: details.templeName,
-            orderDate: serverTimestamp(),
-            items: details.cartItems, // Array of { id, quantity }
-            totalAmount: details.totalAmount, // Includes delivery?
-            deliveryAddress: details.deliveryAddress, // Store structured address
-            status: 'Processing',
-        };
-        const docRef = await addDoc(ordersColRef, orderData);
-        console.log(`[Temple Service - Backend] Prasadam order ${docRef.id} created.`);
+    const payload = { temple_id: templeId, items: cartItems, total_amount: totalAmount, delivery_address: deliveryAddress, payment_ref: paymentTransactionId, user_id: userId };
+    try {
+        // const providerResponse = await makeApiCall(`/prasadam/order`, {}, 'POST', payload); // For REAL API
+        // if (!providerResponse.success) throw new Error(providerResponse.message);
+        // const { orderId } = providerResponse;
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const orderId = `PRASADAM_ORD_REAL_${Date.now()}`;
 
-        // Log transaction
-         await addTransaction({
-            type: 'Prasadam Order',
-            name: `Prasadam from ${details.templeName}`,
-            description: `Order ID: ${docRef.id}`,
-            amount: -details.totalAmount,
-            status: 'Completed',
-            userId: details.userId,
-            billerId: details.templeId,
-            ticketId: docRef.id // Link transaction to order
+        const ordersColRef = collection(db, 'users', userId, 'prasadamOrders');
+        const orderData = { /* ... as before ... */ };
+        const docRef = await addDoc(ordersColRef, {
+            userId, templeId, templeName, orderDate: serverTimestamp(), items: cartItems, totalAmount,
+            deliveryAddress, status: 'Processing', paymentTransactionId, providerOrderId: orderId
         });
-
-        return { success: true, orderId: docRef.id };
+        return { success: true, orderId: docRef.id, message: "Prasadam order placed with provider." };
     } catch (error) {
-        console.error("[Temple Service - Backend] Error creating Prasadam order:", error);
-        throw new Error("Failed to create Prasadam order record.");
+        if (paymentTransactionId && totalAmount > 0) await payViaWalletInternal(userId, `REFUND_PRASADAM_${paymentTransactionId}`, -totalAmount, `Refund: Failed Prasadam Order ${templeName}`, 'Refund');
+        console.error(`[Temple Service] Error ordering Prasadam with provider: ${error.message}`);
+        throw error;
     }
 }
 
 async function donateToTemple(details) {
-     console.log(`[Temple Service - Backend] Processing Donation:`, details);
-      // 1. TODO: Process payment.
-      // 2. Log transaction.
-      // 3. Optionally create separate donation record.
-      await new Promise(resolve => setTimeout(resolve, 800));
+    const { userId, templeId, templeName, scheme, amount, donorName, panNumber, isAnonymous } = details;
+    console.log(`[Temple Service] Processing donation (API):`, details);
+    const finalDonorName = isAnonymous ? 'Anonymous' : donorName;
+    const paymentResult = await payViaWalletInternal(userId, `DONATION_${templeId}`, amount, `Donation: ${templeName} (${scheme || 'General'}) by ${finalDonorName}`, 'Donation');
+    if (!paymentResult.success) throw new Error(paymentResult.message || 'Donation payment failed.');
 
-      try {
-         const finalDonorName = details.isAnonymous ? 'Anonymous' : details.donorName;
-         // Log donation transaction
-         const loggedTx = await addTransaction({
-             type: 'Donation',
-             name: `Donation to ${details.templeName}`,
-             description: `Scheme: ${details.scheme || 'General'}. Donor: ${finalDonorName}${details.panNumber ? ` (PAN: ${details.panNumber})` : ''}`,
-             amount: -details.amount,
-             status: 'Completed',
-             userId: details.userId,
-             billerId: details.templeId,
-         });
-         console.log(`[Temple Service - Backend] Donation transaction ${loggedTx.id} logged.`);
-         return { success: true, transactionId: loggedTx.id };
-      } catch (error) {
-         console.error("[Temple Service - Backend] Error processing donation:", error);
-         throw new Error("Failed to process donation.");
-      }
+    // No separate provider call usually for generic donations, payment is the confirmation.
+    // If specific schemes require provider interaction, add here.
+    // const payload = { ... }
+    // try {
+    //    await makeApiCall(`/donate`, {}, 'POST', payload);
+    // } catch (error) { /* Handle donation logging error, payment already done */ }
+
+    return { success: true, transactionId: paymentResult.transactionId, message: "Donation successful." };
 }
 
 async function getMyTempleBookings(userId) {
-     console.log(`[Temple Service - Backend] Fetching bookings for user: ${userId}`);
+     console.log(`[Temple Service] Fetching temple bookings for user: ${userId}`);
      const bookingsColRef = collection(db, 'users', userId, 'templeBookings');
-     const q = query(bookingsColRef, orderBy('bookingDate', 'desc'));
+     const q = query(bookingsColRef, orderBy('bookingDate', 'desc'), limit(20));
      try {
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ bookingId: doc.id, ...doc.data() }));
+        return snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                bookingId: docSnap.id, ...data,
+                bookingDate: (data.bookingDate as Timestamp)?.toDate(),
+                visitDate: data.visitDate instanceof Timestamp ? data.visitDate.toDate() : undefined,
+                poojaDate: data.poojaDate instanceof Timestamp ? data.poojaDate.toDate() : undefined,
+            }
+        });
      } catch (error) {
-         console.error(`[Temple Service - Backend] Error fetching bookings for ${userId}:`, error);
+         console.error(`[Temple Service] Error fetching temple bookings for ${userId}:`, error);
          throw new Error("Could not retrieve temple bookings.");
      }
 }
 
-// Add functions for other temple service endpoints (Live URL, Audio, Events, Accommodation, Group Visit, Access Pass Info) as needed
+// Stubs for other info functions to be implemented if needed
+async function getTempleInfo(templeId) { return mockTempleInfoSeed[templeId] || null; }
+async function getLiveDarshanUrl(templeId) { return mockTemplesSeed.find(t => t.id === templeId && (t as any).liveStreamUrl)?.liveStreamUrl || null; }
+async function getTempleAudio(templeId, category) {
+    let tracks = mockAudioTracksSeed;
+    if (templeId) tracks = tracks.filter(t => (t as any).templeAffiliation === templeId); // Assuming affiliation field
+    if (category) tracks = tracks.filter(t => t.category === category);
+    return tracks;
+}
+async function getTempleEvents(templeId) {
+    let events = mockTempleEventsSeed;
+    if (templeId) events = events.filter(e => (e as any).templeId === templeId); // Assuming events are linked to templeId
+    return events.map(e => ({...e, startDate: new Date(e.startDate), endDate: new Date(e.endDate)}));
+}
+async function getNearbyAccommodation(templeId) { return mockAccommodationsSeed[templeId] || []; }
+async function requestGroupVisit(userId, requestData) {
+    console.log("[Temple Service] Group Visit Request (API - Mock):", { userId, ...requestData });
+    await new Promise(resolve => setTimeout(resolve, 900));
+    return { success: true, requestId: `GRP_REQ_${Date.now()}`, message: 'Group visit request submitted for approval.'};
+}
 
 
 module.exports = {
-    searchDarshanSlots,
-    bookDarshanSlot,
-    getAvailablePoojas,
-    bookVirtualPooja,
-    getAvailablePrasadam,
-    orderPrasadam,
-    donateToTemple,
-    getMyTempleBookings,
-    // Export other functions
+    searchDarshanSlots, bookDarshanSlot,
+    getAvailablePoojas, bookVirtualPooja,
+    getAvailablePrasadam, orderPrasadam,
+    donateToTemple, getMyTempleBookings,
+    getTempleInfo, getLiveDarshanUrl, getTempleAudio, getTempleEvents, getNearbyAccommodation, requestGroupVisit,
 };

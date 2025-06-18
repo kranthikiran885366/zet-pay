@@ -57,12 +57,13 @@ const bankStatusRoutes = require('./routes/bankStatusRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const supportRoutes = require('./routes/supportRoutes');
 const entertainmentRoutes = require('./routes/entertainmentRoutes');
-const shoppingRoutes = require('./routes/shoppingRoutes');
+const shoppingRoutes = require('./routes/shoppingRoutes'); // Added Shopping routes
+const foodRoutes = require('./routes/foodRoutes'); // Added Food routes
 const scanRoutes = require('./routes/scanRoutes');
 const vaultRoutes = require('./routes/vaultRoutes');
-const chatRoutes = require('./routes/chatRoutes');
+const chatRoutes = require('./routes/chatRoutes'); 
 const favoritesRoutes = require('./routes/favoritesRoutes');
-const reminderRoutes = require('./routes/reminderRoutes'); // Added reminder routes
+const reminderRoutes = require('./routes/reminderRoutes'); 
 
 const app = express();
 const server = http.createServer(app);
@@ -330,13 +331,9 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 // Public routes (no authMiddleware)
 app.use('/api/live', liveTrackingRoutes);
 app.use('/api/banks', bankStatusRoutes); 
-app.use('/api/shopping', shoppingRoutes); // Some shopping routes might be public (browsing)
 app.use('/api/auth', authRoutes); // Auth routes are public by nature
 
 // Authenticated routes (authMiddleware applied here or within route files)
-// It's generally cleaner to apply middleware at the router level if all routes in a file need it.
-// If some are public and some private within a file, apply selectively in the route file.
-// For ZetPay, most feature APIs will require authentication.
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/upi', authMiddleware, upiRoutes);
@@ -359,14 +356,15 @@ app.use('/api/pocket-money', authMiddleware, pocketMoneyRoutes);
 app.use('/api/cash-withdrawal', authMiddleware, cashWithdrawalRoutes);
 app.use('/api/bnpl', authMiddleware, bnplRoutes);
 app.use('/api/services', authMiddleware, serviceRoutes); // Generic services, ensure auth if needed
-app.use('/api/support', authMiddleware, supportRoutes); // Support might have some public (FAQ) and private (chat)
+app.use('/api/support', authMiddleware, supportRoutes); 
 app.use('/api/entertainment', authMiddleware, entertainmentRoutes); 
+app.use('/api/shopping', authMiddleware, shoppingRoutes); // Add authMiddleware for shopping orders
+app.use('/api/food', authMiddleware, foodRoutes); // Add authMiddleware for food orders
 app.use('/api/scan', authMiddleware, scanRoutes);
 app.use('/api/vault', authMiddleware, vaultRoutes);
 app.use('/api/chat', authMiddleware, chatRoutes); 
 app.use('/api/favorites', authMiddleware, favoritesRoutes);
-app.use('/api/reminders', authMiddleware, reminderRoutes); // Added reminder routes
-
+app.use('/api/reminders', authMiddleware, reminderRoutes); 
 
 // --- Fallback & Error Handling ---
 // Handle 404 for API routes not found
@@ -443,6 +441,6 @@ const shutdown = async (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-```
-  </change>
-</changes>
+
+// Import Timestamp for sendInitialTransactions
+const { Timestamp } = require('firebase-admin/firestore');

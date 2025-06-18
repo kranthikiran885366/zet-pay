@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -36,9 +37,4 @@ export default function HealthWalletPage() {
                 <Button disabled><Upload className="mr-2 h-4 w-4"/> Upload Document (Coming Soon)</Button>
                  <Button variant="outline" disabled><View className="mr-2 h-4 w-4"/> View Records (Coming Soon)</Button>
              </div>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
-  );
-}
+          </CardContent

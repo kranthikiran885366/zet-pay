@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -40,8 +41,4 @@ export default function ParkingPage() {
             </p>
             <Button disabled>Find Parking (Coming Soon)</Button>
           </CardContent>
-        </Card>
-      </main>
-    </div>
-  );
-}
+        </

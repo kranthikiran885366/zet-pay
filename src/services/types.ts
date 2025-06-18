@@ -2,7 +2,7 @@
 /**
  * @fileOverview Shared type definitions for data structures used across services.
  */
-import type { Timestamp } from 'firebase/firestore'; // For client-side date representations that might come from Firestore
+import type { Timestamp } from 'firebase/firestore'; // Keep for potential backend alignment
 
 // Replicated from user.ts - keep this as the single source of truth
 export interface UserProfile {
@@ -12,7 +12,8 @@ export interface UserProfile {
     phone?: string;
     avatarUrl?: string;
     kycStatus?: 'Verified' | 'Not Verified' | 'Pending';
-    createdAt?: Date | string | Timestamp;
+    // Use simple types for client-side, backend will handle Timestamps
+    createdAt?: Date | string | Timestamp; // Allow Timestamp for backend
     updatedAt?: Date | string | Timestamp;
     notificationsEnabled?: boolean;
     biometricEnabled?: boolean;
@@ -31,11 +32,11 @@ export interface UserProfile {
 export interface Transaction {
   id: string;
   userId: string;
-  type: string;
-  name: string;
-  description: string;
-  amount: number;
-  date: Date | string | Timestamp;
+  type: string; // Consider using a stricter enum matching backend values e.g., 'Sent' | 'Received' | 'Recharge' | 'Bill Payment' | 'Investment' | 'Service Booking' | 'Wallet Top-up' | 'Food Order' | 'Shopping' etc.
+  name: string; // Payee name, Biller name, Service name, Fund name etc.
+  description: string; // Transaction note, plan details, purpose
+  amount: number; // Negative for debits, positive for credits/refunds
+  date: Date | string | Timestamp; // Allow string initially from client, Timestamp in backend
   status: 'Completed' | 'Pending' | 'Failed' | 'Processing Activation' | 'Cancelled' | 'Refunded' | 'Refunded_To_Wallet' | 'FallbackSuccess';
   avatarSeed?: string;
   upiId?: string;
@@ -44,7 +45,7 @@ export interface Transaction {
   ticketId?: string; // Booking ID / PNR / Support Ticket ID / Order ID
   refundEta?: string;
   blockchainHash?: string;
-  paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking';
+  paymentMethodUsed?: 'UPI' | 'Wallet' | 'Card' | 'NetBanking' | 'BNPL'; // Added BNPL
   originalTransactionId?: string;
   operatorReferenceId?: string;
   billerReferenceId?: string;
@@ -69,6 +70,8 @@ export interface BankAccount {
   isDefault?: boolean;
   pinLength?: 4 | 6;
   createdAt?: Date | string | Timestamp;
+  accountType?: string; // Added 'SAVINGS', 'CURRENT'
+  ifsc?: string; // Added IFSC
 }
 
 
@@ -85,6 +88,7 @@ export interface UpiTransactionResult {
   success?: boolean;
   errorCode?: string;
   mightBeDebited?: boolean;
+  pspTransactionId?: string; // Added for direct UPI provider id
 }
 
 
@@ -93,7 +97,7 @@ export interface Payee {
   userId: string;
   name: string;
   identifier: string;
-  type: 'mobile' | 'bank' | 'dth' | 'fastag';
+  type: 'mobile' | 'bank' | 'dth' | 'fastag' | 'upi'; // Added 'upi'
   avatarSeed?: string;
   upiId?: string;
   accountNumber?: string;
@@ -106,7 +110,7 @@ export interface Payee {
 }
 
 export interface PayeeClient extends Omit<Payee, 'createdAt' | 'updatedAt'> {
-    isVerified?: boolean; 
+    isVerified?: boolean;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -123,6 +127,8 @@ export interface Offer {
   category?: string;
   isActive: boolean;
   createdAt?: Date | string | Timestamp;
+  redemptionLimitPerUser?: number; // Added
+  title?: string; // Added
 }
 
 // --- Loyalty Types ---
@@ -132,6 +138,9 @@ export interface LoyaltyStatus {
     tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
     benefits: string[];
     lastUpdated: Date | string | Timestamp;
+    createdAt?: Date | string | Timestamp; // Added
+    updatedAt?: Date | string | Timestamp; // Added
+    pointsToNextTier?: number; // Added
 }
 
 // --- Referral Types ---
@@ -141,6 +150,8 @@ export interface ReferralStatus {
     successfulReferrals: number;
     pendingReferrals: number;
     totalEarnings: number;
+    createdAt?: Date | string | Timestamp; // Added
+    updatedAt?: Date | string | Timestamp; // Added
 }
 
 // --- Scratch Card Types ---
@@ -149,11 +160,13 @@ export interface ScratchCardData {
     userId: string;
     isScratched: boolean;
     rewardAmount?: number;
+    rewardType?: 'Cashback' | 'CouponCode' | 'Points'; // Added
+    couponCodeValue?: string; // Added
     expiryDate: Date | string | Timestamp;
     message: string;
     sourceOfferId?: string;
     createdAt: Date | string | Timestamp;
-    scratchedAt?: Date | string | Timestamp;
+    scratchedAt?: Date | string | Timestamp; // Added
 }
 
 // --- Card Types ---
@@ -249,6 +262,7 @@ export interface ZetAgent {
     operatingHours: string;
     lat?: number; 
     lon?: number; 
+    maxWithdrawalLimit?: number; // Added
 }
 export interface WithdrawalDetails {
     id?: string;
@@ -498,7 +512,222 @@ export interface ChatSession {
     lastMessage?: ChatMessage; // Snippet of the last message
     updatedAt: Timestamp | Date | string;
     unreadCounts?: { [userId: string]: number }; // Unread count for each participant
-    isZetChatUser?: boolean; // If chat involves a verified merchant
+    isZetChatUser?: boolean; // If chat involves a verified merchant or special support agent
+    associatedTransactionId?: string;
 }
 
-    
+// --- Voucher Purchase Types ---
+export interface VoucherPurchasePayload {
+    brandId: string;
+    amount: number;
+    playerId?: string;
+    recipientMobile?: string;
+    billerName?: string;
+    voucherType: 'gaming' | 'digital';
+}
+
+// --- Food Ordering Types ---
+export interface Restaurant {
+    id: string;
+    name: string;
+    cuisine: string[];
+    rating: number;
+    deliveryTimeMinutes: number;
+    priceForTwo: number;
+    imageUrl: string;
+    offers?: string[];
+    isPureVeg?: boolean;
+    distanceKm?: number;
+    isPromoted?: boolean;
+    isTrending?: boolean;
+}
+export interface MenuItem {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    category: string;
+    isVeg: boolean;
+    isBestSeller?: boolean;
+    imageUrl?: string;
+}
+export interface RestaurantDetails extends Restaurant {
+    address: string;
+    timings: string;
+    menuCategories: string[];
+    menuItems: MenuItem[];
+}
+export interface OrderItem { // From shopping service, can be reused
+    productId: string; // Or itemId for food
+    quantity: number;
+    price: number; // Price at the time of order
+}
+
+export interface FoodOrderItem { // Specific for food orders
+    itemId: string; // Corresponds to MenuItem.id
+    name?: string; // Denormalized for logging/display
+    quantity: number;
+    price: number; // Price per item at time of order
+    customizations?: any; // For future
+}
+
+export interface FoodOrderPayload {
+    restaurantId: string;
+    items: FoodOrderItem[];
+    totalAmount: number;
+    deliveryAddress: { line1: string; city: string; pincode: string; line2?: string; landmark?: string; contactNumber?: string; };
+    paymentMethod?: 'wallet' | 'upi' | 'card';
+    specialInstructions?: string;
+}
+
+export interface FoodOrderConfirmation extends Transaction { // Extends Transaction for consistency
+    orderId: string; // Specific food order ID from provider/system
+    restaurantName?: string;
+    estimatedDeliveryTime?: string; // e.g., "30-40 minutes"
+    deliveryPartnerInfo?: { name: string; contact: string; vehicleNo?: string; };
+}
+
+
+// --- Shopping Types ---
+export interface ShoppingCategory {
+    id: string;
+    name: string;
+    imageUrl?: string;
+}
+
+export interface ShoppingProduct {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    imageUrl: string;
+    categoryId: string;
+    categoryName?: string;
+    stock?: number;
+    rating?: number;
+    brand?: string;
+    offer?: string;
+}
+
+export interface ShoppingOrderPayload { // Renamed from OrderDetails
+    items: OrderItem[];
+    totalAmount: number;
+    shippingAddress: { line1: string; city: string; pincode: string; state?: string; country?: string; name?: string; contactNumber?: string; };
+    paymentMethod?: 'wallet' | 'upi' | 'card';
+}
+
+export interface ShoppingOrder extends Transaction {
+    orderId: string;
+    shippingAddressUsed: any; // Store the address used for this order
+    trackingLink?: string;
+}
+
+// --- Healthcare Types ---
+export interface Doctor {
+    id: string; name: string; specialty: string; location: string; consultationFee: number;
+    availability: { [date: string]: string[] }; imageUrl?: string; experience?: string; qualifications?: string;
+}
+export interface LabTest {
+    id: string; name: string; price: number; description?: string; preparation?: string;
+}
+export interface Medicine {
+    id: string; name: string; price: number; requiresPrescription?: boolean; description?: string; manufacturer?: string; imageUrl?: string;
+}
+export interface FitnessTrainer {
+    id: string; name: string; specialties: string[]; location: string; priceRange: string; imageUrl?: string; rating?: number;
+}
+export interface HealthPackage {
+    id: string; name: string; labName: string; price: number; testsIncluded: string[]; description?: string; imageUrl?: string;
+}
+
+export interface HealthAppointment {
+    userId: string; doctorId: string; doctorName: string; slotTime: string; date: string; // Date as YYYY-MM-DD
+    appointmentType: 'In-Clinic' | 'Video'; consultationFee?: number; status: 'Confirmed' | 'Cancelled' | 'Completed';
+    bookingId?: string; // Provider booking ID
+    notes?: string;
+}
+export interface LabTestBooking {
+     userId: string; labId: string; labName: string; testId: string; testName: string;
+     slotTime?: string; date: string; collectionType: 'Home' | 'Lab Visit'; price: number; status: 'Confirmed' | 'SampleCollected' | 'ReportReady';
+     bookingId?: string; reportUrl?: string;
+}
+export interface MedicineOrder {
+    userId: string; orderId: string; items: Array<{ medicineId: string; name: string; quantity: number; price: number }>;
+    totalAmount: number; deliveryAddress: any; prescriptionId?: string; status: 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+}
+export interface MedicineSubscription {
+     userId: string; subscriptionId: string; medicineId: string; medicineName: string; quantity: number;
+     frequency: 'Weekly' | 'Monthly' | 'Bi-Monthly' | 'Quarterly'; startDate: string; deliveryAddress: any; status: 'Active' | 'Paused' | 'Cancelled';
+}
+
+// --- Hyperlocal Service Types ---
+export interface HyperlocalProvider {
+    id: string; name: string; rating?: number; basePrice?: number; area?: string; contact?: string; logoUrl?: string;
+    distance?: string; // Added distance
+}
+export interface HyperlocalServiceType {
+    type: string; displayName: string; icon?: string; // lucide-react icon name string
+    description?: string;
+    availableProviders?: number; // Count of providers for this service type
+    providers?: HyperlocalProvider[]; // List of actual providers if fetched for a specific type
+}
+export interface HyperlocalServiceDetails extends HyperlocalProvider { // A provider's details for a service
+    serviceType: string;
+    slots?: string[]; // Available time slots for a given date
+}
+
+export interface HyperlocalBookingPayload {
+    serviceType: string; // e.g., 'AC Repair', 'Plumber'
+    providerId: string;
+    slotTime: string; // e.g., '10:00 AM'
+    address: { line1: string; city: string; pincode: string; line2?: string; landmark?: string; };
+    description?: string; // User's description of the issue/need
+    estimatedCost: number;
+    paymentMethod?: string;
+    // Backend infers userId
+    paymentTransactionId?: string;
+}
+
+export interface HyperlocalBookingConfirmation { // Extends Transaction
+    status: 'Confirmed' | 'Failed' | 'Pending Confirmation'; bookingId?: string; message?: string; providerContact?: string;
+}
+
+
+// EV Station
+export interface EVStationConnector {
+    type: string; // e.g., 'CCS2', 'CHAdeMO', 'Type 2 AC'
+    power: string; // e.g., '50kW DC', '22kW AC'
+    status: 'Available' | 'In Use' | 'Offline' | 'Unknown';
+}
+export interface EVStation {
+    id: string;
+    name: string;
+    address: string;
+    distance: string; // e.g., "1.2 km"
+    connectors: EVStationConnector[];
+    price?: string; // e.g., "₹18/kWh"
+    amenities?: string[]; // e.g., ['Cafe', 'Restroom']
+    imageUrl?: string;
+    latitude?: number; // For map display
+    longitude?: number; // For map display
+    operator?: string;
+}
+
+// Rest Stop
+export interface RestStopService {
+    name: string; // e.g., 'EV Charging', 'Restaurant', 'Fuel Pump'
+    available: boolean;
+    details?: string; // e.g., "Tata Power 25kW DC" for EV Charging
+}
+export interface RestStop {
+    id: string;
+    name: string;
+    highway: string; // e.g., "NH48 (Delhi-Mumbai)"
+    locationDesc: string; // e.g., "Near Mile Marker 120, XYZ Village"
+    amenities: string[]; // e.g., ['Food Court', 'Clean Restrooms', 'Parking']
+    services?: RestStopService[];
+    rating?: number;
+    imageUrl?: string;
+    latitude?: number;
+    longitude?: number;
+}

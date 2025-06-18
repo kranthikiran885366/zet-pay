@@ -1,3 +1,4 @@
+
 # PayFriend Firestore Database Schema
 
 This document outlines the collections, subcollections, and document structures for the PayFriend application's Firestore database.
@@ -46,12 +47,19 @@ This document outlines the collections, subcollections, and document structures 
      - `genericBookings`: (General bookings, e.g., movies, events)
      - `savingsGoals`: (See below)
      - `userInvestments`: (See below)
+     - `foodOrders`: (See below)
+     - `shoppingOrders`: (See below)
+     - `healthAppointments`: (See below)
+     - `labBookings`: (See below)
+     - `medicineOrders`: (See below)
+     - `medicineSubscriptions`: (See below)
+     - `hyperlocalBookings`: (See below)
 
 ### 2. `transactions`
    - **Document ID**: Auto-generated
    - **Fields**:
      - `userId`: string (Firebase Auth UID of the user initiating/receiving)
-     - `type`: string (e.g., `Sent`, `Received`, `Recharge`, `Bill Payment`, `Wallet Top-up`, `Investment`, `Loan Disbursement`, `Loan Repayment`, `Cashback`, `Refund`, `Hold`, `Shopping`, `Booking Fee`, `Donation`, `BNPL Usage`, `BNPL Repayment`)
+     - `type`: string (e.g., `Sent`, `Received`, `Recharge`, `Bill Payment`, `Wallet Top-up`, `Investment`, `Loan Disbursement`, `Loan Repayment`, `Cashback`, `Refund`, `Hold`, `Shopping`, `Food Order`, `Booking Fee`, `Donation`, `BNPL Usage`, `BNPL Repayment`, `Service Booking`)
      - `name`: string (Payee name, Biller name, Merchant name, Fund name, etc.)
      - `description`: string (Note, purpose, plan details)
      - `amount`: number (Negative for debits, positive for credits)
@@ -68,7 +76,7 @@ This document outlines the collections, subcollections, and document structures 
      - `operatorReferenceId`: string (Reference ID from the recharge/bill payment operator) - Added
      - `loanId`: string (Reference to `microLoans` or `bnplStatements` document if applicable)
      - `bookingId`: string (Reference to a booking document if applicable)
-     - `ticketId`: string (For support tickets related to this transaction)
+     - `ticketId`: string (For support tickets related to this transaction, or generic booking/order ref)
      - `withdrawalRequestId`: string (Link to `cashWithdrawals` if applicable)
      - `originalTransactionId`: string (For refunds/reversals, linking to original failed TXN)
      - `refundTransactionId`: string (ID of the refund transaction, if this TXN is a refund)
@@ -115,7 +123,7 @@ This document outlines the collections, subcollections, and document structures 
      - `nextRunDate`: Timestamp (When the next recharge should occur)
      - `billerId`: string (From `billers` collection or external provider)
      - `planId`: string (Optional, if a specific plan is to be recharged)
-     - `paymentSourceUpiId`: string (User's UPI ID for payment - backend needs to ensure it's valid)
+     - `paymentMethodReference`: string (Secure reference to payment method, e.g., UPI mandate URN, tokenized card ID)
      - `isActive`: boolean (User can pause/resume)
      - `createdAt`: Timestamp
      - `updatedAt`: Timestamp
@@ -153,7 +161,7 @@ This document outlines the collections, subcollections, and document structures 
      - `tier`: string (`Bronze`, `Silver`, `Gold`, `Platinum`)
      - `benefits`: array of strings (Description of benefits for current tier)
      - `pointsToNextTier`: number
-     - `lastTransactionDate`: Timestamp (When points were last updated)
+     - `lastUpdated`: Timestamp
      - `createdAt`: Timestamp
      - `updatedAt`: Timestamp
 
@@ -383,7 +391,7 @@ This document outlines the collections, subcollections, and document structures 
     - **Fields**:
         - `userId`: string
         - `name`: string (User-defined name for the item, e.g., "Flight Ticket BLR-DEL June 20")
-        - `type`: string (`Ticket`, `Bill`, `Document`, `Plan`, `Image`, `Other`)
+        - `type`: string (`Ticket`, `Bill`, `Document`, `Plan`, `Image`, `Other`, `Health`)
         - `source`: string (Where the item came from, e.g., "Train Booking", "Electricity Bill", "Manual Upload")
         - `notes`: string (Optional user notes)
         - `fileUrl`: string (URL if external, or path in Firebase Storage if uploaded directly)
@@ -397,6 +405,7 @@ This document outlines the collections, subcollections, and document structures 
         - `updatedAt`: Timestamp
         - `originalTransactionId`: string (Optional, if item linked to a transaction, e.g. a bill)
         - `expiryDate`: Timestamp (Optional, e.g. for tickets)
+        - `healthDocumentType`: string (Optional, if type is `Health`, e.g., "Prescription", "Lab Report")
 
 ### 22. `chats`
     - **Document ID**: Composite ID (e.g., `userId1_userId2` where userId1 < userId2)
@@ -465,7 +474,7 @@ This document outlines the collections, subcollections, and document structures 
         - `createdAt`: Timestamp
         - `updatedAt`: Timestamp
 
-### 25. `flightListings` (Mock backend data source for flight search)
+### 25. `flightListings` (Conceptual cache or data from provider)
     - **Document ID**: Auto-generated (or custom like `AIRLINECODE_FLIGHTNUMBER_DATE`)
     - **Fields**:
         - `airline`: string
@@ -501,7 +510,7 @@ This document outlines the collections, subcollections, and document structures 
         - `bookingFee`: number (Optional base fee for marriage hall booking)
         - `requiresApproval`: boolean (Optional for marriage hall approval)
 
-### 27. `darshanSlots` (Availability for a specific temple and date)
+### 27. `darshanSlots` (Conceptual availability - likely fetched from external API)
     - **Document ID**: `templeId_YYYY-MM-DD` (e.g., "tirupati_2024-08-15")
     - **Fields**:
         - `templeId`: string
@@ -513,7 +522,7 @@ This document outlines the collections, subcollections, and document structures 
             - `ticketsLeft`: number (Optional, for direct booking)
             - `totalTickets`: number (Optional)
 
-### 28. `hyperlocalProviders` (List of service providers)
+### 28. `hyperlocalProviders` (Conceptual cache or data for direct partnerships)
     - **Document ID**: Auto-generated
     - **Fields**:
         - `providerName`: string
@@ -526,6 +535,88 @@ This document outlines the collections, subcollections, and document structures 
         - `availableSlots`: map (e.g., `{"YYYY-MM-DD": ["09:00", "11:00"]}`) - Simplified
         - `isActive`: boolean
         - `logoUrl`: string (Optional)
+
+### 29. `restaurants` (Conceptual cache or data for direct partnerships)
+    - **Document ID**: `restaurantId`
+    - **Fields**:
+        - `name`: string
+        - `cuisine`: array of strings
+        - `rating`: number
+        - `deliveryTimeMinutes`: number
+        - `priceForTwo`: number
+        - `imageUrl`: string
+        - `address`: string
+        - `city`: string
+        - `timings`: string
+        - `offers`: array of strings (Optional)
+        - `isPureVeg`: boolean (Optional)
+        - `isActive`: boolean (For listing control)
+        - `menu`: array of maps (MenuItem structure)
+            - `id`: string
+            - `name`: string
+            - `description`: string
+            - `price`: number
+            - `category`: string
+            - `isVeg`: boolean
+            - `isBestSeller`: boolean (Optional)
+            - `imageUrl`: string (Optional)
+
+### 30. `products` (Conceptual cache or data for direct e-commerce partnerships)
+    - **Document ID**: `productId`
+    - **Fields**:
+        - `name`: string
+        - `description`: string
+        - `price`: number
+        - `imageUrl`: string
+        - `categoryId`: string (Reference to `productCategories`)
+        - `brand`: string (Optional)
+        - `stock`: number (Optional)
+        - `rating`: number (Optional)
+        - `specifications`: map (key-value pairs)
+        - `variants`: array of maps (e.g., size, color, price for each)
+        - `isActive`: boolean
+
+### 31. `productCategories` (For e-commerce)
+    - **Document ID**: `categoryId`
+    - **Fields**:
+        - `name`: string
+        - `imageUrl`: string (Optional)
+        - `parentCategoryId`: string (Optional, for subcategories)
+
+### 32. `doctors` (Conceptual cache or data for direct partnerships)
+    - **Document ID**: `doctorId`
+    - **Fields**:
+        - `name`: string
+        - `specialty`: string
+        - `qualifications`: string
+        - `experienceYears`: number
+        - `clinicName`: string (Optional)
+        - `address`: string
+        - `city`: string
+        - `consultationFee`: number
+        - `imageUrl`: string (Optional)
+        - `availability`: map (e.g., `{"YYYY-MM-DD": ["10:00", "10:30"]}`)
+
+### 33. `reminders`
+    - **Document ID**: Auto-generated (`reminderId`)
+    - **Fields**:
+        - `userId`: string
+        - `type`: string (`Bill Payment`, `Recharge`, `Subscription`, `Loan EMI`, `SIP`, `Custom`)
+        - `name`: string (e.g., "Airtel Postpaid Bill", "Netflix Subscription", "Home Loan EMI")
+        - `billerName`: string (If applicable, e.g., "Airtel", "Netflix", "HDFC Bank")
+        - `identifier`: string (Optional, e.g., Mobile number, Policy number, Loan account)
+        - `dueDate`: Timestamp
+        - `reminderDate`: Timestamp (When the notification should be sent)
+        - `amount`: number (Optional)
+        - `category`: string (e.g., "Utilities", "Finance", "Entertainment")
+        - `notes`: string (Optional)
+        - `isRecurring`: boolean (default: `false`)
+        - `frequency`: string (`Daily`, `Weekly`, `Monthly`, `Annually`) - If recurring
+        - `isSnoozed`: boolean (default: `false`)
+        - `snoozeUntil`: Timestamp (Optional)
+        - `isCompleted`: boolean (default: `false`) - Manually marked by user or auto if payment linked
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
 
 ---
 ## Subcollections (under `users/{userId}`)
@@ -751,6 +842,145 @@ This document outlines the collections, subcollections, and document structures 
                     - `sipDate`: number (day of month)
                     - `sipFrequency`: string
 
+### 13. `users/{userId}/foodOrders`
+    - **Document ID**: Auto-generated (`foodOrderId`)
+    - **Fields**:
+        - `orderId`: string (Provider's Order ID, if different from Firestore ID)
+        - `restaurantId`: string
+        - `restaurantName`: string (Denormalized)
+        - `items`: array of maps (FoodOrderItem structure)
+            - `itemId`: string
+            - `name`: string
+            - `quantity`: number
+            - `price`: number (price per item at time of order)
+            - `customizations`: map (Optional)
+        - `totalAmount`: number
+        - `deliveryAddress`: map (line1, line2, city, pincode, landmark, contactNumber)
+        - `paymentMethod`: string (`Wallet`, `UPI`, `Card`)
+        - `paymentTransactionId`: string (Reference to `transactions` collection)
+        - `orderDate`: Timestamp
+        - `status`: string (`Placed`, `Preparing`, `Out for Delivery`, `Delivered`, `Cancelled`)
+        - `estimatedDeliveryTime`: string (e.g., "30-40 minutes")
+        - `deliveryPartnerInfo`: map (Optional: name, contact, vehicleNo)
+        - `specialInstructions`: string (Optional)
+        - `userId`: string (Redundant if subcollection, but useful for top-level queries)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 14. `users/{userId}/shoppingOrders`
+    - **Document ID**: Auto-generated (`shoppingOrderId`)
+    - **Fields**:
+        - `orderId`: string (E-commerce platform's Order ID)
+        - `items`: array of maps (OrderItem structure from shopping service)
+            - `productId`: string
+            - `productName`: string (Denormalized)
+            - `quantity`: number
+            - `priceAtPurchase`: number
+            - `imageUrl`: string (Optional)
+        - `totalAmount`: number
+        - `shippingAddress`: map (line1, line2, city, pincode, state, country, name, contactNumber)
+        - `paymentMethod`: string
+        - `paymentTransactionId`: string (Reference to `transactions`)
+        - `orderDate`: Timestamp
+        - `status`: string (`Processing`, `Shipped`, `Out for Delivery`, `Delivered`, `Cancelled`, `Returned`)
+        - `trackingLink`: string (Optional)
+        - `userId`: string (Redundant if subcollection)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 15. `users/{userId}/healthAppointments`
+    - **Document ID**: Auto-generated (`appointmentId`)
+    - **Fields**:
+        - `userId`: string
+        - `doctorId`: string
+        - `doctorName`: string
+        - `slotTime`: string
+        - `date`: Timestamp (Date of appointment)
+        - `appointmentType`: string (`In-Clinic`, `Video`)
+        - `consultationFee`: number (Optional)
+        - `paymentTransactionId`: string (Optional, if fee paid)
+        - `status`: string (`Confirmed`, `Cancelled`, `Completed`, `No Show`)
+        - `bookingDate`: Timestamp (When booking was made)
+        - `notes`: string (Optional)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 16. `users/{userId}/labBookings`
+    - **Document ID**: Auto-generated (`labBookingId`)
+    - **Fields**:
+        - `userId`: string
+        - `labId`: string
+        - `labName`: string
+        - `testId`: string
+        - `testName`: string
+        - `slotTime`: string (Optional, for lab visit)
+        - `date`: Timestamp (Date of test/sample collection)
+        - `collectionType`: string (`Home`, `Lab Visit`)
+        - `price`: number
+        - `paymentTransactionId`: string (Optional)
+        - `status`: string (`Confirmed`, `SampleCollected`, `ReportReady`, `Cancelled`)
+        - `bookingDate`: Timestamp
+        - `reportUrl`: string (Optional, link to report in Firebase Storage or external)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 17. `users/{userId}/medicineOrders`
+    - **Document ID**: Auto-generated (`medicineOrderId`)
+    - **Fields**:
+        - `userId`: string
+        - `orderId`: string (Pharmacy's order ID)
+        - `items`: array of maps
+            - `medicineId`: string
+            - `name`: string
+            - `quantity`: number
+            - `price`: number
+        - `totalAmount`: number
+        - `deliveryAddress`: map
+        - `prescriptionId`: string (Optional, reference to `userPrescriptions`)
+        - `paymentTransactionId`: string
+        - `status`: string (`Processing`, `Shipped`, `Delivered`, `Cancelled`)
+        - `orderDate`: Timestamp
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 18. `users/{userId}/medicineSubscriptions`
+    - **Document ID**: Auto-generated (`subscriptionId`)
+    - **Fields**:
+        - `userId`: string
+        - `subscriptionId`: string (Provider's subscription ID, if any)
+        - `medicineId`: string
+        - `medicineName`: string
+        - `quantity`: number
+        - `frequency`: string (`Weekly`, `Monthly`, `Bi-Monthly`, `Quarterly`)
+        - `startDate`: Timestamp
+        - `nextRefillDate`: Timestamp
+        - `deliveryAddress`: map
+        - `paymentMethodReference`: string (e.g., mandate ID for auto-payment)
+        - `status`: string (`Active`, `Paused`, `Cancelled`)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
+### 19. `users/{userId}/hyperlocalBookings`
+    - **Document ID**: Auto-generated (`hyperlocalBookingId`)
+    - **Fields**:
+        - `userId`: string
+        - `serviceType`: string (e.g., `AC Repair`, `Plumber`)
+        - `providerId`: string
+        - `providerName`: string (Denormalized)
+        - `slotTime`: string
+        - `bookingDate`: Timestamp (When booking was made)
+        - `serviceDate`: Timestamp (When service is scheduled)
+        - `address`: map
+        - `description`: string (User's problem/need)
+        - `estimatedCost`: number
+        - `actualCost`: number (Optional, after service)
+        - `paymentTransactionId`: string
+        - `status`: string (`Requested`, `Confirmed`, `InProgress`, `Completed`, `Cancelled`)
+        - `rating`: number (Optional, user rating for service)
+        - `review`: string (Optional, user review)
+        - `createdAt`: Timestamp
+        - `updatedAt`: Timestamp
+
 ---
 
-This schema provides a solid foundation. Remember that as the app evolves, you might need to add more fields, collections, or adjust relationships. Indexing will also be critical for query performance as your data grows.
+This schema provides a solid foundation. Remember that as the app evolves, you might need to add more fields, collections

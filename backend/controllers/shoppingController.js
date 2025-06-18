@@ -1,100 +1,216 @@
-// backend/controllers/shoppingController.js
-const shoppingProviderService = require('../services/shoppingProviderService'); // To interact with mock data source
-const { addTransaction } = require('../services/transactionLogger'); // For logging order transaction
-const { payViaWalletInternal } = require('../services/wallet'); // For payment if using wallet
 
-// --- Categories ---
+// backend/controllers/shoppingController.js
+const shoppingProviderService = require('../services/shoppingProviderService');
+const { addTransaction } = require('../services/transactionLogger');
+const { payViaWalletInternal } = require('../services/wallet');
+const { sendToUser } = require('../server');
+const { doc, updateDoc, getDoc, serverTimestamp, collection, addDoc, query, where, orderBy, limit, getDocs } = require('firebase/firestore');
+const db = require('../config/firebaseAdmin').db;
+import type { Transaction, ShoppingOrder } from '../services/types'; // Assuming ShoppingOrder type exists
+
 exports.getCategories = async (req, res, next) => {
     console.log("[Shopping Ctrl] Fetching categories...");
-    const categories = await shoppingProviderService.fetchCategories();
-    res.status(200).json(categories);
+    try {
+        const categories = await shoppingProviderService.fetchCategoriesFromApi();
+        res.status(200).json(categories);
+    } catch (error) {
+        next(error);
+    }
 };
 
-// --- Products ---
 exports.getProducts = async (req, res, next) => {
-    const { categoryId } = req.query;
-    console.log(`[Shopping Ctrl] Fetching products ${categoryId ? `for category ${categoryId}` : 'all'}...`);
-    const products = await shoppingProviderService.fetchProducts(categoryId);
-    res.status(200).json(products);
+    const { categoryId, searchTerm } = req.query;
+    console.log(`[Shopping Ctrl] Fetching products ${categoryId ? `for category ${categoryId}` : ''} ${searchTerm ? `matching "${searchTerm}"` : ''}...`);
+    try {
+        const products = await shoppingProviderService.fetchProductsFromApi(categoryId, searchTerm);
+        res.status(200).json(products);
+    } catch (error) {
+        next(error);
+    }
 };
 
 exports.getProductDetails = async (req, res, next) => {
     const { productId } = req.params;
     console.log(`[Shopping Ctrl] Fetching details for product ${productId}...`);
-    const product = await shoppingProviderService.fetchProductById(productId);
-    if (!product) {
-        res.status(404);
-        throw new Error("Product not found.");
+    try {
+        const product = await shoppingProviderService.fetchProductDetailsFromApi(productId);
+        if (!product) {
+            res.status(404);
+            return next(new Error("Product not found."));
+        }
+        res.status(200).json(product);
+    } catch (error) {
+        next(error);
     }
-    res.status(200).json(product);
 };
 
-// --- Mock Order Placement ---
-exports.placeMockOrder = async (req, res, next) => {
-    const userId = req.user.uid; // From authMiddleware
-    const { items, totalAmount /*, shippingAddress, paymentMethod */ } = req.body;
+exports.placeOrder = async (req, res, next) => {
+    const userId = req.user.uid;
+    const { items, totalAmount, shippingAddress, paymentMethod = 'wallet' } = req.body;
 
-    console.log(`[Shopping Ctrl] User ${userId} placing mock order for ₹${totalAmount}`);
+    console.log(`[Shopping Ctrl] User ${userId} placing order for ₹${totalAmount}`);
 
-    // 1. Validate items and totalAmount (partially done by router validation)
-    // Further validation: check if product prices match, stock available (if implementing inventory)
+    if (!items || !Array.isArray(items) || items.length === 0 || totalAmount <= 0) {
+        res.status(400);
+        return next(new Error("Invalid order data: Items and total amount are required."));
+    }
 
-    // 2. Simulate Payment Processing (e.g., using wallet)
-    // In a real scenario, integrate with payment gateway or UPI
-    let paymentSuccessful = false;
+    let paymentSuccess = false;
+    let paymentResult = { success: false, transactionId: null, message: 'Payment processing failed initially.' };
+    let providerOrderResult = {};
+    let finalStatus = 'Failed';
+    let failureReason = 'Order placement or payment failed.';
+    const orderName = `Online Shopping Order`;
+
+    let logData = {
+        userId,
+        type: 'Shopping',
+        name: orderName,
+        description: `Order with ${items.length} item(s). Address: ${shippingAddress.line1}`,
+        amount: -totalAmount,
+        status: 'Pending',
+        billerId: 'ZETPAY_ECOMMERCE', // Internal identifier
+        paymentMethodUsed: paymentMethod,
+    };
     let paymentTransactionId = null;
-    const paymentNote = `Online Shopping Order - ${items.length} item(s)`;
 
     try {
-        // Assuming payment via wallet for this mock
-        const walletPaymentResult = await payViaWalletInternal(userId, 'ZETPAY_ECOMMERCE', totalAmount, paymentNote, 'Shopping');
-        if (!walletPaymentResult.success) {
-            throw new Error(walletPaymentResult.message || 'Wallet payment failed for order.');
+        const initialTxLog = await addTransaction(logData);
+        paymentTransactionId = initialTxLog.id;
+
+        if (paymentMethod === 'wallet') {
+            paymentResult = await payViaWalletInternal(userId, `ECOMMERCE_ORDER_${Date.now()}`, totalAmount, orderName, 'Shopping');
+            if (!paymentResult.success) throw new Error(paymentResult.message || 'Wallet payment failed for order.');
+            paymentSuccess = true;
+        } else {
+            // TODO: Implement UPI/Card payment via paymentGatewayService
+            throw new Error(`Payment method ${paymentMethod} not implemented for shopping.`);
         }
-        paymentSuccessful = true;
-        paymentTransactionId = walletPaymentResult.transactionId;
-        console.log(`[Shopping Ctrl] Mock order payment successful via wallet. Transaction ID: ${paymentTransactionId}`);
-    } catch (paymentError) {
-        console.error("[Shopping Ctrl] Order payment processing error:", paymentError);
-        // Don't re-throw immediately, let the transaction log reflect the payment failure
-        paymentSuccessful = false;
+
+        if (!paymentResult.transactionId && paymentSuccess) {
+            paymentResult.transactionId = paymentTransactionId;
+        }
+
+        console.log(`[Shopping Ctrl] Payment successful (Tx ID: ${paymentTransactionId}). Confirming with shopping provider...`);
+        providerOrderResult = await shoppingProviderService.placeOrderWithProviderApi({
+            userId, items, totalAmount, shippingAddress, paymentTransactionId
+        });
+
+        if ((providerOrderResult as any).success) {
+            finalStatus = 'Completed'; // Or 'Processing'
+            logData.status = finalStatus;
+            logData.ticketId = (providerOrderResult as any).orderId || paymentTransactionId;
+            failureReason = '';
+            paymentResult.message = (providerOrderResult as any).message || 'Order placed successfully with provider.';
+
+            await updateDoc(doc(db, 'transactions', paymentTransactionId), {
+                status: finalStatus,
+                description: `${logData.description} - Provider Order ID: ${logData.ticketId}`,
+                ticketId: logData.ticketId,
+                updatedAt: serverTimestamp()
+            });
+
+            const userOrdersRef = collection(db, 'users', userId, 'shoppingOrders');
+            await addDoc(userOrdersRef, {
+                orderId: (providerOrderResult as any).orderId,
+                items: items.map(item => ({ productId: item.productId, quantity: item.quantity, priceAtPurchase: item.price })),
+                totalAmount, shippingAddress, paymentMethod,
+                orderDate: serverTimestamp(),
+                status: finalStatus,
+                userId,
+                paymentTransactionId,
+            });
+        } else {
+            finalStatus = 'Failed';
+            failureReason = (providerOrderResult as any).message || 'Order placement failed at provider after payment.';
+            logData.status = 'Failed';
+            paymentResult.message = failureReason;
+
+            console.error(`[Shopping Ctrl] CRITICAL: Payment successful (Tx: ${paymentTransactionId}) but shopping order failed. Refunding.`);
+            await updateDoc(doc(db, 'transactions', paymentTransactionId), {
+                status: 'Failed',
+                description: `Order Failed at provider for ${logData.name} - ${failureReason}`,
+                failureReason, updatedAt: serverTimestamp()
+            });
+            if (paymentMethod === 'wallet') {
+                await payViaWalletInternal(userId, `REFUND_SHOPPING_${paymentTransactionId}`, -totalAmount, `Refund: Failed Shopping Order ${orderName}`, 'Refund');
+                paymentResult.message = failureReason + " Refund to wallet initiated.";
+            }
+            throw new Error(paymentResult.message);
+        }
+
+        const finalTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
+        if (finalTxDoc.exists()) {
+            const finalTxData = { id: finalTxDoc.id, ...finalTxDoc.data(), date: finalTxDoc.data().date.toDate().toISOString() };
+            sendToUser(userId, { type: 'transaction_update', payload: finalTxData });
+        }
+        sendToUser(userId, { type: 'shopping_order_update', payload: { orderId: (providerOrderResult as any).orderId, status: finalStatus, ...providerOrderResult } });
+
+        res.status(201).json({
+            status: finalStatus,
+            message: paymentResult.message,
+            transactionId: paymentTransactionId,
+            orderDetails: providerOrderResult,
+        });
+
+    } catch (error: any) {
+        console.error(`[Shopping Ctrl] Shopping order failed for user ${userId}:`, error.message);
+        failureReason = error.message || failureReason;
+        if (paymentTransactionId) {
+            try {
+                await updateDoc(doc(db, 'transactions', paymentTransactionId), { status: 'Failed', failureReason: failureReason, updatedAt: serverTimestamp() });
+                const updatedTxDoc = await getDoc(doc(db, 'transactions', paymentTransactionId));
+                 if(updatedTxDoc.exists()) sendToUser(userId, { type: 'transaction_update', payload: { id: updatedTxDoc.id, ...updatedTxDoc.data(), date: updatedTxDoc.data().date.toDate().toISOString() } });
+            } catch (updateError) {
+                console.error("Error updating transaction to Failed status:", updateError);
+            }
+        }
+        res.status(400).json({ status: 'Failed', message: failureReason, transactionId: paymentTransactionId });
     }
+};
 
-    // 3. Log the Order Transaction (whether payment succeeded or failed initially)
-    const orderId = `ORD_${Date.now()}_${userId.substring(0, 5)}`;
-    const transactionStatus = paymentSuccessful ? 'Completed' : 'Failed';
-    const transactionDescription = paymentSuccessful ?
-        `Order ${orderId} for ${items.length} items.` :
-        `Failed Order Attempt ${orderId}. Reason: ${paymentSuccessful ? '' : 'Payment Failed'}`;
-
-    // Use the main transaction logger
-    const loggedTransaction = await addTransaction({
-        userId,
-        type: 'Shopping', // Or a more specific type if needed
-        name: `Online Order - ${orderId}`,
-        description: transactionDescription,
-        amount: -totalAmount, // Debit from user
-        status: transactionStatus,
-        billerId: 'ZETPAY_ECOMMERCE_MOCK', // Internal identifier for mock e-commerce
-        ticketId: orderId, // Use orderId as ticketId for reference
-        paymentMethodUsed: 'Wallet', // Assuming wallet for this mock
-    });
-
-    if (!paymentSuccessful) {
-        // If payment failed, throw an error now that it's logged
-        res.status(400); // Bad Request if payment itself failed
-        throw new Error("Order placement failed due to payment issue.");
+exports.getOrderHistory = async (req, res, next) => {
+    const userId = req.user.uid;
+    console.log(`[Shopping Ctrl] Fetching order history for user ${userId}`);
+    try {
+        const ordersColRef = collection(db, 'users', userId, 'shoppingOrders');
+        const q = query(ordersColRef, orderBy('orderDate', 'desc'), limit(20));
+        const snapshot = await getDocs(q);
+        const orders = snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id, // Firestore document ID
+                ...data,
+                orderDate: (data.orderDate as Timestamp).toDate().toISOString(),
+            } as ShoppingOrder;
+        });
+        res.status(200).json(orders);
+    } catch (error) {
+        next(error);
     }
+};
 
-    // 4. (Optional) Save order details to a separate 'orders' collection if needed
-    // await shoppingProviderService.saveOrder({ userId, orderId, items, totalAmount, shippingAddress, status: 'Processing' });
-
-    // 5. Respond to client
-    // Return the logged transaction which includes status and transaction ID (which is now the primary ID)
-    // Also include the e-commerce specific orderId
-    res.status(201).json({
-        ...loggedTransaction, // Spread the transaction details (id, status, date, etc.)
-        orderId: orderId, // Add the specific e-commerce order ID
-        message: 'Order placed successfully (mock). Payment processed.',
-    });
+exports.getOrderDetails = async (req, res, next) => {
+    const userId = req.user.uid;
+    const { orderId } = req.params;
+    console.log(`[Shopping Ctrl] Fetching details for order ${orderId}, user ${userId}`);
+    try {
+        const orderDocRef = doc(db, 'users', userId, 'shoppingOrders', orderId); // Path to user's specific order
+        const orderSnap = await getDoc(orderDocRef);
+        if (!orderSnap.exists()) {
+            // Fallback: Check top-level orders collection if schema changed
+            const topLevelOrderRef = doc(db, 'shoppingOrders', orderId);
+            const topLevelSnap = await getDoc(topLevelOrderRef);
+            if (topLevelSnap.exists() && topLevelSnap.data()?.userId === userId) {
+                 const data = topLevelSnap.data();
+                 return res.status(200).json({id: topLevelSnap.id, ...data, orderDate: (data.orderDate as Timestamp).toDate().toISOString()} as ShoppingOrder);
+            }
+            res.status(404);
+            return next(new Error("Order not found or access denied."));
+        }
+        const data = orderSnap.data();
+         res.status(200).json({id: orderSnap.id, ...data, orderDate: (data.orderDate as Timestamp).toDate().toISOString()} as ShoppingOrder);
+    } catch (error) {
+        next(error);
+    }
 };

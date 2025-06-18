@@ -12,6 +12,9 @@ export * from './food';
 export * from './entertainment';
 export * from './liveTracking'; 
 export * from './reminders';
+export * from './healthcare'; // Added Healthcare
+export * from './hyperlocal'; // Added Hyperlocal
+export * from './shopping'; // Added Shopping
 
 // Specific travel related mock data exports
 export { 

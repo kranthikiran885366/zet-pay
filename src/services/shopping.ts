@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Service functions for Online Shopping features.
  * Interacts with backend shopping APIs.
@@ -8,7 +9,7 @@ import type { Transaction } from './types'; // For order result
 export interface ShoppingCategory {
     id: string;
     name: string;
-    imageUrl?: string; // Optional image for category
+    imageUrl?: string;
 }
 
 export interface ShoppingProduct {
@@ -17,12 +18,12 @@ export interface ShoppingProduct {
     description: string;
     price: number;
     imageUrl: string;
-    categoryId: string; // To link product to a category
-    categoryName?: string; // Denormalized for display
-    stock?: number; // Optional stock level
-    rating?: number; // Optional product rating
-    brand?: string; // Optional brand name
-    offer?: string; // e.g., "20% OFF"
+    categoryId: string;
+    categoryName?: string;
+    stock?: number;
+    rating?: number;
+    brand?: string;
+    offer?: string;
 }
 
 export interface OrderItem {
@@ -31,15 +32,16 @@ export interface OrderItem {
     price: number; // Price at the time of order
 }
 
-export interface OrderDetails {
+export interface OrderDetailsPayload { // Renamed to avoid conflict with backend's OrderDetails
     items: OrderItem[];
     totalAmount: number;
-    // Add shippingAddress, paymentMethod, userId (from token) etc.
+    shippingAddress: { line1: string; city: string; pincode: string; line2?: string; landmark?: string };
+    paymentMethod?: 'wallet' | 'upi' | 'card';
 }
 
-export interface OrderConfirmation extends Transaction {
-    orderId: string; // Specific order ID from e-commerce system
-    // Inherits fields from Transaction like id (as transactionId), status, date, amount etc.
+export interface ShoppingOrderConfirmation extends Transaction {
+    orderId: string;
+    // Add other e-commerce specific confirmation details if needed
 }
 
 
@@ -48,60 +50,111 @@ export interface OrderConfirmation extends Transaction {
  * @returns A promise resolving to an array of ShoppingCategory objects.
  */
 export async function getShoppingCategories(): Promise<ShoppingCategory[]> {
-    console.log("[Client Service] Fetching shopping categories via API...");
+    console.log("[Client Shopping Service] Fetching categories via API...");
     try {
         const categories = await apiClient<ShoppingCategory[]>('/shopping/categories');
         return categories;
     } catch (error) {
         console.error("Error fetching shopping categories via API:", error);
-        return [];
+        throw error;
     }
 }
 
 /**
- * Fetches shopping products from the backend API, optionally filtered by category.
+ * Fetches shopping products from the backend API, optionally filtered by category or search term.
  * @param categoryId Optional category ID to filter products.
+ * @param searchTerm Optional search term.
  * @returns A promise resolving to an array of ShoppingProduct objects.
  */
-export async function getShoppingProducts(categoryId?: string): Promise<ShoppingProduct[]> {
-    console.log(`[Client Service] Fetching shopping products via API ${categoryId ? `for category ${categoryId}` : ''}...`);
-    let endpoint = '/shopping/products';
-    if (categoryId) {
-        endpoint += `?categoryId=${encodeURIComponent(categoryId)}`;
-    }
+export async function getShoppingProducts(categoryId?: string, searchTerm?: string): Promise<ShoppingProduct[]> {
+    console.log(`[Client Shopping Service] Fetching products via API ${categoryId ? `for cat ${categoryId}` : ''} ${searchTerm ? `matching "${searchTerm}"` : ''}...`);
+    const params = new URLSearchParams();
+    if (categoryId) params.append('categoryId', categoryId);
+    if (searchTerm) params.append('searchTerm', searchTerm);
+    const endpoint = `/shopping/products?${params.toString()}`;
     try {
         const products = await apiClient<ShoppingProduct[]>(endpoint);
         return products;
     } catch (error) {
         console.error("Error fetching shopping products via API:", error);
-        return [];
+        throw error;
     }
 }
 
 /**
- * Simulates placing an order via the backend API.
+ * Fetches details for a specific product from the backend API.
+ * @param productId The ID of the product.
+ * @returns A promise resolving to the ShoppingProduct object or null.
+ */
+export async function getShoppingProductDetails(productId: string): Promise<ShoppingProduct | null> {
+    console.log(`[Client Shopping Service] Fetching product details for ${productId} via API`);
+    try {
+        const product = await apiClient<ShoppingProduct>(`/shopping/products/${productId}`);
+        return product;
+    } catch (error: any) {
+        if (error.message?.includes('404')) return null;
+        console.error("Error fetching product details via API:", error);
+        throw error;
+    }
+}
+
+
+/**
+ * Places an online shopping order via the backend API.
  * Backend handles payment processing and creates a transaction log.
  * @param orderDetails Details of the order to be placed.
- * @returns A promise resolving to an OrderConfirmation object (which extends Transaction).
+ * @returns A promise resolving to an ShoppingOrderConfirmation object (which extends Transaction).
  */
-export async function placeMockOrder(orderDetails: OrderDetails): Promise<OrderConfirmation> {
-    console.log("[Client Service] Placing mock order via API:", orderDetails);
+export async function placeOrder(orderDetails: OrderDetailsPayload): Promise<ShoppingOrderConfirmation> {
+    console.log("[Client Shopping Service] Placing order via API:", orderDetails);
     try {
-        // Backend endpoint '/shopping/orders' creates order and associated transaction.
-        // The response should be compatible with the Transaction type, plus an orderId.
-        const result = await apiClient<OrderConfirmation>('/shopping/orders', {
+        const result = await apiClient<ShoppingOrderConfirmation>('/shopping/orders', {
             method: 'POST',
             body: JSON.stringify(orderDetails),
         });
-        console.log("Mock Order API response:", result);
-        // Convert date string from API to Date object
         return {
             ...result,
             date: new Date(result.date),
-            avatarSeed: result.avatarSeed || result.name?.toLowerCase().replace(/\s+/g, '') || result.id,
         };
     } catch (error: any) {
-        console.error("Error placing mock order via API:", error);
-        throw error; // Re-throw for UI handling
+        console.error("Error placing order via API:", error);
+        throw error;
+    }
+}
+
+// --- Conceptual: Order History & Details ---
+export interface UserShoppingOrder {
+    id: string; // Firestore document ID
+    orderId: string; // Provider's order ID
+    items: Array<{ productId: string; productName?: string; quantity: number; priceAtPurchase: number; imageUrl?: string; }>;
+    totalAmount: number;
+    shippingAddress: any;
+    paymentMethod: string;
+    paymentTransactionId: string;
+    status: string; // 'Processing', 'Shipped', 'Delivered', 'Cancelled'
+    orderDate: string; // ISO Date string
+    userId: string;
+}
+
+export async function getOrderHistory(): Promise<UserShoppingOrder[]> {
+    console.log("[Client Shopping Service] Fetching order history via API...");
+    try {
+        const orders = await apiClient<UserShoppingOrder[]>('/shopping/orders');
+        return orders.map(o => ({...o, orderDate: new Date(o.orderDate).toISOString()}));
+    } catch (error) {
+        console.error("Error fetching order history:", error);
+        throw error;
+    }
+}
+
+export async function getOrderDetails(orderId: string): Promise<UserShoppingOrder | null> {
+    console.log(`[Client Shopping Service] Fetching details for order ${orderId} via API...`);
+    try {
+        const order = await apiClient<UserShoppingOrder>(`/shopping/orders/${orderId}`);
+        return order ? {...order, orderDate: new Date(order.orderDate).toISOString()} : null;
+    } catch (error: any) {
+        if (error.message?.includes('404')) return null;
+        console.error("Error fetching order details:", error);
+        throw error;
     }
 }
