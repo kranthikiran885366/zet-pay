@@ -67,7 +67,7 @@ export const mockMarriageVenuesData: MarriageVenue[] = [
     },
     {
         id: 'v2', name: 'Star Convention Center', type: 'marriage', location: 'Hitech City, Hyderabad', city: 'Hyderabad', capacity: 1000, price: 250000, priceRange: '₹2 Lakh - ₹5 Lakh', rating: 4.5, imageUrl: '/images/venues/venue2.jpg',
-        images: ['/images/venues/venue2.jpg','/images/venues/venue2-2.jpg'],
+        images: ['https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800','/images/venues/venue2.jpg','/images/venues/venue2-2.jpg'],
         contactPhone: '9876500002', contactEmail: 'sales@starconvention.com', requiresApproval: true, bookingFee: 50000, hallType: 'Convention Center', hasParking: true, parkingCapacity: 300,
         description: 'Large convention center suitable for grand weddings.',
         amenities: ['Multiple Halls', 'Large Parking (300 cars)', 'In-house Decor'],
