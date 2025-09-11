@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, HeartHandshake, Search, Filter, MapPin, CalendarIcon, Users, Wallet, Loader2, CheckCircle, Info, UserCircle, Mail, Phone } from 'lucide-react';
+import { ArrowLeft, HeartHandshake, Search, Filter, MapPin, CalendarIcon, Users, Wallet, Loader2, CheckCircle, Info, UserCircle, Mail, Phone, Heart, Star } from 'lucide-react';
 import Link from 'next/link';
 import { format, differenceInCalendarDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -340,4 +342,3 @@ export default function MarriageBookingPage() {
         </div>
     );
 }
-
