@@ -48,10 +48,40 @@ export default function MarriageBookingPage() {
     const [userEmail, setUserEmail] = useState(''); // Added email for booking form
     const [specialRequests, setSpecialRequests] = useState('');
 
+    // Enhanced state: favorites, cart, selected dates, recurring, filters, gallery index
+    const [favorites, setFavorites] = useState<string[]>([]);
+    type CartItem = { venueId: string; name: string; date: string; amount?: number };
+    const [cart, setCart] = useState<CartItem[]>([]);
+    const [showCartModal, setShowCartModal] = useState(false);
+    const [promoCode, setPromoCode] = useState('');
+    const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountPct: number } | null>(null);
+
+    const [selectedDates, setSelectedDates] = useState<string[]>([]); // store yyyy-MM-dd strings
+    const [recurring, setRecurring] = useState<{ enabled: boolean; frequency: 'weekly' | 'monthly' | null; occurrences: number }>({ enabled: false, frequency: null, occurrences: 1 });
+
+    // Filters for results
+    const [showFilters, setShowFilters] = useState(false);
+    const [filterMinPrice, setFilterMinPrice] = useState<number | undefined>(undefined);
+    const [filterMaxPrice, setFilterMaxPrice] = useState<number | undefined>(undefined);
+    const [filterMinCapacity, setFilterMinCapacity] = useState<number | undefined>(undefined);
+    const [filterAmenities, setFilterAmenities] = useState<string[]>([]);
+    const [filterMinRating, setFilterMinRating] = useState<number | undefined>(undefined);
+
+    const [galleryIndex, setGalleryIndex] = useState(0);
 
     const { toast } = useToast();
 
+    // Load favorites and cart from localStorage on mount
     useEffect(() => {
+      try {
+        const fav = typeof window !== 'undefined' ? window.localStorage.getItem('mf_favorites') : null;
+        const cartRaw = typeof window !== 'undefined' ? window.localStorage.getItem('mf_cart') : null;
+        if (fav) setFavorites(JSON.parse(fav));
+        if (cartRaw) setCart(JSON.parse(cartRaw));
+      } catch (e) {
+        console.warn('Failed to load localStorage data for marriage booking.', e);
+      }
+
       const currentUser = auth.currentUser;
       if (currentUser) {
         setUserName(currentUser.displayName || '');
@@ -59,6 +89,14 @@ export default function MarriageBookingPage() {
         setUserContact(currentUser.phoneNumber || '');
       }
     }, []);
+
+    // Persist favorites/cart
+    useEffect(() => {
+      try { if (typeof window !== 'undefined') window.localStorage.setItem('mf_favorites', JSON.stringify(favorites)); } catch (e) {}
+    }, [favorites]);
+    useEffect(() => {
+      try { if (typeof window !== 'undefined') window.localStorage.setItem('mf_cart', JSON.stringify(cart)); } catch (e) {}
+    }, [cart]);
 
     const handleSearch = async (e?: React.FormEvent) => {
         e?.preventDefault();
