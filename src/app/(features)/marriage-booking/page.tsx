@@ -201,6 +201,74 @@ export default function MarriageBookingPage() {
         }
     };
 
+    // --- Enhanced helpers ---
+    const toggleFavorite = (venueId: string) => {
+      setFavorites(prev => prev.includes(venueId) ? prev.filter(id => id !== venueId) : [...prev, venueId]);
+    };
+
+    const addToCart = (venue: MarriageVenue, dateStr?: string) => {
+      const date = dateStr || (eventDate ? format(eventDate, 'yyyy-MM-dd') : '');
+      const item: CartItem = { venueId: venue.id, name: venue.name, date, amount: venue.price || 0 };
+      setCart(prev => [...prev, item]);
+      toast({ title: 'Added to Cart', description: `${venue.name} (${date}) added to cart.` });
+    };
+
+    const removeFromCart = (index: number) => {
+      setCart(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const applyPromo = () => {
+      if (!promoCode) {
+        toast({ variant: 'destructive', title: 'No Promo', description: 'Enter a promo code to apply.' });
+        return;
+      }
+      // Simple mock promo logic
+      if (promoCode.toLowerCase() === 'SAVE10') {
+        setAppliedPromo({ code: promoCode, discountPct: 10 });
+        toast({ title: 'Promo Applied', description: '10% discount applied.' });
+      } else {
+        setAppliedPromo(null);
+        toast({ variant: 'destructive', title: 'Invalid Promo' });
+      }
+    };
+
+    const checkoutMock = () => {
+      if (cart.length === 0) { toast({ description: 'Cart is empty.' }); return; }
+      // Mock processing
+      setShowCartModal(false);
+      setTimeout(() => {
+        const total = cart.reduce((s, c) => s + (c.amount || 0), 0);
+        const discount = appliedPromo ? Math.round(total * (appliedPromo.discountPct / 100)) : 0;
+        toast({ title: 'Payment Successful (Mock)', description: `Paid ₹${(total - discount).toLocaleString()}. Booking requests submitted.` });
+        setCart([]);
+        setAppliedPromo(null);
+        setPromoCode('');
+      }, 800);
+    };
+
+    const addSelectedDate = (date: Date | undefined) => {
+      if (!date) return;
+      const str = format(date, 'yyyy-MM-dd');
+      setSelectedDates(prev => prev.includes(str) ? prev : [...prev, str].sort());
+      toast({ title: 'Date Added', description: format(date, 'PPP') });
+    };
+
+    const exportAsICS = (venue: MarriageVenue | null, dateStr?: string) => {
+      if (!venue) return;
+      const date = dateStr || (eventDate ? format(eventDate, 'yyyyMMdd') : '');
+      const dtstart = date.replace(/-/g, '') + 'T100000';
+      const dtend = date.replace(/-/g, '') + 'T180000';
+      const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:${venue.id}@example.com\nDTSTAMP:${dtstart}Z\nDTSTART:${dtstart}\nDTEND:${dtend}\nSUMMARY:Visit ${venue.name}\nDESCRIPTION:${venue.description || ''}\nLOCATION:${venue.location || ''}\nEND:VEVENT\nEND:VCALENDAR`;
+      const blob = new Blob([ics], { type: 'text/calendar' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${venue.name.replace(/\s+/g, '_')}_${date}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
