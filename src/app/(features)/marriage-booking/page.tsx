@@ -1,7 +1,5 @@
 'use client';
 
-'use client';
-
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -332,7 +330,7 @@ export default function MarriageBookingPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                     {galleryImages.slice(0,15).map((src, idx) => (
                       <button key={idx} onClick={() => { setGalleryIndex(idx); setGalleryOpen(true); }} className="relative w-full h-28 overflow-hidden rounded-md focus:outline-none">
-                        <Image src={src} alt={`Function hall ${idx+1}`} layout="fill" objectFit="cover" className="rounded-md" />
+                        <Image src={src} alt={`Function hall ${idx+1}`} fill className="rounded-md object-cover" />
                       </button>
                     ))}
                   </div>
@@ -341,7 +339,7 @@ export default function MarriageBookingPage() {
                   <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
                     <DialogContent className="sm:max-w-[900px] p-0">
                       <div className="relative w-full h-[60vh] bg-black">
-                        <Image src={galleryImages[galleryIndex] || galleryImages[0]} alt={`Function hall ${galleryIndex+1}`} layout="fill" objectFit="contain" />
+                        <Image src={galleryImages[galleryIndex] || galleryImages[0]} alt={`Function hall ${galleryIndex+1}`} fill className="object-contain" />
                         <div className="absolute inset-0 flex items-center justify-between px-4">
                           <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)}>&lt;</Button>
                           <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)}>&gt;</Button>
@@ -455,7 +453,7 @@ export default function MarriageBookingPage() {
                             <Card key={venue.id} className="shadow-sm hover:shadow-lg transition-shadow overflow-hidden">
                                 <div className="flex flex-col sm:flex-row">
                                     <div className="relative w-full sm:w-1/3 h-40 sm:h-auto">
-                                        <Image src={venue.imageUrl || '/images/venues/default.jpg'} alt={venue.name} layout="fill" objectFit="cover" className="sm:rounded-l-lg sm:rounded-tr-none" data-ai-hint="wedding venue hall exterior interior"/>
+                                        <Image src={venue.imageUrl || '/images/venues/default.jpg'} alt={venue.name} fill className="sm:rounded-l-lg sm:rounded-tr-none object-cover" data-ai-hint="wedding venue hall exterior interior"/>
                                     </div>
                                     <div className="flex-grow p-4">
                                          <CardTitle className="text-base mb-1">{venue.name}</CardTitle>
@@ -509,7 +507,7 @@ export default function MarriageBookingPage() {
                                         const images = (detailedVenueInfo.images && detailedVenueInfo.images.length > 0) ? detailedVenueInfo.images : [detailedVenueInfo.imageUrl || '/images/venues/default.jpg'];
                                         return (
                                           <div className="relative w-full h-48 rounded-md overflow-hidden">
-                                            <Image src={images[galleryIndex] || '/images/venues/default.jpg'} alt={detailedVenueInfo.name} layout="fill" objectFit="cover" data-ai-hint="venue large image"/>
+                                            <Image src={images[galleryIndex] || '/images/venues/default.jpg'} alt={detailedVenueInfo.name} fill className="object-cover" data-ai-hint="venue large image"/>
                                             {images.length > 1 && (
                                               <div className="absolute inset-0 flex items-center justify-between px-2">
                                                 <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i - 1 + images.length) % images.length)}>&lt;</Button>
