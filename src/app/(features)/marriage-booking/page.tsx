@@ -304,6 +304,36 @@ export default function MarriageBookingPage() {
                 <div className="w-full rounded-md overflow-hidden">
                   <Image src="https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800" alt="Marriage Hall Banner" width={1200} height={260} className="w-full h-auto object-cover rounded-md" />
                 </div>
+
+                {/* Function Hall Gallery - 15 sample images */}
+                <section className="mt-4">
+                  <h3 className="text-lg font-semibold mb-2">Function Hall Gallery</h3>
+                  <p className="text-sm text-muted-foreground mb-3">Browse sample halls and get ideas for your event. Click to view larger.</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                    {galleryImages.slice(0,15).map((src, idx) => (
+                      <button key={idx} onClick={() => { setGalleryIndex(idx); setGalleryOpen(true); }} className="relative w-full h-28 overflow-hidden rounded-md focus:outline-none">
+                        <Image src={src} alt={`Function hall ${idx+1}`} layout="fill" objectFit="cover" className="rounded-md" />
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Gallery Dialog / Lightbox */}
+                  <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+                    <DialogContent className="sm:max-w-[900px] p-0">
+                      <div className="relative w-full h-[60vh] bg-black">
+                        <Image src={galleryImages[galleryIndex] || galleryImages[0]} alt={`Function hall ${galleryIndex+1}`} layout="fill" objectFit="contain" />
+                        <div className="absolute inset-0 flex items-center justify-between px-4">
+                          <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)}>&lt;</Button>
+                          <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)}>&gt;</Button>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setGalleryOpen(false)}>Close</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </section>
+
                 {!showResults ? (
                      <Card className="shadow-md">
                         <CardHeader>
