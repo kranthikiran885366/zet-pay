@@ -364,7 +364,40 @@ export default function MarriageBookingPage() {
                               </Button>
                             </div>
                         </div>
-                         {searchResults.map(venue => (
+                         {showFilters && (
+                           <Card className="mb-4 shadow-sm">
+                             <CardContent>
+                               <div className="grid grid-cols-2 gap-3">
+                                 <div>
+                                   <Label>Min Price (₹)</Label>
+                                   <Input type="number" value={filterMinPrice ?? ''} onChange={(e) => setFilterMinPrice(e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g., 50000" />
+                                 </div>
+                                 <div>
+                                   <Label>Max Price (₹)</Label>
+                                   <Input type="number" value={filterMaxPrice ?? ''} onChange={(e) => setFilterMaxPrice(e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g., 300000" />
+                                 </div>
+                                 <div>
+                                   <Label>Min Capacity</Label>
+                                   <Input type="number" value={filterMinCapacity ?? ''} onChange={(e) => setFilterMinCapacity(e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g., 200" />
+                                 </div>
+                                 <div>
+                                   <Label>Min Rating</Label>
+                                   <Input type="number" step="0.1" min="0" max="5" value={filterMinRating ?? ''} onChange={(e) => setFilterMinRating(e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g., 4.0" />
+                                 </div>
+                                 <div className="col-span-2">
+                                   <Label>Amenities (comma separated)</Label>
+                                   <Input value={filterAmenities.join(', ')} onChange={(e) => setFilterAmenities(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="e.g., Parking, AC, Stage" />
+                                 </div>
+                               </div>
+                               <div className="flex justify-end mt-3 gap-2">
+                                 <Button variant="outline" onClick={() => { setFilterMinPrice(undefined); setFilterMaxPrice(undefined); setFilterMinCapacity(undefined); setFilterAmenities([]); setFilterMinRating(undefined); }}>Clear</Button>
+                                 <Button onClick={() => setShowFilters(false)}>Apply</Button>
+                               </div>
+                             </CardContent>
+                           </Card>
+                         )}
+
+                         {filteredResults.map(venue => (
                             <Card key={venue.id} className="shadow-sm hover:shadow-lg transition-shadow overflow-hidden">
                                 <div className="flex flex-col sm:flex-row">
                                     <div className="relative w-full sm:w-1/3 h-40 sm:h-auto">
