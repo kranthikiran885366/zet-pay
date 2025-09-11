@@ -219,8 +219,20 @@ export async function searchMarriageVenues(params: {
  * @returns A promise resolving to the MarriageVenue object or null.
  */
 export async function getMarriageVenueDetails(venueId: string): Promise<MarriageVenue | null> {
-    const result = await getBookingDetails('marriage', venueId);
-    return result ? (result.venueDetails || result as unknown as MarriageVenue) : null;
+    try {
+        const result = await getBookingDetails('marriage', venueId);
+        return result ? (result.venueDetails || result as unknown as MarriageVenue) : null;
+    } catch (error: any) {
+        console.error('Failed to fetch marriage venue details via API, falling back to mock data:', error);
+        try {
+            const mock = await import('@/mock-data/travel');
+            const found = mock.mockMarriageVenuesData.find(v => v.id === venueId);
+            return found || null;
+        } catch (impErr) {
+            console.error('Failed to load mock marriage venue details:', impErr);
+            return null;
+        }
+    }
 }
 
 /**
