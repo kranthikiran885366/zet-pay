@@ -56,7 +56,18 @@ export async function apiClient<T = any>(endpoint: string, options: ApiClientOpt
         const response = await fetch(url, config);
 
         // Read the response body once to avoid "body stream already read" errors
-        const responseText = await response.text();
+        let responseText = '';
+        try {
+            if (!response.bodyUsed) {
+                responseText = await response.text();
+            } else {
+                console.warn(`[API Client] Response body already consumed for ${url}. Falling back to status text.`);
+                responseText = '';
+            }
+        } catch (readErr) {
+            console.error(`[API Client] Error reading response body for ${url}:`, readErr);
+            responseText = '';
+        }
 
         if (!response.ok) {
             // Attempt to parse JSON error from the body, otherwise include raw text
@@ -74,8 +85,14 @@ export async function apiClient<T = any>(endpoint: string, options: ApiClientOpt
                 throw new Error(errorData.message);
             }
 
+            // If we couldn't read body, include status information
+            if (!responseText) {
+                console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Could not read response body.`);
+                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+            }
+
             console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Response: ${responseText}`);
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+            throw new Error(`API request failed: ${response.status}`);
         }
 
         // Handle cases where response might be empty (e.g., 204 No Content)
