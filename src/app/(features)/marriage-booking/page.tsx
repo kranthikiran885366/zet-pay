@@ -355,9 +355,15 @@ export default function MarriageBookingPage() {
                              <ArrowLeft className="mr-2 h-4 w-4"/> Modify Search
                          </Button>
                          <div className="flex justify-between items-center mb-2">
-                             <h2 className="text-lg font-semibold">{searchResults.length} Venue{searchResults.length !== 1 ? 's' : ''} Found</h2>
-                              <Button variant="ghost" size="sm"><Filter className="mr-1 h-4 w-4"/> Filter</Button>
-                         </div>
+                            <h2 className="text-lg font-semibold">{filteredResults.length} Venue{filteredResults.length !== 1 ? 's' : ''} Found</h2>
+                            <div className="flex items-center gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => setShowFilters(prev => !prev)} aria-pressed={showFilters}><Filter className="mr-1 h-4 w-4"/> {showFilters ? 'Hide Filters' : 'Filter'}</Button>
+                              <Button variant="secondary" size="sm" onClick={() => setShowCartModal(true)} className="relative">
+                                  <Wallet className="mr-1 h-4 w-4"/> Cart
+                                  {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-destructive text-white rounded-full text-xs px-1">{cart.length}</span>}
+                              </Button>
+                            </div>
+                        </div>
                          {searchResults.map(venue => (
                             <Card key={venue.id} className="shadow-sm hover:shadow-lg transition-shadow overflow-hidden">
                                 <div className="flex flex-col sm:flex-row">
