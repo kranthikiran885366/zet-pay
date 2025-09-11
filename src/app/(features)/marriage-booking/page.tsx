@@ -300,6 +300,10 @@ export default function MarriageBookingPage() {
             </header>
 
             <main className="flex-grow p-4 space-y-4 pb-20">
+                {/* Hero Banner using provided image */}
+                <div className="w-full rounded-md overflow-hidden">
+                  <Image src="https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800" alt="Marriage Hall Banner" width={1200} height={260} className="w-full h-auto object-cover rounded-md" />
+                </div>
                 {!showResults ? (
                      <Card className="shadow-md">
                         <CardHeader>
