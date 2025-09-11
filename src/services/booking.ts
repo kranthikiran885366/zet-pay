@@ -98,9 +98,9 @@ export async function searchBookings(type: string, params: Record<string, any>):
     } catch (error: any) {
         console.error(`Error searching ${type} bookings via API:`, error);
         const msg = (error && error.message) ? error.message.toLowerCase() : '';
-        // If user is not authenticated or backend returned 401/403, fallback to mock data for preview/dev
-        if (msg.includes('not authenticated') || msg.includes('401') || msg.includes('403')) {
-            console.warn(`[Client Service] Auth error detected when searching ${type}. Falling back to mock data for preview.`);
+        // If user is not authenticated or backend returned 401/403/404 or Not Found, fallback to mock data for preview/dev
+        if (msg.includes('not authenticated') || msg.includes('401') || msg.includes('403') || msg.includes('404') || msg.includes('not found')) {
+            console.warn(`[Client Service] API error detected when searching ${type} (status or auth). Falling back to mock data for preview.`);
             try {
                 // Lazy import mock data to avoid circular deps
                 const mock = await import('@/mock-data');
