@@ -48,7 +48,7 @@ export const mockBikesData: BikeListing[] = [
 export const mockMarriageVenuesData: MarriageVenue[] = [
     {
         id: 'v1', name: 'Grand Celebration Hall', type: 'marriage', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg',
-        images: ['/images/venues/venue1.jpg','/images/venues/venue1-2.jpg','/images/venues/venue1-3.jpg'],
+        images: ['https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800','/images/venues/venue1.jpg','/images/venues/venue1-2.jpg','/images/venues/venue1-3.jpg'],
         contactPhone: '9876500001', contactEmail: 'events@grandcelebration.com', requiresApproval: true, bookingFee: 25000, hallType: 'Banquet', hasParking: true, parkingCapacity: 100,
         description: 'Spacious hall with modern amenities, perfect for mid-sized weddings and receptions. Offers customizable decor packages.',
         amenities: ['AC Hall', 'Catering Available', 'Parking (100 cars)', 'Valet Service', 'Bridal Suite', 'Sound System'],
