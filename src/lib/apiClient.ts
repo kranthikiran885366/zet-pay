@@ -30,13 +30,16 @@ interface ApiClientOptions extends RequestInit {
  */
 export async function apiClient<T = any>(endpoint: string, options: ApiClientOptions = {}): Promise<T> {
     const token = await getIdToken(); // Get token before making the request
-    if (!token) {
-        console.error("[API Client] User not authenticated. Cannot make API call.");
-        throw new Error("User not authenticated.");
+    const headers = new Headers(options.headers || {});
+
+    if (token) {
+        headers.append('Authorization', `Bearer ${token}`);
+    } else {
+        // Don't throw here - allow unauthenticated requests to go through (backend may return 401/403)
+        // This avoids runtime crashes in preview/dev when no user is logged in. Callers should handle auth-required errors.
+        console.warn("[API Client] User not authenticated. Proceeding without Authorization header.");
     }
 
-    const headers = new Headers(options.headers || {});
-    headers.append('Authorization', `Bearer ${token}`);
     if (options.body && !(options.body instanceof FormData)) { // Don't set content-type for FormData
         headers.append('Content-Type', 'application/json');
     }
