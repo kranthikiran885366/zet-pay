@@ -417,7 +417,18 @@ export default function MarriageBookingPage() {
                                                  {venue.amenities.length > 3 && <Badge variant="outline" className="text-[10px]">+{venue.amenities.length - 3} more</Badge>}
                                              </div>
                                          )}
-                                          <Button className="mt-2 w-full sm:w-auto h-8" onClick={() => handleViewDetails(venue)}>View Details & Book</Button>
+                                          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 mt-2">
+                                            <Button className="w-full sm:w-auto h-8" onClick={() => handleViewDetails(venue)}>View Details & Book</Button>
+                                            <Button variant="ghost" className="w-full sm:w-10 h-8" onClick={() => toggleFavorite(venue.id)} aria-pressed={favorites.includes(venue.id)}>
+                                                <Heart className={cn('h-5 w-5', favorites.includes(venue.id) ? 'text-red-500' : '')} />
+                                            </Button>
+                                            <Button variant="outline" className="w-full sm:w-auto h-8" onClick={() => addToCart(venue)}>
+                                              Add to Cart
+                                            </Button>
+                                            <Button variant="ghost" className="w-full sm:w-auto h-8" onClick={() => window.open(`https://www.openstreetmap.org/search?query=${encodeURIComponent(venue.location || venue.name)}`, '_blank') }>
+                                              <MapPin className="mr-1 h-4 w-4"/> Map
+                                            </Button>
+                                         </div>
                                     </div>
                                 </div>
                             </Card>
