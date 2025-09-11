@@ -576,7 +576,45 @@ export default function MarriageBookingPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            </main>
+
+                <Dialog open={showCartModal} onOpenChange={setShowCartModal}>
+                  <DialogContent className="sm:max-w-[600px]"><DialogHeader><DialogTitle>Your Booking Cart</DialogTitle><DialogDescription>Review items and checkout (mock).</DialogDescription></DialogHeader>
+                    <div className="py-2">
+                      {cart.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Your cart is empty.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {cart.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{item.name}</p>
+                                <p className="text-xs text-muted-foreground">Date: {item.date}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold">₹{(item.amount || 0).toLocaleString()}</p>
+                                <Button variant="ghost" size="sm" onClick={() => removeFromCart(idx)}>Remove</Button>
+                              </div>
+                            </div>
+                          ))}
+                          <Separator />
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2"><Input placeholder="Promo code" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} /><Button onClick={applyPromo}>Apply</Button></div>
+                            <div>
+                              <p className="text-sm">Total: ₹{cart.reduce((s,c)=>s+(c.amount||0),0).toLocaleString()}</p>
+                              {appliedPromo && <p className="text-xs text-green-600">{appliedPromo.code} applied ({appliedPromo.discountPct}%)</p>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter className="sm:justify-between">
+                      <Button variant="outline" onClick={() => setShowCartModal(false)}>Continue Shopping</Button>
+                      <Button onClick={checkoutMock} disabled={cart.length===0}>Pay Now (Mock)</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+      </main>
         </div>
     );
 }
