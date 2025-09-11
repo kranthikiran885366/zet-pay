@@ -3,15 +3,8 @@
  */
 import { getIdToken } from './firebase';
 
-// Ensure the correct environment variable is used for the backend URL
-let API_BASE_URL: string;
-if (typeof window !== 'undefined') {
-    // In the browser prefer same-origin relative path to avoid cross-origin failures in preview environments
-    API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
-} else {
-    // Server-side or standalone backend fallback
-    API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9003/api';
-}
+// Use a same-origin relative API base by default so both client and server use the proxy in dev/preview
+const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
 console.log(`[API Client] Initialized with base URL: ${API_BASE_URL}`); // Log the base URL on initialization
 
 interface ApiClientOptions extends RequestInit {
