@@ -270,6 +270,23 @@ export default function MarriageBookingPage() {
       URL.revokeObjectURL(url);
     };
 
+    const filteredResults = useMemo(() => {
+      if (!searchResults || searchResults.length === 0) return [] as MarriageVenue[];
+      return searchResults.filter(v => {
+        if (filterMinPrice !== undefined && (v.price === undefined || v.price < filterMinPrice)) return false;
+        if (filterMaxPrice !== undefined && (v.price === undefined || v.price > filterMaxPrice)) return false;
+        if (filterMinCapacity !== undefined && (v.capacity === undefined || v.capacity < filterMinCapacity)) return false;
+        if (filterMinRating !== undefined && (v.rating === undefined || v.rating < filterMinRating)) return false;
+        if (filterAmenities.length > 0) {
+          const lowerAmenities = (v.amenities || []).map(a => a.toLowerCase());
+          for (const am of filterAmenities) {
+            if (!lowerAmenities.includes(am.toLowerCase())) return false;
+          }
+        }
+        return true;
+      });
+    }, [searchResults, filterMinPrice, filterMaxPrice, filterMinCapacity, filterAmenities, filterMinRating]);
+
     return (
         <div className="min-h-screen bg-secondary flex flex-col">
             <header className="sticky top-0 z-50 bg-primary text-primary-foreground p-3 flex items-center gap-4 shadow-md">
