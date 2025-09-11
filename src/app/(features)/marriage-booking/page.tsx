@@ -68,6 +68,26 @@ export default function MarriageBookingPage() {
     const [filterMinRating, setFilterMinRating] = useState<number | undefined>(undefined);
 
     const [galleryIndex, setGalleryIndex] = useState(0);
+    const [galleryOpen, setGalleryOpen] = useState(false);
+
+    // Sample gallery images (15) - use stable image service seeds
+    const galleryImages = [
+      'https://picsum.photos/seed/hall1/800/500',
+      'https://picsum.photos/seed/hall2/800/500',
+      'https://picsum.photos/seed/hall3/800/500',
+      'https://picsum.photos/seed/hall4/800/500',
+      'https://picsum.photos/seed/hall5/800/500',
+      'https://picsum.photos/seed/hall6/800/500',
+      'https://picsum.photos/seed/hall7/800/500',
+      'https://picsum.photos/seed/hall8/800/500',
+      'https://picsum.photos/seed/hall9/800/500',
+      'https://picsum.photos/seed/hall10/800/500',
+      'https://picsum.photos/seed/hall11/800/500',
+      'https://picsum.photos/seed/hall12/800/500',
+      'https://picsum.photos/seed/hall13/800/500',
+      'https://picsum.photos/seed/hall14/800/500',
+      'https://picsum.photos/seed/hall15/800/500',
+    ];
 
     const { toast } = useToast();
 
