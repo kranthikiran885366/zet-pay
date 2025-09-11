@@ -450,9 +450,22 @@ export default function MarriageBookingPage() {
                         {!isFetchingDetails && detailedVenueInfo && (
                             <ScrollArea className="max-h-[60vh] pr-2">
                                 <div className="py-4 space-y-4">
-                                    <div className="relative w-full h-48 rounded-md overflow-hidden">
-                                        <Image src={detailedVenueInfo.imageUrl || '/images/venues/default.jpg'} alt={detailedVenueInfo.name} layout="fill" objectFit="cover" data-ai-hint="venue large image"/>
-                                    </div>
+                                    {/* Gallery */}
+                                    {(() => {
+                                        const images = (detailedVenueInfo.images && detailedVenueInfo.images.length > 0) ? detailedVenueInfo.images : [detailedVenueInfo.imageUrl || '/images/venues/default.jpg'];
+                                        return (
+                                          <div className="relative w-full h-48 rounded-md overflow-hidden">
+                                            <Image src={images[galleryIndex] || '/images/venues/default.jpg'} alt={detailedVenueInfo.name} layout="fill" objectFit="cover" data-ai-hint="venue large image"/>
+                                            {images.length > 1 && (
+                                              <div className="absolute inset-0 flex items-center justify-between px-2">
+                                                <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i - 1 + images.length) % images.length)}>&lt;</Button>
+                                                <Button variant="ghost" className="bg-black/30 text-white" onClick={() => setGalleryIndex(i => (i + 1) % images.length)}>&gt;</Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                    })()}
+
                                     <p className="text-sm text-muted-foreground">{detailedVenueInfo.description || "No additional description available."}</p>
                                      <Separator />
                                      <div className="grid grid-cols-2 gap-4 text-sm">
@@ -487,6 +500,34 @@ export default function MarriageBookingPage() {
                                             <Label htmlFor="book-userEmail">Email Address</Label>
                                             <Input id="book-userEmail" type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} placeholder="Email ID" required/>
                                          </div>
+                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                           <div>
+                                             <Label>Select a Date</Label>
+                                             <div className="flex gap-2 items-center">
+                                               <Popover>
+                                                 <PopoverTrigger asChild>
+                                                   <Button variant="outline" className={cn(!eventDate && 'text-muted-foreground')}><CalendarIcon className="mr-1"/>{eventDate ? format(eventDate,'PPP') : 'Pick'}</Button>
+                                                 </PopoverTrigger>
+                                                 <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={eventDate} onSelect={setEventDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}/></PopoverContent>
+                                               </Popover>
+                                               <Button onClick={() => addSelectedDate(eventDate)}>Add Date</Button>
+                                             </div>
+                                             <div className="text-xs text-muted-foreground mt-2">Selected Dates: {selectedDates.length === 0 ? 'None' : selectedDates.join(', ')}</div>
+                                           </div>
+                                           <div>
+                                             <Label>Recurring Booking</Label>
+                                             <div className="flex gap-2 items-center">
+                                                <input id="recurring" type="checkbox" checked={recurring.enabled} onChange={(e) => setRecurring(r => ({...r, enabled: e.target.checked}))} />
+                                                <select value={recurring.frequency || ''} onChange={(e) => setRecurring(r => ({...r, frequency: (e.target.value as any) || null}))} disabled={!recurring.enabled} className="ml-2">
+                                                  <option value="">Frequency</option>
+                                                  <option value="weekly">Weekly</option>
+                                                  <option value="monthly">Monthly</option>
+                                                </select>
+                                                <input type="number" min={1} value={recurring.occurrences} onChange={(e) => setRecurring(r => ({...r, occurrences: Number(e.target.value) || 1}))} disabled={!recurring.enabled} className="w-20 ml-2" />
+                                             </div>
+                                             <div className="text-xs text-muted-foreground mt-2">When recurring is enabled, multiple bookings will be simulated (mock).</div>
+                                           </div>
+                                         </div>
                                          <div className="space-y-1">
                                             <Label htmlFor="book-specialRequests">Special Requests (Optional)</Label>
                                             <Textarea id="book-specialRequests" value={specialRequests} onChange={(e) => setSpecialRequests(e.target.value)} placeholder="e.g., specific decor, dietary needs"/>
@@ -494,6 +535,30 @@ export default function MarriageBookingPage() {
                                           {detailedVenueInfo.price > 0 && (
                                             <p className="text-xs text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3"/> A booking fee/advance of ₹{detailedVenueInfo.price.toLocaleString()} may be applicable.</p>
                                           )}
+
+                                          <div className="flex gap-2 mt-2">
+                                            <Button onClick={() => { if (selectedDates.length>0) { selectedDates.forEach(d => addToCart(detailedVenueInfo, d)); } else addToCart(detailedVenueInfo); }}>Add Selected Dates to Cart</Button>
+                                            <Button variant="outline" onClick={() => exportAsICS(detailedVenueInfo, selectedDates[0])}>Export .ics</Button>
+                                            <Button variant="ghost" onClick={() => window.location.href = `mailto:${detailedVenueInfo.contactEmail || ''}?subject=Inquiry about ${encodeURIComponent(detailedVenueInfo.name)}` }><Mail className="mr-1"/>Contact</Button>
+                                            <Button variant="ghost" onClick={() => window.navigator && (window.navigator as any).clipboard?.writeText(detailedVenueInfo.contactPhone || '')}><Phone className="mr-1"/>Copy Phone</Button>
+                                          </div>
+
+                                          {/* Reviews */}
+                                          <Separator />
+                                          <div>
+                                            <h4 className="font-semibold">Reviews</h4>
+                                            {(detailedVenueInfo.reviews && detailedVenueInfo.reviews.length>0) ? (
+                                              detailedVenueInfo.reviews.map((r:any, idx:number) => (
+                                                <div key={idx} className="text-sm mt-2">
+                                                  <div className="flex items-center gap-2"><UserCircle className="h-5 w-5"/><strong>{r.user}</strong> <span className="text-xs text-muted-foreground">• {r.rating}/5</span></div>
+                                                  <p className="text-xs text-muted-foreground">{r.comment}</p>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <p className="text-sm text-muted-foreground">No reviews yet. Be the first to review!</p>
+                                            )}
+                                          </div>
+
                                      </div>
                                 </div>
                             </ScrollArea>
