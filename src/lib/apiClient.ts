@@ -56,19 +56,23 @@ export async function apiClient<T = any>(endpoint: string, options: ApiClientOpt
         const response = await fetch(url, config);
 
         if (!response.ok) {
-            // Attempt to parse error response from backend
-            let errorData;
-            const responseText = await response.text(); // Get text first to avoid parsing errors on empty/non-JSON bodies
+            // Attempt to parse error response from backend. Use clones so we don't consume the original response body
             try {
-                errorData = JSON.parse(responseText);
-            } catch (parseError) {
-                // If response is not JSON, use status text or the raw text
-                console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Response: ${responseText}`);
-                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                // Try parsing JSON first (most APIs return JSON errors)
+                const jsonClone = await response.clone().json();
+                console.error(`[API Client] Error response from ${url}:`, jsonClone);
+                throw new Error(jsonClone?.message || `API request failed: ${response.status}`);
+            } catch (jsonErr) {
+                // If JSON parsing fails, fallback to reading text from a fresh clone
+                try {
+                    const text = await response.clone().text();
+                    console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Response: ${text}`);
+                    throw new Error(text || `API request failed: ${response.status} ${response.statusText}`);
+                } catch (textErr) {
+                    console.error(`[API Client] Failed request to ${url}. Status: ${response.status}. Could not read response body.`);
+                    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                }
             }
-            // Throw error with message from backend if available
-            console.error(`[API Client] Error response from ${url}:`, errorData);
-            throw new Error(errorData?.message || `API request failed: ${response.status}`);
         }
 
         // Handle cases where response might be empty (e.g., 204 No Content)
