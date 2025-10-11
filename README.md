@@ -393,13 +393,13 @@ Open [http://localhost:9002](http://localhost:9002) (or your frontend port). The
 
 ## 🤝 Contributing
 
-(Add contribution guidelines here - e.g., branching strategy (Gitflow), PR process, code style (Prettier/ESLint), testing approach).
+Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, branching, commit style, testing, and the PR process. By contributing, you agree to follow our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ---
 
 ## 📜 License
 
-(Specify your chosen license - e.g., MIT License).
+MIT License — see [LICENSE](./LICENSE).
 
 ---
 
