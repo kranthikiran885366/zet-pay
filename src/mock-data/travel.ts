@@ -1,4 +1,3 @@
-
 import type { BusRoute, TrainAvailability, FlightListing, CarListing, BikeListing, EVStation, RestStop, MarriageVenue } from '@/services/types'; // Updated to use types from services/types
 
 export const mockCities: string[] = ['Bangalore', 'Hyderabad', 'Chennai', 'Mumbai', 'Delhi', 'Pune', 'Kolkata', 'Goa (GOI)'];
@@ -47,11 +46,12 @@ export const mockBikesData: BikeListing[] = [
 ];
 
 export const mockMarriageVenuesData: MarriageVenue[] = [
-    { 
-        id: 'v1', name: 'Grand Celebration Hall', type: 'marriage', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg', 
-        description: 'Spacious hall with modern amenities, perfect for mid-sized weddings and receptions. Offers customizable decor packages.', 
-        amenities: ['AC Hall', 'Catering Available', 'Parking (100 cars)', 'Valet Service', 'Bridal Suite', 'Sound System'], 
-        contact: '9876500001', requiresApproval: true, bookingFee: 25000, hallType: 'Banquet', hasParking: true, parkingCapacity: 100,
+    {
+        id: 'v1', name: 'Grand Celebration Hall', type: 'marriage', location: 'Koramangala, Bangalore', city: 'Bangalore', capacity: 500, price: 100000, priceRange: '₹1 Lakh - ₹2 Lakh', rating: 4.8, imageUrl: '/images/venues/venue1.jpg',
+        images: ['https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800','/images/venues/venue1.jpg','/images/venues/venue1-2.jpg','/images/venues/venue1-3.jpg'],
+        contactPhone: '9876500001', contactEmail: 'events@grandcelebration.com', requiresApproval: true, bookingFee: 25000, hallType: 'Banquet', hasParking: true, parkingCapacity: 100,
+        description: 'Spacious hall with modern amenities, perfect for mid-sized weddings and receptions. Offers customizable decor packages.',
+        amenities: ['AC Hall', 'Catering Available', 'Parking (100 cars)', 'Valet Service', 'Bridal Suite', 'Sound System'],
         cateringOptions: [
             { id: 'cat_veg_std', name: 'Standard Veg Buffet', price: 800, description: 'Per plate, min 100 guests' },
             { id: 'cat_nonveg_prem', name: 'Premium Non-Veg Buffet', price: 1500, description: 'Per plate, min 100 guests' }
@@ -61,22 +61,21 @@ export const mockMarriageVenuesData: MarriageVenue[] = [
             { id: 'dec_theme_royal', name: 'Royal Theme Decor', price: 120000 }
         ],
         rulesAndPolicies: "No outside food/beverages allowed. Music allowed until 10 PM. Firecrackers strictly prohibited.",
-        reviews: [{ reviewer: 'Priya S.', rating: 5, comment: 'Amazing venue and great service!', date: '2024-07-15' }],
+        reviews: [{ user: 'Priya S.', rating: 5, comment: 'Amazing venue and great service!', date: '2024-07-15' }],
         cancellationPolicy: "Full refund if cancelled 30 days prior. 50% refund if cancelled 15 days prior. No refund thereafter.",
         simulatedBookedDates: ['2024-09-15', '2024-09-22']
     },
-    { 
-        id: 'v2', name: 'Star Convention Center', type: 'marriage', location: 'Hitech City, Hyderabad', city: 'Hyderabad', capacity: 1000, price: 250000, priceRange: '₹2 Lakh - ₹5 Lakh', rating: 4.5, imageUrl: '/images/venues/venue2.jpg', 
-        description: 'Large convention center suitable for grand weddings.', 
-        amenities: ['Multiple Halls', 'Large Parking (300 cars)', 'In-house Decor'], 
-        contact: '9876500002', requiresApproval: true, bookingFee: 50000, hallType: 'Convention Center', hasParking: true, parkingCapacity: 300,
+    {
+        id: 'v2', name: 'Star Convention Center', type: 'marriage', location: 'Hitech City, Hyderabad', city: 'Hyderabad', capacity: 1000, price: 250000, priceRange: '₹2 Lakh - ₹5 Lakh', rating: 4.5, imageUrl: '/images/venues/venue2.jpg',
+        images: ['https://cdn.builder.io/api/v1/image/assets%2F5b228b6b40054b888eba91b5099174c2%2F98b07d6e0c3f4166a28c875e397ea5bc?format=webp&width=800','/images/venues/venue2.jpg','/images/venues/venue2-2.jpg'],
+        contactPhone: '9876500002', contactEmail: 'sales@starconvention.com', requiresApproval: true, bookingFee: 50000, hallType: 'Convention Center', hasParking: true, parkingCapacity: 300,
+        description: 'Large convention center suitable for grand weddings.',
+        amenities: ['Multiple Halls', 'Large Parking (300 cars)', 'In-house Decor'],
         cateringOptions: [{ id: 'cat_grand', name: 'Grand Buffet (Veg/Non-Veg)', price: 2000, description: 'Per plate, min 200 guests' }],
         decorationPackages: [{ id: 'dec_modern', name: 'Modern Elegant Decor', price: 200000 }],
         rulesAndPolicies: "DJ allowed. Valet parking mandatory for over 500 guests.",
-        reviews: [{ reviewer: 'Raj K.', rating: 4, comment: 'Spacious, but catering could be better.', date: '2024-06-20' }],
+        reviews: [{ user: 'Raj K.', rating: 4, comment: 'Spacious, but catering could be better.', date: '2024-06-20' }],
         cancellationPolicy: "75% refund if cancelled 45 days prior. No refund if cancelled within 30 days.",
         simulatedBookedDates: ['2024-10-05', '2024-10-10']
     },
 ];
-
-    

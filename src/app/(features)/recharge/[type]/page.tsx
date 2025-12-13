@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Smartphone, Tv, Bolt, RefreshCw, Loader2, Search, Info, BadgePercent, Star, GitCompareArrows, CalendarClock, Wallet, Clock, Users, ShieldCheck, Gift, LifeBuoy, HelpCircle, Pencil, AlertTriangle, X, RadioTower, UserPlus, CalendarDays, Wifi, FileText, MoreHorizontal, Ban, HardDrive, Ticket, TramFront, Play, AlarmClockOff } from 'lucide-react';
 import Link from 'next/link';
 import { getBillers, Biller, RechargePlan, processRecharge, scheduleRecharge as scheduleRechargeService, checkActivationStatus, cancelRechargeService, getRechargePlans, detectOperatorAndCircle as detectOperatorService } from '@/services/recharge';
+import { getContacts, type PayeeClient } from '@/services/contacts';
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,7 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Separator } from '@/components/ui/separator';
-import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData, mockMobileQuickActions } from '@/mock-data'; // Ensure paths are correct
+import { mockBillersData, mockRechargePlansData, mockDthPlansData, mockDataCardPlansData } from '@/mock-data'; // Ensure paths are correct
 import type { Transaction } from '@/services/types';
 import { auth } from '@/lib/firebase';
 
@@ -92,11 +92,35 @@ export default function RechargePage() {
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'upi' | 'card'>('wallet');
   const [isClientOffline, setIsClientOffline] = useState(false);
+  const [allContacts, setAllContacts] = useState<PayeeClient[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [contactsError, setContactsError] = useState<string | null>(null);
 
 
   const { toast } = useToast();
   const details = rechargeTypeDetails[rechargePageType] || rechargeTypeDetails.mobile;
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load contacts for quick pick (mobile only)
+  useEffect(() => {
+    if (rechargePageType !== 'mobile') return;
+    let cancelled = false;
+    const load = async () => {
+      setIsLoadingContacts(true);
+      setContactsError(null);
+      try {
+        const contacts = await getContacts();
+        if (!cancelled) setAllContacts(contacts.filter(c => c.type === 'mobile' || /^[6-9]\d{9}$/.test(c.identifier)));
+      } catch (e: any) {
+        if (!cancelled) setContactsError('Could not load contacts');
+        console.error(e);
+      } finally {
+        if (!cancelled) setIsLoadingContacts(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [rechargePageType]);
 
   // Offline detection
    useEffect(() => {
@@ -432,19 +456,64 @@ export default function RechargePage() {
       <main className="flex-grow p-4 space-y-4 pb-20">
             <Card className="shadow-md">
                 <CardContent className="p-4 space-y-4">
-                    <Input
-                        id="identifier"
-                        type={rechargePageType === 'mobile' ? 'tel' : 'text'}
-                        placeholder={details.searchPlaceholder}
-                        ref={inputRef}
-                        pattern={rechargePageType === 'mobile' ? '[0-9]{10}' : undefined}
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        required
-                        className="text-base h-11"
-                    />
+                    <div className="relative">
+                      <Input
+                          id="identifier"
+                          type={rechargePageType === 'mobile' ? 'tel' : 'text'}
+                          placeholder={details.searchPlaceholder}
+                          ref={inputRef}
+                          pattern={rechargePageType === 'mobile' ? '[0-9]{10}' : undefined}
+                          value={identifier}
+                          onChange={(e) => setIdentifier(e.target.value)}
+                          required
+                          className="text-base h-11 pr-10"
+                      />
+                      {rechargePageType === 'mobile' && (
+                        <Button type="button" size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" onClick={() => {
+                          const first = allContacts[0];
+                          if (first?.identifier) setIdentifier(first.identifier);
+                        }} aria-label="Pick recent contact">
+                          <Users className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                 </CardContent>
             </Card>
+
+            {rechargePageType === 'mobile' && (
+                <Card className="shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {[{id:'amt149',label:'₹149',onClick:() => { setAmount('149'); setSelectedPlan(null);}},{id:'amt239',label:'₹239',onClick:() => { setAmount('239'); setSelectedPlan(null);}},{id:'unlimited',label:'Unlimited',onClick:() => setPlanSearchTerm('unlimited')},{id:'data',label:'Data',onClick:() => setPlanSearchTerm('data')},{id:'topup',label:'Top-up',onClick:() => setPlanSearchTerm('top-up')},{id:'annual',label:'Annual',onClick:() => setPlanSearchTerm('annual')},{id:'roaming',label:'Roaming',onClick:() => setPlanSearchTerm('roaming')}].map(q => (
+                        <Button key={q.id} size="sm" variant="secondary" className="h-8 rounded-full px-3 text-xs" onClick={q.onClick}>{q.label}</Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+            )}
+
+            {rechargePageType === 'mobile' && (
+                <Card className="shadow-md">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Recents & Contacts</CardTitle></CardHeader>
+                  <CardContent className="pt-0">
+                    {isLoadingContacts ? (
+                      <div className="flex justify-center p-3"><Loader2 className="h-4 w-4 animate-spin text-primary"/></div>
+                    ) : allContacts.length === 0 ? (
+                      <p className="text-xs text-muted-foreground p-3">No contacts yet.</p>
+                    ) : (
+                      <ScrollArea className="w-full"><div className="flex gap-3 p-1">
+                        {allContacts.slice(0, 12).map(c => (
+                          <Button key={c.id} variant="outline" className="h-12 px-2 rounded-full flex items-center gap-2 border-dashed" onClick={() => setIdentifier(c.identifier)}>
+                            <Avatar className="h-6 w-6"><AvatarFallback>{(c.name || c.identifier).slice(0,2).toUpperCase()}</AvatarFallback></Avatar>
+                            <span className="text-xs max-w-[90px] truncate">{c.name || c.identifier}</span>
+                          </Button>
+                        ))}
+                      </div><ScrollBar orientation="horizontal"/></ScrollArea>
+                    )}
+                    {contactsError && <p className="text-xs text-destructive mt-2">{contactsError}</p>}
+                  </CardContent>
+                </Card>
+            )}
 
             {identifier && (
                 <Card className="shadow-md">
@@ -621,6 +690,16 @@ export default function RechargePage() {
                 </CardContent>
             </Card>
 
+            <Card className="shadow-md">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-3 gap-3 text-center text-xs text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2"><ShieldCheck className="h-4 w-4 text-green-600"/>Secure Payments</div>
+                  <div className="flex items-center justify-center gap-2"><Wallet className="h-4 w-4 text-purple-600"/>Instant Refunds</div>
+                  <div className="flex items-center justify-center gap-2"><LifeBuoy className="h-4 w-4 text-blue-600"/>24x7 Support</div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Dialog open={isCompareModalOpen} onOpenChange={setIsCompareModalOpen}>
                 <DialogContent className="sm:max-w-[90%] md:max-w-[600px]"><DialogHeader><DialogTitle>Compare Plans ({plansToCompare.length})</DialogTitle><DialogDescription>Compare selected plans.</DialogDescription></DialogHeader>
                     <div className={`grid gap-2 py-4 grid-cols-${plansToCompare.length === 2 ? '2' : '3'}`}>
@@ -638,7 +717,3 @@ export default function RechargePage() {
     </div>
   );
 }
-
-</description>
-    <content><![CDATA[
-

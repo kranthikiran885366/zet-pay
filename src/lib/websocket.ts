@@ -7,7 +7,15 @@ let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 5000; // 5 seconds
-let wsUrl = process.env.NEXT_PUBLIC_WSS_URL || 'ws://localhost:9003'; // Default WebSocket URL
+let wsUrl: string;
+if (typeof window !== 'undefined') {
+    const loc = window.location;
+    const protocol = loc.protocol === 'https:' ? 'wss' : 'ws';
+    // Prefer same-origin websocket via /ws path when possible (preview environments often proxy paths)
+    wsUrl = process.env.NEXT_PUBLIC_WSS_URL || `${protocol}://${loc.host}/ws`;
+} else {
+    wsUrl = process.env.NEXT_PUBLIC_WSS_URL || 'ws://localhost:9003';
+} // Default WebSocket URL
 let isConnecting = false; // Flag to prevent multiple connection attempts
 let isConnected = false;
 let isAuthenticated = false;

@@ -22,13 +22,19 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'api.qrserver.com', 
+        hostname: 'api.qrserver.com',
         port: '',
         pathname: '/**',
       },
        {
         protocol: 'https',
-        hostname: 'example.com', 
+        hostname: 'example.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.builder.io',
         port: '',
         pathname: '/**',
       },

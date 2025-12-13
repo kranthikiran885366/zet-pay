@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Bolt, Droplet, ShieldCheck, Banknote, RadioTower, Loader2, Info, Power, GraduationCap } from 'lucide-react'; // Added Power, GraduationCap
 import Link from 'next/link';
 import { getBillers, Biller } from '@/services/recharge'; // Still use recharge service for getting billers list
-import { fetchBillAmount, processBillPayment } from '@/services/bills'; // Use new bills service
+import { fetchBillDetails, processBillPayment } from '@/services/bills'; // Use new bills service
 import { useToast } from "@/hooks/use-toast"; // Import toast
 import { auth } from '@/lib/firebase'; // Import auth
 
@@ -133,7 +133,7 @@ export default function BillPaymentPage() {
      setAmount(''); // Clear manual amount
 
      try {
-         const billDetails = await fetchBillAmount(selectedBillerId, identifier);
+         const billDetails = await fetchBillDetails(type, selectedBillerId, identifier);
          if (billDetails && billDetails.amount !== undefined && billDetails.amount !== null) {
              setFetchedAmount(billDetails.amount);
              setAmount(billDetails.amount.toString()); // Set amount input automatically
